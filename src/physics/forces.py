@@ -17,10 +17,12 @@
     total_forces = grav_forces + coul_forces
 """
 
+import math
 from typing import Dict, Optional, Tuple
 
 import numpy as np
 
+from src.config import ESCAPE_RATIO, MAX_TRAJECTORY_STEPS
 from src.core.types import (
     BODY_TYPE,
     CHARGE,
@@ -230,13 +232,14 @@ def predict_single_star_trajectory(
     body_radius: float,
     g: float,
     softening: float,
-    steps: int = 300,
+    steps: int = 2000,
     dt: float = 5000.0,
 ) -> Dict[str, object]:
     """预测单一天体在单一引力源下的运动轨迹。
 
-    使用简单的 Euler 数值积分计算二体问题轨迹。
+    使用 Euler 数值积分计算二体问题轨迹。
     引力源视为固定不动，仅计算待放置天体受到的引力。
+    终止条件（按优先级）：碰撞 > 逃逸 > 绕圈完成 > 最大步数。
 
     Args:
         pos: shape (2,) 的预览位置世界坐标 (m)
@@ -247,15 +250,15 @@ def predict_single_star_trajectory(
         body_radius: 放置天体的半径 (m)
         g: 万有引力常数
         softening: 软化参数 (m)
-        steps: 积分步数
+        steps: 最大积分步数（安全上限）
         dt: 每步时间间隔 (秒)
 
     Returns:
         包含以下键的字典:
-            - "trajectory": shape (N, 2) 的轨迹世界坐标数组
+            - "trajectory": shape (N, 2) 的轨迹世界坐标数组（原始密度）
             - "collided": 是否与恒星碰撞
-            - "escaped": 是否逃逸（超过 100 倍初始距离）
-            - "collision_pos": 碰撞位置世界坐标 (仅 collided=True 时)
+            - "escaped": 是否逃逸
+            - "orbited": 是否绕引力源完成一圈
     """
     pos_cur = pos.copy().astype(np.float64)
     vel_cur = vel.copy().astype(np.float64)
@@ -263,48 +266,66 @@ def predict_single_star_trajectory(
 
     # 初始距离用于逃逸检测
     initial_delta = pos_cur - star_pos_f64
-    initial_dist = float(np.sqrt(np.dot(initial_delta, initial_delta)))
-    escape_threshold = 100.0 * max(initial_dist, 1.0)
-
-    collision_radius = star_radius + body_radius
+    initial_dist = float(np.linalg.norm(initial_delta))
+    escape_threshold: float = ESCAPE_RATIO * max(initial_dist, 1.0)
+    collision_radius: float = star_radius + body_radius
 
     trajectory: list = [pos_cur.copy()]
     collided: bool = False
     escaped: bool = False
-    collision_pos: Optional[np.ndarray] = None
+    orbited: bool = False
 
-    for _ in range(steps):
-        # 计算引力加速度
+    # 角度累计检测
+    total_angle: float = 0.0
+    prev_angle: float = math.atan2(
+        pos_cur[1] - star_pos_f64[1],
+        pos_cur[0] - star_pos_f64[0],
+    )
+
+    max_steps = min(steps, MAX_TRAJECTORY_STEPS)
+
+    for _ in range(max_steps):
         r_vec = pos_cur - star_pos_f64
-        dist_sq = float(r_vec[0] * r_vec[0] + r_vec[1] * r_vec[1]) + softening * softening
-        dist = float(np.sqrt(dist_sq))
+        dist = float(np.linalg.norm(r_vec)) + softening
 
-        # 碰撞检测
+        # 1. 碰撞检测（最高优先级）
         if dist < collision_radius:
             collided = True
-            collision_pos = pos_cur.copy()
+            trajectory.append(pos_cur.copy())
             break
 
-        # 逃逸检测
+        # 2. 逃逸检测
         if dist > escape_threshold:
             escaped = True
+            trajectory.append(pos_cur.copy())
             break
 
-        # 加速度 a = -G * M * r / (r^2 * r) = -G * M / r^3 * r
-        acc = -g * star_mass * r_vec / (dist_sq * dist)
+        # 3. 角度变化检测
+        current_angle = math.atan2(r_vec[1], r_vec[0])
+        delta_angle = current_angle - prev_angle
+        # 归一化到 [-pi, pi]
+        while delta_angle > math.pi:
+            delta_angle -= 2.0 * math.pi
+        while delta_angle < -math.pi:
+            delta_angle += 2.0 * math.pi
+        total_angle += abs(delta_angle)
+        prev_angle = current_angle
 
-        # Euler 积分
+        # 绕完一圈
+        if total_angle >= 2.0 * math.pi:
+            orbited = True
+            trajectory.append(pos_cur.copy())
+            break
+
+        # 4. 积分一步（Euler 法）
+        acc = -g * star_mass * r_vec / (dist ** 3)
         vel_cur += acc * dt
         pos_cur += vel_cur * dt
-
         trajectory.append(pos_cur.copy())
 
-    result: Dict[str, object] = {
+    return {
         "trajectory": np.array(trajectory, dtype=np.float64),
         "collided": collided,
         "escaped": escaped,
+        "orbited": orbited,
     }
-    if collision_pos is not None:
-        result["collision_pos"] = collision_pos
-
-    return result
