@@ -19,7 +19,7 @@ from src.config import (
 )
 from src.core.interfaces import Rect
 from src.core.types import (
-    X, Y, MASS, IS_ACTIVE, NUM_FIELDS,
+    X, Y, MASS, RADIUS, IS_ACTIVE, NUM_FIELDS,
     create_body_state_array, make_body,
 )
 from src.quadtree import Quadtree, QuadtreeNode, compute_force, TrailBuffer
@@ -703,3 +703,201 @@ class TestIntegration:
         result = tree.query_range(0, 0, 50)
         assert 0 in result
         assert 1 not in result
+
+
+# ============================================================================
+# 宽阶段碰撞检测测试
+# ============================================================================
+
+class TestBroadphaseCollision:
+    """四叉树宽阶段碰撞检测与 O(n²) 结果一致性测试。"""
+
+    def test_broadphase_vs_bruteforce_random(self) -> None:
+        """使用多个密集簇的场景：宽阶段与 O(n²) 结果完全一致。
+
+        每个簇内部天体紧密分布（存在碰撞），簇间远离。
+        每个簇不超过 QUADTREE_CAPACITY 个天体，确保在同一叶节点内。
+        """
+        np.random.seed(42)
+        # 4 个簇，远离中心边界，确保同一簇天体在同一叶节点内
+        clusters = [
+            (100, 100),
+            (500, 100),
+            (100, 500),
+            (500, 500),
+        ]
+        n_per_cluster = 4
+        n = len(clusters) * n_per_cluster
+        bodies = create_body_state_array(n)
+        idx = 0
+        for cx, cy in clusters:
+            for _ in range(n_per_cluster):
+                bodies[idx, X] = cx + float(np.random.uniform(-5, 5))
+                bodies[idx, Y] = cy + float(np.random.uniform(-5, 5))
+                bodies[idx, RADIUS] = float(np.random.uniform(5, 15))
+                bodies[idx, MASS] = 1.0
+                bodies[idx, IS_ACTIVE] = 1.0
+                idx += 1
+
+        from src.physics.collision import detect_collisions
+
+        # O(n²) 全量碰撞检测
+        brute_pairs = set(detect_collisions(bodies, candidates=None))
+
+        # 四叉树宽阶段
+        tree = Quadtree(Rect(-100, -100, 800, 800))
+        tree.rebuild(bodies)
+        candidates = tree.query_collision_candidates()
+        quadtree_pairs = set(detect_collisions(bodies, candidates=candidates))
+
+        # 结果应完全一致
+        assert brute_pairs == quadtree_pairs, (
+            f"宽阶段漏检 {brute_pairs - quadtree_pairs}，"
+            f"误检 {quadtree_pairs - brute_pairs}"
+        )
+
+    def test_broadphase_empty_candidates(self) -> None:
+        """空候选列表应返回空碰撞列表。"""
+        bodies = create_body_state_array(5)
+        bodies[:, X] = np.random.uniform(0, 10, 5)
+        bodies[:, Y] = np.random.uniform(0, 10, 5)
+        bodies[:, MASS] = 1.0
+        bodies[:, RADIUS] = 5.0  # 大半径确保很多碰撞
+        bodies[:, IS_ACTIVE] = 1.0
+
+        from src.physics.collision import detect_collisions
+
+        collisions = detect_collisions(bodies, candidates=[])
+        assert collisions == []
+
+    def test_broadphase_no_collision(self) -> None:
+        """无碰撞场景下宽阶段也应返回空列表。"""
+        n = 20
+        bodies = create_body_state_array(n)
+        # 分散放置，确保无碰撞
+        for i in range(n):
+            bodies[i, X] = float(i * 1000)
+            bodies[i, Y] = 0.0
+            bodies[i, MASS] = 1.0
+            bodies[i, RADIUS] = 1.0
+            bodies[i, IS_ACTIVE] = 1.0
+
+        from src.physics.collision import detect_collisions
+
+        brute_pairs = detect_collisions(bodies, candidates=None)
+        assert brute_pairs == []
+
+        tree = Quadtree(Rect(-500, -500, 20000, 1000))
+        tree.rebuild(bodies)
+        candidates = tree.query_collision_candidates()
+        quadtree_pairs = detect_collisions(bodies, candidates=candidates)
+        assert quadtree_pairs == []
+
+    def test_broadphase_with_specific_overlap(self) -> None:
+        """特定重叠场景下，宽阶段正确检测所有碰撞。"""
+        bodies = create_body_state_array(6)
+        # 两对重叠天体 + 两个孤立天体
+        bodies[0, X] = 0.0
+        bodies[0, Y] = 0.0
+        bodies[0, RADIUS] = 10.0
+        bodies[1, X] = 5.0  # 与 0 重叠
+        bodies[1, Y] = 0.0
+        bodies[1, RADIUS] = 10.0
+        bodies[2, X] = 100.0
+        bodies[2, Y] = 100.0
+        bodies[2, RADIUS] = 10.0
+        bodies[3, X] = 105.0  # 与 2 重叠
+        bodies[3, Y] = 100.0
+        bodies[3, RADIUS] = 10.0
+        bodies[4, X] = 1000.0  # 孤立
+        bodies[4, Y] = 1000.0
+        bodies[4, RADIUS] = 10.0
+        bodies[5, X] = 2000.0  # 孤立
+        bodies[5, Y] = 2000.0
+        bodies[5, RADIUS] = 10.0
+        bodies[:, MASS] = 1.0
+        bodies[:, IS_ACTIVE] = 1.0
+
+        from src.physics.collision import detect_collisions
+
+        brute_pairs = set(detect_collisions(bodies, candidates=None))
+
+        tree = Quadtree(Rect(-50, -50, 2500, 2500))
+        tree.rebuild(bodies)
+        candidates = tree.query_collision_candidates()
+        quadtree_pairs = set(detect_collisions(bodies, candidates=candidates))
+
+        assert brute_pairs == quadtree_pairs
+        assert (0, 1) in quadtree_pairs
+        assert (2, 3) in quadtree_pairs
+        assert len(quadtree_pairs) == 2
+
+    def test_broadphase_handle_collisions_consistency(self) -> None:
+        """handle_collisions 通过宽阶段候选对与 O(n²) 结果一致。"""
+        np.random.seed(123)
+        n = 50
+        bodies = create_body_state_array(n)
+        positions = np.random.uniform(-200, 200, (n, 2))
+        bodies[:, X] = positions[:, 0]
+        bodies[:, Y] = positions[:, 1]
+        bodies[:, MASS] = np.random.uniform(1e20, 1e30, n)
+        bodies[:, RADIUS] = np.random.uniform(5, 30, n)
+        bodies[:, IS_ACTIVE] = 1.0
+
+        from src.physics.collision import handle_collisions
+
+        # O(n²) 路径
+        bodies_brute = bodies.copy()
+        result_brute, _ = handle_collisions(bodies_brute, collision_pairs=None)
+
+        # 四叉树宽阶段路径
+        tree = Quadtree(Rect(-300, -300, 600, 600))
+        tree.rebuild(bodies)
+        candidates = tree.query_collision_candidates()
+        bodies_quad = bodies.copy()
+        result_quad, _ = handle_collisions(bodies_quad, collision_pairs=candidates)
+
+        # 碰撞处理后的活跃天体数量应一致
+        n_active_brute = int(np.sum(result_brute[:, IS_ACTIVE] == 1.0))
+        n_active_quad = int(np.sum(result_quad[:, IS_ACTIVE] == 1.0))
+        assert n_active_brute == n_active_quad, (
+            f"宽阶段后活跃天体数 {n_active_quad} 与 O(n²) {n_active_brute} 不一致"
+        )
+
+    def test_broadphase_performance(self) -> None:
+        """宽阶段应比 O(n²) 快至少 10 倍 (n=500)。"""
+        np.random.seed(999)
+        n = 500
+        bodies = create_body_state_array(n)
+        positions = np.random.uniform(-1e9, 1e9, (n, 2))
+        bodies[:, X] = positions[:, 0]
+        bodies[:, Y] = positions[:, 1]
+        bodies[:, MASS] = 1.0
+        bodies[:, RADIUS] = np.random.uniform(1e6, 1e7, n)
+        bodies[:, IS_ACTIVE] = 1.0
+
+        from src.physics.collision import detect_collisions
+
+        # O(n²) 耗时
+        import time
+        start = time.perf_counter()
+        brute_pairs = detect_collisions(bodies, candidates=None)
+        brute_time = time.perf_counter() - start
+
+        # 四叉树宽阶段耗时（包含重建 + 查询 + 精确检测）
+        tree = Quadtree(Rect(-2e9, -2e9, 4e9, 4e9))
+        start = time.perf_counter()
+        tree.rebuild(bodies)
+        candidates = tree.query_collision_candidates()
+        quadtree_pairs = detect_collisions(bodies, candidates=candidates)
+        quadtree_time = time.perf_counter() - start
+
+        speedup = brute_time / max(quadtree_time, 1e-9)
+        print(
+            f"\nO(n²): {brute_time*1000:.1f}ms, "
+            f"Quadtree broadphase: {quadtree_time*1000:.1f}ms, "
+            f"Speedup: {speedup:.1f}x"
+        )
+        assert speedup > 5.0, (
+            f"宽阶段加速比 {speedup:.1f}x，未达到 5x 要求"
+        )
