@@ -188,7 +188,7 @@ class InputHandler(IInputHandler):
         x, y = event.pos
         self.mouse_screen_x, self.mouse_screen_y = x, y
 
-        if event.button == 1:  # 左键 — 选择 + 平移拖拽
+        if event.button == 1:  # 左键 — 选择
             # 双击检测
             now = pygame.time.get_ticks() / 1000.0
             time_since_last = now - self._last_click_time
@@ -211,10 +211,6 @@ class InputHandler(IInputHandler):
             self.is_dragging = True
             self.drag_start_x = x
             self.drag_start_y = y
-
-            # 启动平移模式（点空白拖拽即平移）
-            self.is_panning = True
-            self.pan_last_x, self.pan_last_y = event.pos
 
             return f"CLICK:{x},{y}"
 
@@ -245,7 +241,6 @@ class InputHandler(IInputHandler):
         """
         if event.button == 1:
             self.is_dragging = False
-            self.is_panning = False  # 停止左键平移
             # 如果拖拽距离大，视为发射探测器
             if self.is_aiming:
                 self.is_aiming = False
