@@ -290,6 +290,7 @@ def main() -> None:
 
     # 参考系天体 ID（双击进入参考系）
     reference_body_id: Optional[int] = None
+    _saved_zoom_before_frame: float = 1.0
 
     # 预测轨迹缓存
     predicted_trajectory: Optional[np.ndarray] = None
@@ -983,6 +984,7 @@ def main() -> None:
                     wx = float(bodies[found_id, X])
                     wy = float(bodies[found_id, Y])
                     camera.follow(wx, wy)
+                    _saved_zoom_before_frame = camera.zoom
                     reference_body_id = found_id
                     hud.set_reference_frame(found_id, int(bodies[found_id, BODY_TYPE]))
                     # 自动缩放到让目标天体约 50px 大小
@@ -1043,6 +1045,9 @@ def main() -> None:
                 elif custom_placement_stage > 0:
                     _cancel_custom_placement()
                 elif reference_body_id is not None:
+                    zoom_to_restore = _saved_zoom_before_frame
+                    if abs(camera.zoom - zoom_to_restore) > 0.01:
+                        camera.zoom_at(zoom_to_restore / camera.zoom, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
                     reference_body_id = None
                     hud.clear_reference_frame()
                     continue
@@ -1151,8 +1156,17 @@ def main() -> None:
         # 参考系天体消失检查
         if reference_body_id is not None:
             if reference_body_id >= bodies.shape[0] or bodies[reference_body_id, IS_ACTIVE] == 0.0:
+                # 退出时恢复 zoom
+                zoom_to_restore = _saved_zoom_before_frame
+                if abs(camera.zoom - zoom_to_restore) > 0.01:
+                    camera.zoom_at(zoom_to_restore / camera.zoom, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
                 reference_body_id = None
                 hud.clear_reference_frame()
+            else:
+                # 每帧跟随参考系天体
+                wx = float(bodies[reference_body_id, X])
+                wy = float(bodies[reference_body_id, Y])
+                camera.follow(wx, wy)
 
         # ================================================================
         # 6. 渲染
