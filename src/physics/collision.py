@@ -12,7 +12,7 @@
     from src.physics.collision import detect_collisions, handle_collisions
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -36,17 +36,21 @@ from src.core.types import (
 CollisionEvent = Dict[str, float | int | str]
 
 
-def detect_collisions(bodies: np.ndarray) -> List[Tuple[int, int]]:
+def detect_collisions(
+    bodies: np.ndarray,
+    candidates: Optional[List[Tuple[int, int]]] = None,
+) -> List[Tuple[int, int]]:
     """检测所有碰撞对。
 
-    使用 O(n^2) 的碰撞检测，对于每个活跃天体对检查其球心距离
-    是否小于两半径之和。
+    如果提供了 candidates（宽阶段候选对），只检查这些候选对；
+    否则走 O(n^2) 全量遍历（回退路径）。
 
     Args:
         bodies: shape (N, NUM_FIELDS) 的天体状态数组
+        candidates: 四叉树宽阶段产出的候选对列表，可选
 
     Returns:
-        碰撞对列表，每项为 (id_a, id_b)，其中 id_a < id_b 避免重复
+        实际碰撞对列表，每项为 (id_a, id_b)，其中 id_a < id_b 避免重复
     """
     n = bodies.shape[0]
     collisions: List[Tuple[int, int]] = []
@@ -64,19 +68,31 @@ def detect_collisions(bodies: np.ndarray) -> List[Tuple[int, int]]:
     if len(active_indices) < 2:
         return collisions
 
-    for i_idx, i in enumerate(active_indices):
-        # 只检查 i 之后的 pair (避免重复)
-        for j in active_indices[i_idx + 1:]:
+    if candidates is not None:
+        # 宽阶段路径：只检查候选对
+        for i, j in candidates:
+            # 跳过不活跃的
+            if bodies[i, IS_ACTIVE] == 0.0 or bodies[j, IS_ACTIVE] == 0.0:
+                continue
             # 如果两者都是静态，跳过
             if static[i] and static[j]:
                 continue
-
             delta = positions[i] - positions[j]
             dist = np.sqrt(np.dot(delta, delta))
             min_dist = radii[i] + radii[j]
-
             if dist < min_dist:
                 collisions.append((i, j))
+    else:
+        # 回退路径：O(n²) 全量遍历
+        for i_idx, i in enumerate(active_indices):
+            for j in active_indices[i_idx + 1:]:
+                if static[i] and static[j]:
+                    continue
+                delta = positions[i] - positions[j]
+                dist = np.sqrt(np.dot(delta, delta))
+                min_dist = radii[i] + radii[j]
+                if dist < min_dist:
+                    collisions.append((i, j))
 
     return collisions
 
@@ -253,6 +269,7 @@ def resolve_merge(
 def handle_collisions(
     bodies: np.ndarray,
     merge_threshold: float = 10.0,
+    collision_pairs: Optional[List[Tuple[int, int]]] = None,
 ) -> Tuple[np.ndarray, List[CollisionEvent]]:
     """碰撞检测与自动响应（新版规则）。
 
@@ -265,11 +282,12 @@ def handle_collisions(
     Args:
         bodies: shape (N, NUM_FIELDS) 的天体状态数组
         merge_threshold: 保留参数（不再使用），保持接口兼容
+        collision_pairs: 四叉树宽阶段产出的候选对列表，可选
 
     Returns:
         (bodies, events) 元组: 更新后的天体状态和碰撞事件列表
     """
-    collision_list = detect_collisions(bodies)
+    collision_list = detect_collisions(bodies, candidates=collision_pairs)
     if not collision_list:
         return bodies, []
 
