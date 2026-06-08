@@ -383,7 +383,8 @@ def main() -> None:
             # --- 鼠标点击 ---
             elif cmd.startswith("CLICK:"):
                 parts = cmd.split(":")
-                sx, sy = int(parts[1]), int(parts[2])
+                sx_str = parts[1].split(",")
+                sx, sy = int(sx_str[0]), int(sx_str[1])
 
                 # 检查是否在 UI 区域
                 if sx < 50 or sy > WINDOW_HEIGHT - 50:  # 工具栏或控制栏区域
@@ -427,7 +428,8 @@ def main() -> None:
             # --- 右键 ---
             elif cmd.startswith("RIGHT_CLICK:"):
                 parts = cmd.split(":")
-                sx, sy = int(parts[1]), int(parts[2])
+                sx_str = parts[1].split(",")
+                sx, sy = int(sx_str[0]), int(sx_str[1])
 
                 # 如果工具激活，取消工具
                 if active_tool:
@@ -457,7 +459,8 @@ def main() -> None:
             # --- 双击：跟随天体 ---
             elif cmd.startswith("DOUBLE_CLICK:"):
                 parts = cmd.split(":")
-                sx, sy = int(parts[1]), int(parts[2])
+                sx_str = parts[1].split(",")
+                sx, sy = int(sx_str[0]), int(sx_str[1])
                 found_id = input_handler.find_body_at_screen_pos(sx, sy, bodies, camera)
                 if found_id is not None:
                     wx = float(bodies[found_id, X])
