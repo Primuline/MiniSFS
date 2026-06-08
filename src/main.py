@@ -376,16 +376,9 @@ def main() -> None:
 
         if star_info is not None:
             star_pos, star_mass, star_radius = star_info
-            # 根据速度自适应调整步数和 dt，使轨迹展示约 0.25-1 圈
-            if speed > 1e5:
-                traj_steps = 300
-                traj_dt = min(5e8 / speed, 10000.0)
-            elif speed > 1e4:
-                traj_steps = 300
-                traj_dt = min(8e8 / speed, 8000.0)
-            else:
-                traj_steps = 300
-                traj_dt = min(1e9 / speed, 5000.0)
+            # 使用速度自适应 dt
+            dt = min(1e9 / max(speed, 1.0), 20000.0)
+            dt = max(dt, 100.0)
 
             return predict_single_star_trajectory(
                 pos=pos,
@@ -396,8 +389,8 @@ def main() -> None:
                 body_radius=body_radius_world,
                 g=GRAVITATIONAL_CONSTANT,
                 softening=SOFTENING,
-                steps=traj_steps,
-                dt=traj_dt,
+                steps=2000,
+                dt=dt,
             )
         else:
             # 无引力源：沿速度方向画直线
@@ -406,8 +399,6 @@ def main() -> None:
             total_dist = speed * time_total
             if total_dist < 1.0:
                 return None
-            ux = vel[0] / speed
-            uy = vel[1] / speed
             pts_list = []
             for i in range(pts):
                 t = i / (pts - 1)
@@ -416,6 +407,7 @@ def main() -> None:
                 "trajectory": np.array(pts_list, dtype=np.float64),
                 "collided": False,
                 "escaped": False,
+                "orbited": False,
             }
 
     # ==================================================================
