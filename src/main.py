@@ -79,35 +79,28 @@ def create_default_scene() -> np.ndarray:
 
     包含：
         - 1 颗大质量静态恒星（中心）
-        - 1 颗行星绕恒星轨道运动
-        - 1 颗更小的卫星绕行星轨道运动
-        - 1 个初始静止的探测器（便于玩家操作）
+        - 1 颗行星以 1 亿 km 轨道做圆周运动
 
-    天体参数经过调整，在 WORLD_SCALE = 1e9 m/px 下肉眼可见。
+    所有半径直接指定世界单位（米）。
 
     Returns:
         shape (N, NUM_FIELDS) 的天体状态数组
     """
-    scale = WORLD_SCALE  # 1e9 m/px
-
     bodies_list = []
 
     # 1. 中心恒星（静态）
     star = make_body(
         x=0.0, y=0.0,
         vx=0.0, vy=0.0,
-        mass=DEFAULT_MASS_STAR,  # 1e30
-        radius=scale * DEFAULT_RADIUS_STAR,  # 20 * 1e9 = 2e10 m
+        mass=DEFAULT_MASS_STAR,  # 2.0e30 kg
+        radius=7.0e8,  # 7e5 km
         body_type=BODY_TYPE_STAR,
         is_static=True,
     )
     bodies_list.append(star)
 
-    # 2. 行星（绕恒星公转）
-    # 轨道参数：约 150px 半径
-    orbit_radius = 150.0 * scale  # 1.5e11 m
-    planet_mass = DEFAULT_MASS_PLANET  # 5e28
-    # 圆周运动速度 v = sqrt(G * M / r)
+    # 2. 行星（绕恒星公转，轨道 1 亿 km）
+    orbit_radius = 1.0e11  # 1e8 km
     orbital_speed = math.sqrt(
         DEFAULT_MASS_STAR * 6.67430e-11 / orbit_radius
     )
@@ -115,42 +108,12 @@ def create_default_scene() -> np.ndarray:
     planet = make_body(
         x=orbit_radius, y=0.0,
         vx=0.0, vy=orbital_speed,
-        mass=planet_mass,
-        radius=scale * DEFAULT_RADIUS_PLANET,  # 8 * 1e9 = 8e9 m
+        mass=DEFAULT_MASS_PLANET,  # 6.0e26 kg
+        radius=6.4e6,  # 6.4e3 km
         body_type=BODY_TYPE_PLANET,
     )
     bodies_list.append(planet)
 
-    # 3. 卫星（绕行星公转）
-    moon_orbit = 40.0 * scale  # 4e10 m
-    moon_mass = 1.0e27
-
-    # 卫星相对于行星的速度
-    moon_orbital_speed = math.sqrt(
-        planet_mass * 6.67430e-11 / moon_orbit
-    )
-    # 卫星相对于恒星的位置和速度 = 行星的位置和速度 + 卫星的相对位置和速度
-    moon = make_body(
-        x=orbit_radius + moon_orbit, y=0.0,
-        vx=0.0, vy=orbital_speed + moon_orbital_speed,
-        mass=moon_mass,
-        radius=scale * 5.0,  # 5px
-        body_type=BODY_TYPE_PLANET,
-    )
-    bodies_list.append(moon)
-
-    # 4. 探测器（初始位于行星附近）
-    probe_offset = 60.0 * scale
-    probe = make_body(
-        x=orbit_radius - probe_offset, y=0.0,
-        vx=0.0, vy=orbital_speed,
-        mass=DEFAULT_MASS_PROBE,
-        radius=scale * DEFAULT_RADIUS_PROBE,
-        body_type=BODY_TYPE_PROBE,
-    )
-    bodies_list.append(probe)
-
-    # 合并所有天体
     return np.vstack(bodies_list)
 
 
@@ -245,6 +208,7 @@ def main() -> None:
     # 创建模块实例
     renderer = Renderer(WINDOW_WIDTH, WINDOW_HEIGHT)
     camera = Camera(WINDOW_WIDTH, WINDOW_HEIGHT, WORLD_SCALE)
+    camera.zoom_at(0.008, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
     physics_engine = PhysicsEngine(
         substeps=SUBSTEPS,
         use_quadtree=False,
@@ -266,7 +230,7 @@ def main() -> None:
     physics_dt = TIME_STEP  # 固定 1/60 秒
     accumulator = 0.0
     # 基准时间速度：世界尺度 1e9 m/px，需要 ~3e6 倍加速轨道才肉眼可见
-    BASE_TIME_SPEED = 3_000_000.0
+    BASE_TIME_SPEED = 50000.0
     time_speed = BASE_TIME_SPEED
     time_multiplier = 1.0  # 相对于基准速度的倍率（1x, 2x, 4x）
     is_paused = False
@@ -638,13 +602,11 @@ def main() -> None:
                         idx = selected_body_id
                         new_mass = hud.edit_mass
                         new_charge = hud.edit_charge
-                        # 更新质量、电荷
+                        new_radius = hud.edit_radius
+                        # 更新质量、电荷、半径
                         bodies[idx, MASS] = new_mass
                         bodies[idx, CHARGE] = new_charge
-                        # 自动重算半径：pixel_radius = CUSTOM_RADIUS_FACTOR * sqrt(mass / CUSTOM_MASS_DEFAULT)
-                        pixel_radius = CUSTOM_RADIUS_FACTOR * math.sqrt(new_mass / CUSTOM_MASS_DEFAULT)
-                        pixel_radius = max(2.0, min(pixel_radius, 30.0))
-                        bodies[idx, RADIUS] = pixel_radius * WORLD_SCALE
+                        bodies[idx, RADIUS] = new_radius
                         # 刷新信息面板
                         hud.set_selected_body(bodies[idx], idx)
                     hud.hide_edit_dialog()
@@ -1069,9 +1031,10 @@ def main() -> None:
                     hud.set_selected_body(bodies[found_id], found_id)
                     body_mass = float(bodies[found_id, MASS])
                     body_charge = float(bodies[found_id, CHARGE])
+                    body_radius = float(bodies[found_id, RADIUS])
                     is_paused = True
                     hud.set_play_pause_state(True)
-                    hud.show_edit_dialog(body_mass, body_charge)
+                    hud.show_edit_dialog(body_mass, body_charge, body_radius)
                 else:
                     # 右键空白 → 取消选择
                     selected_body_id = None

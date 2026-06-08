@@ -232,7 +232,11 @@ class HUDManager:
         # 编辑天体参数弹窗
         self.edit_mass: float = 0.0
         self.edit_charge: float = 0.0
+        self.edit_radius: float = 6.0
         self._edit_dialog: EditBodyDialog = EditBodyDialog()
+
+        # 自定义粒子参数（从弹窗读取）
+        self.custom_radius: float = 6.0
 
         # ============ 信息面板 ============
         self.info_panel_visible: bool = False
@@ -389,6 +393,7 @@ class HUDManager:
                     # OK: 读取结果并存储编辑值
                     self.edit_mass = dlg_result["mass"]
                     self.edit_charge = dlg_result["charge"]
+                    self.edit_radius = dlg_result["radius"]
                     return "EDIT_DIALOG_OK"
                 elif dlg_result == "CANCEL":
                     return "EDIT_DIALOG_CANCEL"
@@ -404,6 +409,7 @@ class HUDManager:
                     self.custom_mass = dlg_result["mass"]
                     self.custom_charge = dlg_result["charge"]
                     self.custom_speed = dlg_result["speed"]
+                    self.custom_radius = dlg_result["radius"]
                     return "CUSTOM_DIALOG_OK"
                 elif dlg_result == "CANCEL":
                     return "CUSTOM_DIALOG_CANCEL"
@@ -463,14 +469,29 @@ class HUDManager:
     # 编辑弹窗控制
     # ------------------------------------------------------------------
 
-    def show_edit_dialog(self, mass: float, charge: float) -> None:
+    def show_custom_dialog(self) -> None:
+        """打开自定义粒子输入弹窗并预填半径默认值。"""
+        self._input_dialog.prefill(self.custom_mass)
+        self.custom_dialog_visible = True
+        self._input_dialog.visible = True
+
+    def hide_custom_dialog(self) -> None:
+        """关闭自定义粒子输入弹窗并重置输入状态。"""
+        self.custom_dialog_visible = False
+        self._input_dialog.visible = False
+        self._input_dialog.active_field_index = -1
+        for field in self._input_dialog.fields:
+            field["text"] = ""
+
+    def show_edit_dialog(self, mass: float, charge: float, radius_meters: float = 6.0) -> None:
         """打开编辑天体参数弹窗并预填当前值。
 
         Args:
             mass: 当前质量 (kg)
             charge: 当前电荷 (C)
+            radius_meters: 当前半径 (m)，内部转为 km 显示
         """
-        self._edit_dialog.prefill(mass, charge)
+        self._edit_dialog.prefill(mass, charge, radius_meters)
         self._edit_dialog.visible = True
 
     def hide_edit_dialog(self) -> None:
@@ -578,13 +599,12 @@ class HUDManager:
             surface.blit(hint_surf, (5, 55))
 
     def _compute_custom_radius(self) -> float:
-        """计算自定义粒子的像素半径。
+        """获取自定义粒子的世界半径（从弹窗读取，单位 m）。
 
         Returns:
-            像素半径，范围 [2, 30]
+            世界半径 (m)
         """
-        pixel_radius = CUSTOM_RADIUS_FACTOR * (self.custom_mass / CUSTOM_MASS_DEFAULT) ** 0.5
-        return max(2.0, min(pixel_radius, 30.0))
+        return max(1.0, self.custom_radius)
 
     def _draw_custom_dialog(self, surface: pygame.Surface) -> None:
         """绘制居中科学计数法输入弹窗。
