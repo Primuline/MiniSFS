@@ -32,6 +32,7 @@ from src.config import (
     DEFAULT_RADIUS_PLANET,
     DEFAULT_RADIUS_PROBE,
     DEFAULT_RADIUS_STAR,
+    PLACEMENT_SPEED_PER_PX,
     GAME_STATE_PAUSED,
     GAME_STATE_PLAYING,
     SUBSTEPS,
@@ -295,6 +296,13 @@ def main() -> None:
     custom_preview_pos: Optional[Tuple[float, float]] = None  # 预览圆世界坐标
     custom_arrow_start: Optional[Tuple[float, float]] = None   # 箭头起点（=预览圆位置）
 
+    # 简单放置流程状态（Star/Planet/Probe 共用）
+    # 0=未激活, 1=预览位置, 2=设定速度
+    simple_placement_stage: int = 0
+    simple_placement_tool: Optional[str] = None
+    simple_preview_pos: Optional[Tuple[float, float]] = None
+    simple_arrow_start: Optional[Tuple[float, float]] = None
+
     # ==================================================================
     # 辅助函数
     # ==================================================================
@@ -313,6 +321,21 @@ def main() -> None:
         for field in hud._input_dialog.fields:
             field["text"] = ""
         if active_tool == "TOOL_CUSTOM":
+            active_tool = None
+            hud.set_tool_active(None)
+        is_paused = False
+        hud.set_play_pause_state(False)
+
+    def _cancel_simple_placement() -> None:
+        """取消简单放置流程（Star/Planet/Probe），恢复时间和工具状态。"""
+        nonlocal simple_placement_stage, simple_placement_tool
+        nonlocal simple_preview_pos, simple_arrow_start
+        nonlocal active_tool, is_paused
+        simple_placement_stage = 0
+        simple_placement_tool = None
+        simple_preview_pos = None
+        simple_arrow_start = None
+        if active_tool in ("TOOL_STAR", "TOOL_PLANET", "TOOL_PROBE"):
             active_tool = None
             hud.set_tool_active(None)
         is_paused = False
