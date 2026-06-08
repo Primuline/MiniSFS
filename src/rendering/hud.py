@@ -30,6 +30,7 @@ from src.config import (
     WINDOW_WIDTH,
     WORLD_SCALE,
 )
+from src.core.utils.tools import round_to_nice_number
 from src.rendering.input_dialog import EditBodyDialog, ScientificInputDialog
 from src.core.types import (
     BODY_TYPE,
@@ -746,17 +747,8 @@ class HUDManager:
 
         raw = 200.0 * camera.world_scale / camera.zoom  # world distance corresponding to ~200px
 
-        # Round to 1/2/5 multiples
-        magnitude = 10.0 ** math.floor(math.log10(raw))
-        normalized = raw / magnitude
-        if normalized < 1.5:
-            scaled = 1.0 * magnitude
-        elif normalized < 3.5:
-            scaled = 2.0 * magnitude
-        elif normalized < 7.0:
-            scaled = 5.0 * magnitude
-        else:
-            scaled = 10.0 * magnitude
+        # Round to a nice number (1, 2, or 5 × power of 10)
+        scaled = round_to_nice_number(raw)
 
         screen_length = scaled * camera.zoom / camera.world_scale
         int_length = int(screen_length)
