@@ -112,7 +112,7 @@ class EditBodyDialog:
             width = self.COEFF_WIDTH if coeff_field else self.EXP_WIDTH
             self.fields.append({
                 "rect": pygame.Rect(0, 0, width, self.FIELD_HEIGHT),
-                "text": "",
+                "text": placeholder,
                 "placeholder": placeholder,
                 "allow_decimal": allow_decimal,
                 "allow_negative": allow_negative,
@@ -567,7 +567,7 @@ class ScientificInputDialog:
             width = self.COEFF_WIDTH if coeff_field else self.EXP_WIDTH
             self.fields.append({
                 "rect": pygame.Rect(0, 0, width, self.FIELD_HEIGHT),
-                "text": "",
+                "text": placeholder,
                 "placeholder": placeholder,
                 "allow_decimal": allow_decimal,
                 "allow_negative": allow_negative,
