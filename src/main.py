@@ -57,6 +57,7 @@ from src.core.types import (
     Y,
     make_body,
 )
+from src.core.utils.tools import normalize_angle_delta
 from src.input.handler import InputHandler
 from src.physics.engine import PhysicsEngine
 from src.physics.forces import find_nearest_star
@@ -470,11 +471,7 @@ def main() -> None:
 
             # 3. Angle change detection
             current_angle = math.atan2(delta[1], delta[0])
-            da = current_angle - prev_angle
-            if da > math.pi:
-                da -= 2.0 * math.pi
-            elif da < -math.pi:
-                da += 2.0 * math.pi
+            da = normalize_angle_delta(current_angle - prev_angle)
             total_angle += abs(da)
             prev_angle = current_angle
             if total_angle >= 2.0 * math.pi:

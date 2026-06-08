@@ -23,6 +23,7 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 
 from src.config import ESCAPE_RATIO, MAX_TRAJECTORY_STEPS
+from src.core.utils.tools import normalize_angle_delta
 from src.core.types import (
     BODY_TYPE,
     CHARGE,
@@ -317,10 +318,7 @@ def predict_single_star_trajectory(
         current_angle = math.atan2(r_vec[1], r_vec[0])
         delta_angle = current_angle - prev_angle
         # Normalize to [-pi, pi]
-        while delta_angle > math.pi:
-            delta_angle -= 2.0 * math.pi
-        while delta_angle < -math.pi:
-            delta_angle += 2.0 * math.pi
+        delta_angle = normalize_angle_delta(delta_angle)
         total_angle += abs(delta_angle)
         prev_angle = current_angle
 
