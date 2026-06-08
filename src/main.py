@@ -1054,6 +1054,31 @@ def main() -> None:
                 renderer.screen,
             )
 
+        # 简单放置预览（Star/Planet/Probe）
+        if simple_placement_stage == 1 and simple_placement_tool is not None:
+            # 阶段 1：预览圆跟随鼠标
+            mouse_wx, mouse_wy = input_handler.get_mouse_world_pos(camera)
+            _, radius_pixels, _, _ = hud.get_default_body_params(simple_placement_tool)
+            radius_world = radius_pixels * WORLD_SCALE
+            renderer.draw_placement_preview(
+                mouse_wx, mouse_wy, radius_world, camera, renderer.screen
+            )
+        elif simple_placement_stage == 2 and simple_preview_pos is not None:
+            # 阶段 2：固定预览圆 + 速度方向箭头（无长度限制）
+            px, py = simple_preview_pos
+            _, radius_pixels, _, _ = hud.get_default_body_params(simple_placement_tool)
+            radius_world = radius_pixels * WORLD_SCALE
+            renderer.draw_placement_preview(
+                px, py, radius_world, camera, renderer.screen
+            )
+            renderer.draw_velocity_arrow(
+                (px, py),
+                (input_handler.mouse_screen_x, input_handler.mouse_screen_y),
+                float("inf"),  # 无长度上限
+                camera,
+                renderer.screen,
+            )
+
         # 绘制瞄准线
         if is_aiming:
             start_screen = camera.world_to_screen(
