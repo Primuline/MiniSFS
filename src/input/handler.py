@@ -142,6 +142,12 @@ class InputHandler(IInputHandler):
         if event.type == pygame.MOUSEMOTION:
             self.mouse_screen_x, self.mouse_screen_y = event.pos
 
+            # 更新鼠标世界坐标（用于 HUD 显示）
+            if camera is not None:
+                self.mouse_world_x, self.mouse_world_y = camera.screen_to_world(
+                    self.mouse_screen_x, self.mouse_screen_y
+                )
+
             # 拖拽平移（中键）
             if self.is_panning:
                 dx = event.pos[0] - self.pan_last_x
@@ -319,8 +325,6 @@ class InputHandler(IInputHandler):
         """
         if event.key == pygame.K_SPACE:
             return "TOGGLE_PAUSE"
-        elif event.key == pygame.K_r:
-            return "RESET_CAMERA"
         elif event.key == pygame.K_ESCAPE:
             return "MENU"
         elif event.key == pygame.K_1:
@@ -333,18 +337,20 @@ class InputHandler(IInputHandler):
             return "TOOL_CUSTOM"
         elif event.key == pygame.K_DELETE or event.key == pygame.K_BACKSPACE:
             return "DELETE_SELECTED"
-        elif event.key == pygame.K_f:
+        elif event.key == pygame.K_6:
             return "FAST_2X"
-        elif event.key == pygame.K_g:
+        elif event.key == pygame.K_7:
             return "FAST_4X"
-        elif event.key == pygame.K_h:
+        elif event.key == pygame.K_8:
             return "FAST_8X"
-        elif event.key == pygame.K_t:
-            return "TOGGLE_TRAILS"
-
-        # 数字键上的 0-9 切换时间速度
-        if event.key == pygame.K_0:
+        elif event.key == pygame.K_5:
             return "TIME_1X"
+        elif event.key == pygame.K_g:
+            return "TOGGLE_GRID"
+        elif event.key == pygame.K_l:
+            return "TOGGLE_LABELS"
+        elif event.key == pygame.K_h:
+            return "TOGGLE_SHORTCUTS"
 
         return None
 

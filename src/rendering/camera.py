@@ -15,6 +15,7 @@ from typing import Dict, Tuple
 import numpy as np
 
 from src.config import (
+    CAMERA_FOLLOW_LERP,
     CAMERA_PAN_SPEED,
     CAMERA_ZOOM_MAX,
     CAMERA_ZOOM_MIN,
@@ -163,6 +164,31 @@ class Camera(ICamera):
         """
         self.center_x = world_x
         self.center_y = world_y
+
+    def update_follow(self, target_x: float, target_y: float,
+                      vel_x: float = 0.0, vel_y: float = 0.0,
+                      dt: float = 0.0,
+                      lerp_factor: float | None = None) -> None:
+        """平滑跟随目标位置（速度前馈 + lerp 插值）。
+
+        使用速度前馈预测目标下一帧位置，再 lerp 逼近预测值，
+        大幅减少匀速运动下的稳态偏移。
+
+        Args:
+            target_x: 目标世界 x 坐标 (m)
+            target_y: 目标世界 y 坐标 (m)
+            vel_x: 目标 x 方向速度 (m/s)，用于前馈预测
+            vel_y: 目标 y 方向速度 (m/s)
+            dt: 每帧物理模拟时间 (s)，即 target 在这帧内移动的总时间
+            lerp_factor: 插值因子 (0~1)，默认 CAMERA_FOLLOW_LERP
+        """
+        if lerp_factor is None:
+            lerp_factor = CAMERA_FOLLOW_LERP
+        # 速度前馈：预测目标这帧结束时的位置
+        px = target_x + vel_x * dt
+        py = target_y + vel_y * dt
+        self.center_x += (px - self.center_x) * lerp_factor
+        self.center_y += (py - self.center_y) * lerp_factor
 
     def reset(self) -> None:
         """重置相机到初始位置和缩放。"""

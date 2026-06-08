@@ -39,10 +39,13 @@ from src.core.types import (
 )
 from src.rendering.effects import (
     StarField,
+    draw_body_labels,
+    draw_grid,
     draw_placement_trajectory,
     draw_predicted_trajectory,
-    draw_trails,
+    draw_shortcuts_overlay,
     draw_target_zone,
+    draw_trails,
 )
 
 
@@ -97,6 +100,11 @@ class Renderer(IRenderer):
         self.box_select_start: Optional[Tuple[int, int]] = None
         self.box_select_end: Optional[Tuple[int, int]] = None
         self.selected_body_ids: set = set()
+
+        # 覆盖层开关状态（由 handler/main 控制）
+        self.show_grid: bool = False
+        self.show_labels: bool = False
+        self.show_shortcuts: bool = False
 
         # 累计时间
         self._time: float = 0.0
@@ -158,6 +166,12 @@ class Renderer(IRenderer):
         if self.selected_body_id is not None or len(self.selected_body_ids) > 0:
             self._draw_selection_highlight(bodies, camera)
 
+        # 覆盖层（在天体之后、HUD 之前渲染）
+        if self.show_grid:
+            draw_grid(self.screen, camera)
+        if self.show_labels:
+            draw_body_labels(self.screen, bodies, camera)
+
     def render_background(self) -> None:
         """渲染静态背景（星云、网格等）。"""
         self.star_field.render(self.screen)
@@ -200,6 +214,10 @@ class Renderer(IRenderer):
         hint_text = self._font_small.render(hint, True, (150, 150, 150))
         hr = hint_text.get_rect(right=self.width - 10, bottom=self.height - 5)
         self.screen.blit(hint_text, hr)
+
+        # 快捷键覆盖层（最顶层）
+        if self.show_shortcuts:
+            draw_shortcuts_overlay(self.screen)
 
     def render_predicted_trajectory(
         self, trajectory: np.ndarray, camera: ICamera

@@ -21,11 +21,8 @@ from src.config import (
     BODY_TYPE_STAR,
     CAMERA_ZOOM_MAX,
     CAMERA_ZOOM_MIN,
-    CUSTOM_ARROW_MAX_LENGTH,
     CUSTOM_CHARGE_DEFAULT,
     CUSTOM_MASS_DEFAULT,
-    CUSTOM_RADIUS_FACTOR,
-    CUSTOM_SPEED_DEFAULT,
     DEFAULT_CHARGE_CHARGED,
     DEFAULT_MASS_CHARGED,
     DEFAULT_MASS_PLANET,
@@ -244,8 +241,10 @@ def main() -> None:
     aim_start_world: Tuple[float, float] = (0.0, 0.0)
     aim_current_world: Tuple[float, float] = (0.0, 0.0)
 
-    # 显示尾迹
-    show_trails = True
+    # UX 显示状态
+    show_grid = False
+    show_labels = False
+    show_shortcuts = False
 
     # 抓取拖拽状态
     is_grabbing = False
@@ -304,7 +303,7 @@ def main() -> None:
         hud.set_play_pause_state(False)
 
     def _cancel_simple_placement() -> None:
-        """取消简单放置流程（Star/Planet/Probe），恢复时间和工具状态。"""
+        """取消简单放置流程（Star/Planet/Probe/Custom），恢复时间和工具状态。"""
         nonlocal simple_placement_stage, simple_placement_tool
         nonlocal simple_preview_pos, simple_arrow_start
         nonlocal active_tool, is_paused
@@ -356,12 +355,13 @@ def main() -> None:
         star_info: Optional[Tuple[np.ndarray, float, float]],
         body_radius_world: float,
     ) -> Optional[Dict[str, object]]:
-        """计算放置预览轨迹（长预测，RK4 + 全量引力）。
+        """计算放置预览轨迹（两体开普勒近似，RK4）。
 
-        预测时间约 10 秒视觉时间。
+        只考虑参考恒星的引力（两体近似），避免全量 N 体计算。
+        预测约 10 秒。
         终止条件（按优先级）：
-          1. 撞到任何天体
-          2. 距离参考恒星半径 > 原距离 × 3（逃逸）
+          1. 撞到参考恒星
+          2. 距参考恒星 > 初始距离 × 3（逃逸）
           3. 绕参考恒星角度变化 ≥ 2π
 
         Args:
@@ -380,7 +380,6 @@ def main() -> None:
         # 找参考恒星（最近恒星 or 参考系天体）
         ref_star = _get_gravity_source(bodies, reference_body_id)
         if ref_star is None:
-            # 无星体时画直线
             pts = 200
             total_dist = speed * 1e7
             pts_list = []
@@ -395,97 +394,89 @@ def main() -> None:
             }
 
         star_pos, star_mass, star_radius = ref_star
+        G = GRAVITATIONAL_CONSTANT
 
-        # 初始距离参考值
         initial_delta = pos - star_pos
         initial_dist = float(np.linalg.norm(initial_delta))
         escape_dist_threshold = initial_dist * 3.0
-        collision_radius = star_radius + body_radius_world
+        collision_r = star_radius + body_radius_world
         initial_angle = math.atan2(initial_delta[1], initial_delta[0])
 
-        # 预测参数：长预测约 10 秒
-        if time_speed > 100:
-            pred_dt = physics_dt * max(time_speed, 1.0)
-        else:
-            pred_dt = physics_dt
-        pred_dt = min(pred_dt, 20000.0)  # 单步上限
-        max_steps = 5000
+        # 固定步长（不随倍速放大，因为这是视觉预览）
+        pred_dt = min(physics_dt * 3125.0, 20000.0)
+        max_steps = 3000
 
-        # 构造临时探测器（shape (1, NUM_FIELDS)）
-        probe = make_body(
-            x=float(pos[0]), y=float(pos[1]),
-            vx=float(vel[0]), vy=float(vel[1]),
-            mass=1.0, radius=body_radius_world,
-            body_type=BODY_TYPE_PROBE,
-        )
+        # 仅保存探测器的位置和速度（两体近似，不需要 full body array）
+        p = pos.astype(np.float64).copy()
+        v = vel.astype(np.float64).copy()
 
-        import copy
-        sim_bodies = np.vstack([probe, bodies.copy()])
-        p_pos = sim_bodies[0:1, [X, Y]].copy()
-        p_vel = sim_bodies[0:1, [VX, VY]].copy()
-
-        trajectory = [p_pos[0].copy()]
+        trajectory = [p.copy()]
         collided = False
         escaped = False
         orbited = False
         total_angle = 0.0
         prev_angle = initial_angle
+        def _two_body_acc(pp: np.ndarray) -> np.ndarray:
+            """仅参考恒星对探测器的引力加速度。"""
+            delta = star_pos - pp
+            r2 = float(delta[0] * delta[0] + delta[1] * delta[1])
+            if r2 < 1.0:
+                return np.array([0.0, 0.0], dtype=np.float64)
+            r = math.sqrt(r2)
+            a_mag = G * star_mass / r2
+            return delta * (a_mag / r)
 
-        from src.physics.integrators import rk4_step
+        def _rk4_step(pp: np.ndarray, vv: np.ndarray, dt: float) -> tuple:
+            """内联 RK4 步进（仅两体引力）。"""
+            # k1
+            k1p = vv
+            k1v = _two_body_acc(pp)
+            # k2
+            k2p = vv + k1v * dt * 0.5
+            k2v = _two_body_acc(pp + k1p * dt * 0.5)
+            # k3
+            k3p = vv + k2v * dt * 0.5
+            k3v = _two_body_acc(pp + k2p * dt * 0.5)
+            # k4
+            k4p = vv + k3v * dt
+            k4v = _two_body_acc(pp + k3p * dt)
+
+            p_new = pp + (k1p + k2p * 2.0 + k3p * 2.0 + k4p) * (dt / 6.0)
+            v_new = vv + (k1v + k2v * 2.0 + k3v * 2.0 + k4v) * (dt / 6.0)
+            return p_new, v_new
 
         for _ in range(max_steps):
-            p_pos, p_vel, _ = rk4_step(
-                p_pos, p_vel, physics_engine._probe_acceleration_fn, sim_bodies, pred_dt
-            )
+            p, v = _rk4_step(p, v, pred_dt)
+            trajectory.append(p.copy())
 
-            sim_bodies[0, X] = p_pos[0, 0]
-            sim_bodies[0, Y] = p_pos[0, 1]
-            sim_bodies[0, VX] = p_vel[0, 0]
-            sim_bodies[0, VY] = p_vel[0, 1]
-            trajectory.append(p_pos[0].copy())
-
-            # 1. 碰撞检测（任何天体）
-            probe_radius = body_radius_world
-            hit = False
-            for b_idx in range(1, sim_bodies.shape[0]):
-                if sim_bodies[b_idx, IS_ACTIVE] == 0.0:
-                    continue
-                delta = p_pos[0] - sim_bodies[b_idx, [X, Y]]
-                d = float(np.sqrt(np.dot(delta, delta)))
-                body_r = float(sim_bodies[b_idx, 6])  # RADIUS
-                if d < probe_radius + body_r:
-                    hit = True
-                    collided = True
-                    # 插值到表面
-                    if len(trajectory) >= 2:
-                        last = trajectory[-2]
-                        d_last = float(np.linalg.norm(last - sim_bodies[b_idx, [X, Y]]))
-                        if d_last > 0:
-                            t_hit = (d_last - (probe_radius + body_r)) / d_last
-                            t_hit = max(0.0, min(t_hit, 1.0))
-                            hit_pt = last + (p_pos[0] - last) * t_hit
-                            trajectory[-1] = hit_pt
-                    break
-            if hit:
+            # 1. 碰撞检测（仅参考恒星）
+            delta = p - star_pos
+            d = math.sqrt(float(delta[0] * delta[0] + delta[1] * delta[1]))
+            if d < collision_r:
+                collided = True
+                if len(trajectory) >= 2:
+                    last = trajectory[-2]
+                    d_last = float(np.linalg.norm(last - star_pos))
+                    if d_last > 0:
+                        t_hit = (d_last - collision_r) / d_last
+                        t_hit = max(0.0, min(t_hit, 1.0))
+                        trajectory[-1] = last + (p - last) * t_hit
                 break
 
-            # 2. 逃逸检测（距参考恒星 > 3×初始距离）
-            r_vec = p_pos[0] - star_pos
-            current_dist = float(np.linalg.norm(r_vec))
-            if current_dist > escape_dist_threshold:
+            # 2. 逃逸检测
+            if d > escape_dist_threshold:
                 escaped = True
                 break
 
             # 3. 角度变化检测
-            current_angle = math.atan2(r_vec[1], r_vec[0])
-            delta_angle = current_angle - prev_angle
-            while delta_angle > math.pi:
-                delta_angle -= 2.0 * math.pi
-            while delta_angle < -math.pi:
-                delta_angle += 2.0 * math.pi
-            total_angle += abs(delta_angle)
+            current_angle = math.atan2(delta[1], delta[0])
+            da = current_angle - prev_angle
+            if da > math.pi:
+                da -= 2.0 * math.pi
+            elif da < -math.pi:
+                da += 2.0 * math.pi
+            total_angle += abs(da)
             prev_angle = current_angle
-
             if total_angle >= 2.0 * math.pi:
                 orbited = True
                 break
@@ -564,10 +555,6 @@ def main() -> None:
                 running = False
 
             # --- 相机控制 ---
-            elif cmd == "RESET_CAMERA":
-                camera.reset()
-                selected_body_id = None
-
             elif cmd.startswith("PAN:"):
                 parts = cmd.split(":")
                 if len(parts) >= 2:
@@ -592,12 +579,16 @@ def main() -> None:
                 parts = cmd.split(":")
                 sx_str = parts[1].split(",")
                 sx, sy = int(sx_str[0]), int(sx_str[1])
+                if reference_body_id is not None:
+                    sx, sy = WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2
                 camera.zoom_at(1.1, sx, sy)
 
             elif cmd.startswith("ZOOM_OUT"):
                 parts = cmd.split(":")
                 sx_str = parts[1].split(",")
                 sx, sy = int(sx_str[0]), int(sx_str[1])
+                if reference_body_id is not None:
+                    sx, sy = WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2
                 camera.zoom_at(1.0 / 1.1, sx, sy)
 
             # --- 时间控制 ---
@@ -624,11 +615,28 @@ def main() -> None:
                 time_speed = BASE_TIME_SPEED * time_multiplier
                 hud.set_time_speed(time_multiplier)
 
+            elif cmd == "TIME_1X":
+                time_multiplier = 1.0
+                time_speed = BASE_TIME_SPEED
+                hud.set_time_speed(1.0)
+
             elif cmd == "REWIND":
                 # REWIND 重置为 1x
                 time_multiplier = 1.0
                 time_speed = BASE_TIME_SPEED
                 hud.set_time_speed(1.0)
+
+            elif cmd == "TOGGLE_GRID":
+                show_grid = not show_grid
+                renderer.show_grid = show_grid
+
+            elif cmd == "TOGGLE_LABELS":
+                show_labels = not show_labels
+                renderer.show_labels = show_labels
+
+            elif cmd == "TOGGLE_SHORTCUTS":
+                show_shortcuts = not show_shortcuts
+                renderer.show_shortcuts = show_shortcuts
 
             # --- 工具选择 ---
             elif cmd.startswith("TOOL_"):
@@ -793,12 +801,11 @@ def main() -> None:
                         # 阶段 3：放置天体
                         if custom_preview_pos is not None and custom_arrow_start is not None:
                             px, py = custom_preview_pos
-                            radius_pixels = hud._compute_custom_radius()
                             new_body = make_body(
                                 x=px, y=py,
                                 vx=0.0, vy=0.0,
                                 mass=hud.custom_mass,
-                                radius=radius_pixels * WORLD_SCALE,
+                                radius=hud.custom_radius,
                                 charge=hud.custom_charge,
                                 body_type=BODY_TYPE_PLANET,
                             )
@@ -810,8 +817,7 @@ def main() -> None:
                             dy_screen = float(sy) - sy0
                             arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
                             if arrow_dist > 10:
-                                clamped_dist = min(arrow_dist, CUSTOM_ARROW_MAX_LENGTH)
-                                actual_speed = hud.custom_speed * (clamped_dist / CUSTOM_ARROW_MAX_LENGTH)
+                                actual_speed = arrow_dist * PLACEMENT_SPEED_PER_PX
                                 ux = dx_screen / arrow_dist
                                 uy = dy_screen / arrow_dist
                                 bodies[-1, VX] = ux * actual_speed
@@ -960,12 +966,11 @@ def main() -> None:
                     elif custom_placement_stage == 3:
                         if custom_preview_pos is not None and custom_arrow_start is not None:
                             px, py = custom_preview_pos
-                            radius_pixels = hud._compute_custom_radius()
                             new_body = make_body(
                                 x=px, y=py,
                                 vx=0.0, vy=0.0,
                                 mass=hud.custom_mass,
-                                radius=radius_pixels * WORLD_SCALE,
+                                radius=hud.custom_radius,
                                 charge=hud.custom_charge,
                                 body_type=BODY_TYPE_PLANET,
                             )
@@ -976,8 +981,7 @@ def main() -> None:
                             dy_screen = float(sy) - sy0
                             arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
                             if arrow_dist > 10:
-                                clamped_dist = min(arrow_dist, CUSTOM_ARROW_MAX_LENGTH)
-                                actual_speed = hud.custom_speed * (clamped_dist / CUSTOM_ARROW_MAX_LENGTH)
+                                actual_speed = arrow_dist * PLACEMENT_SPEED_PER_PX
                                 ux = dx_screen / arrow_dist
                                 uy = dy_screen / arrow_dist
                                 bodies[-1, VX] = ux * actual_speed
@@ -1132,19 +1136,19 @@ def main() -> None:
                 sx, sy = int(sx_str[0]), int(sx_str[1])
                 found_id = input_handler.find_body_at_screen_pos(sx, sy, bodies, camera)
                 if found_id is not None:
-                    wx = float(bodies[found_id, X])
-                    wy = float(bodies[found_id, Y])
-                    camera.follow(wx, wy)
                     _saved_zoom_before_frame = camera.zoom
                     reference_body_id = found_id
                     hud.set_reference_frame(found_id, int(bodies[found_id, BODY_TYPE]))
-                    # 自动缩放到让目标天体约 50px 大小
+                    # 自动缩放到让目标天体约 50px 大小，并置于屏幕中心
                     target_screen_radius = 50.0
                     body_world_radius = float(bodies[found_id, RADIUS])
                     if body_world_radius > 0:
                         desired_zoom = target_screen_radius * WORLD_SCALE / body_world_radius
                         desired_zoom = max(CAMERA_ZOOM_MIN, min(CAMERA_ZOOM_MAX, desired_zoom))
-                        camera.zoom_at(desired_zoom / camera.zoom, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+                        camera.zoom = desired_zoom
+                    wx = float(bodies[found_id, X])
+                    wy = float(bodies[found_id, Y])
+                    camera.follow(wx, wy)
 
             # --- 发射探测器 ---
             elif cmd.startswith("LAUNCH_PROBE:"):
@@ -1191,6 +1195,10 @@ def main() -> None:
                     hud.set_selected_body(None, -1)
 
             elif cmd == "MENU":
+                if show_shortcuts:
+                    show_shortcuts = False
+                    renderer.show_shortcuts = False
+                    continue
                 if simple_placement_stage > 0:
                     _cancel_simple_placement()
                 elif custom_placement_stage > 0:
@@ -1248,11 +1256,8 @@ def main() -> None:
         # ================================================================
 
         # 获取尾迹数据
-        trails: Dict[int, List[Tuple[float, float]]] = {}
-        fade_factors: Dict[int, float] = {}
-        if show_trails:
-            trails = trail_buffer.get_all_trails()
-            fade_factors = trail_buffer.get_fade_factors()
+        trails = trail_buffer.get_all_trails()
+        fade_factors = trail_buffer.get_fade_factors()
 
         # 跟随选中天体
         if selected_body_id is not None and not is_aiming:
@@ -1324,10 +1329,13 @@ def main() -> None:
                 reference_body_id = None
                 hud.clear_reference_frame()
             else:
-                # 每帧跟随参考系天体
-                wx = float(bodies[reference_body_id, X])
-                wy = float(bodies[reference_body_id, Y])
-                camera.follow(wx, wy)
+                # 每帧跟随参考系天体（速度前馈 + 平滑插值）
+                effective_dt = TIME_STEP * time_speed
+                ref_vx = float(bodies[reference_body_id, VX])
+                ref_vy = float(bodies[reference_body_id, VY])
+                ref_wx = float(bodies[reference_body_id, X])
+                ref_wy = float(bodies[reference_body_id, Y])
+                camera.update_follow(ref_wx, ref_wy, ref_vx, ref_vy, effective_dt)
 
         # ================================================================
         # 6. 渲染
@@ -1352,16 +1360,14 @@ def main() -> None:
             dy_screen = float(my) - spy
             arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
             if arrow_dist > 10:
-                clamped_dist = min(arrow_dist, CUSTOM_ARROW_MAX_LENGTH)
-                actual_speed = hud.custom_speed * (clamped_dist / CUSTOM_ARROW_MAX_LENGTH)
+                actual_speed = arrow_dist * PLACEMENT_SPEED_PER_PX
                 ux = dx_screen / arrow_dist
                 uy = dy_screen / arrow_dist
                 vel = np.array([ux * actual_speed, uy * actual_speed], dtype=np.float64)
                 # 计算轨迹（使用物理引擎 RK4 + 全量引力）
-                body_radius = hud._compute_custom_radius()
                 placement_trajectory = _compute_placement_trajectory(
                     np.array([px, py], dtype=np.float64), vel,
-                    None, body_radius,
+                    None, hud.custom_radius,
                 )
         elif simple_placement_stage == 2 and simple_arrow_start is not None:
             px, py = simple_preview_pos
@@ -1391,16 +1397,14 @@ def main() -> None:
         if custom_placement_stage == 2:
             # 阶段 2：预览圆跟随鼠标
             mouse_wx, mouse_wy = input_handler.get_mouse_world_pos(camera)
-            radius_pixels = hud._compute_custom_radius()
-            radius_world = radius_pixels * WORLD_SCALE
+            radius_world = hud.custom_radius
             renderer.draw_placement_preview(
                 mouse_wx, mouse_wy, radius_world, camera, renderer.screen
             )
         elif custom_placement_stage == 3 and custom_preview_pos is not None:
             # 阶段 3：固定预览圆 + 速度方向箭头
             px, py = custom_preview_pos
-            radius_pixels = hud._compute_custom_radius()
-            radius_world = radius_pixels * WORLD_SCALE
+            radius_world = hud.custom_radius
             renderer.draw_placement_preview(
                 px, py, radius_world, camera, renderer.screen
             )
@@ -1412,7 +1416,7 @@ def main() -> None:
                 renderer.draw_velocity_arrow(
                     (px, py),
                     (input_handler.mouse_screen_x, input_handler.mouse_screen_y),
-                    CUSTOM_ARROW_MAX_LENGTH,
+                    float("inf"),  # 无长度上限
                     camera,
                     renderer.screen,
                 )
@@ -1488,8 +1492,17 @@ def main() -> None:
         # 绘制粒子
         particle_system.render(renderer.screen)
 
-        # 绘制 HUD
-        hud.draw(renderer.screen)
+        # Update status info and draw HUD
+        hud.set_status_info(
+            num_bodies=bodies.shape[0],
+            time_speed=time_multiplier,
+            fps=clock.get_fps(),
+            mouse_world_pos=(
+                input_handler.mouse_world_x,
+                input_handler.mouse_world_y,
+            ),
+        )
+        hud.draw(renderer.screen, camera)
         renderer.render_hud(game_state)
 
         # 更新窗口标题

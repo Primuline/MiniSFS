@@ -378,33 +378,46 @@ class TestInputIntegration:
         cmd = handler.inject_key_press("K_SPACE")
         assert cmd == "TOGGLE_PAUSE", f"K_SPACE 应为 TOGGLE_PAUSE，实际: {cmd}"
 
-        # R -> RESET_CAMERA
-        cmd = handler.inject_key_press("K_r")
-        assert cmd == "RESET_CAMERA", f"K_r 应为 RESET_CAMERA，实际: {cmd}"
-
         # ESCAPE -> MENU
         cmd = handler.inject_key_press("K_ESCAPE")
         assert cmd == "MENU", f"K_ESCAPE 应为 MENU，实际: {cmd}"
 
-        # F -> FAST_2X
-        cmd = handler.inject_key_press("K_f")
-        assert cmd == "FAST_2X", f"K_f 应为 FAST_2X，实际: {cmd}"
-
-        # G -> FAST_4X
+        # G -> TOGGLE_GRID
         cmd = handler.inject_key_press("K_g")
-        assert cmd == "FAST_4X", f"K_g 应为 FAST_4X，实际: {cmd}"
+        assert cmd == "TOGGLE_GRID", f"K_g 应为 TOGGLE_GRID，实际: {cmd}"
+
+        # L -> TOGGLE_LABELS
+        cmd = handler.inject_key_press("K_l")
+        assert cmd == "TOGGLE_LABELS", f"K_l 应为 TOGGLE_LABELS，实际: {cmd}"
+
+        # H -> TOGGLE_SHORTCUTS
+        cmd = handler.inject_key_press("K_h")
+        assert cmd == "TOGGLE_SHORTCUTS", f"K_h 应为 TOGGLE_SHORTCUTS，实际: {cmd}"
+
+        # 5 -> TIME_1X
+        cmd = handler.inject_key_press("K_5")
+        assert cmd == "TIME_1X", f"K_5 应为 TIME_1X，实际: {cmd}"
+
+        # 6 -> FAST_2X
+        cmd = handler.inject_key_press("K_6")
+        assert cmd == "FAST_2X", f"K_6 应为 FAST_2X，实际: {cmd}"
+
+        # 7 -> FAST_4X
+        cmd = handler.inject_key_press("K_7")
+        assert cmd == "FAST_4X", f"K_7 应为 FAST_4X，实际: {cmd}"
+
+        # 8 -> FAST_8X
+        cmd = handler.inject_key_press("K_8")
+        assert cmd == "FAST_8X", f"K_8 应为 FAST_8X，实际: {cmd}"
 
         # DELETE -> DELETE_SELECTED
         cmd = handler.inject_key_press("K_DELETE")
         assert cmd == "DELETE_SELECTED", f"K_DELETE 应为 DELETE_SELECTED，实际: {cmd}"
 
-        # T -> TOGGLE_TRAILS
-        cmd = handler.inject_key_press("K_t")
-        assert cmd == "TOGGLE_TRAILS", f"K_t 应为 TOGGLE_TRAILS，实际: {cmd}"
-
-        # H -> FAST_8X
-        cmd = handler.inject_key_press("K_h")
-        assert cmd == "FAST_8X", f"K_h 应为 FAST_8X，实际: {cmd}"
+        # 旧快捷键 R/F/T/0 已移除 -> None
+        for removed_key in ("K_r", "K_t", "K_f", "K_0"):
+            cmd = handler.inject_key_press(removed_key)
+            assert cmd == "", f"{removed_key} 应为空，实际: {cmd}"
 
     def test_get_mouse_pos(self, pygame_dummy) -> None:
         """验证 get_mouse_pos 和 inject 的鼠标位置一致。"""

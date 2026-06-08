@@ -16,6 +16,12 @@ from src.config import (
     DASH_GAP,
     DASH_OFF,
     DASH_ON,
+    GRID_ALPHA,
+    GRID_COLOR,
+    LABEL_BG_ALPHA,
+    LABEL_FONT_SIZE,
+    LABEL_MIN_SCREEN_RADIUS,
+    LABEL_OFFSET_Y,
     TRAIL_ALPHA_NEW,
     TRAIL_ALPHA_OLD,
     TRAIL_COLOR_FAST,
@@ -23,7 +29,7 @@ from src.config import (
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
 )
-from src.core.types import VX, VY, X, Y
+from src.core.types import BODY_TYPE, IS_ACTIVE, RADIUS, VX, VY, X, Y
 
 # ============================================================================
 # 星云背景
@@ -658,3 +664,159 @@ def draw_target_zone(
             r, max(1, int(2 + pulse * 2)),
         )
         surface.blit(ring_surf, (sx - ring_size // 2, sy - ring_size // 2))
+
+
+# ============================================================================
+# 坐标网格
+# ============================================================================
+
+
+def draw_grid(
+    surface: pygame.Surface,
+    camera: "ICamera",  # type: ignore
+) -> None:
+    """绘制半透明坐标网格。
+
+    根据相机缩放级别自适应网格间距。
+    只绘制当前视野可见范围内的网格线。
+
+    Args:
+        surface: 目标 Pygame Surface
+        camera: 相机对象
+    """
+    color = (*GRID_COLOR, GRID_ALPHA)
+    left, top, right, bottom = camera.get_screen_rect_world()
+
+    zoom = camera.zoom
+    if zoom < 0.001:
+        spacing = 5e11
+    elif zoom < 0.01:
+        spacing = 5e10
+    elif zoom < 0.1:
+        spacing = 5e9
+    elif zoom < 1.0:
+        spacing = 5e8
+    elif zoom < 10:
+        spacing = 5e7
+    else:
+        spacing = 5e6
+
+    start_x = math.floor(left / spacing) * spacing
+    start_y = math.floor(top / spacing) * spacing
+
+    x = start_x
+    while x <= right:
+        sx, _ = camera.world_to_screen(x, 0)
+        _draw_alpha_line(surface, color, (sx, 0), (sx, camera.height), 0.5)
+        x += spacing
+
+    y = start_y
+    while y <= bottom:
+        _, sy = camera.world_to_screen(0, y)
+        _draw_alpha_line(surface, color, (0, sy), (camera.width, sy), 0.5)
+        y += spacing
+
+
+# ============================================================================
+# 天体标签
+# ============================================================================
+
+
+def draw_body_labels(
+    surface: pygame.Surface,
+    bodies: np.ndarray,
+    camera: "ICamera",  # type: ignore
+) -> None:
+    """绘制天体标签（在天体上方显示名称和编号）。
+
+    为活跃天体中屏幕半径足够大的天体绘制标签。
+    标签包含半透明黑色背景和根据类型区分的文字颜色。
+
+    Args:
+        surface: 目标 Pygame Surface
+        bodies: shape (N, NUM_FIELDS) 的天体状态数组
+        camera: 相机对象
+    """
+    type_names = {0: "Star", 1: "Planet", 2: "Probe", 3: "Charged"}
+    type_colors = {
+        0: (255, 220, 100),
+        1: (100, 200, 255),
+        2: (200, 220, 255),
+        3: (255, 100, 100),
+    }
+    font = pygame.font.Font(None, LABEL_FONT_SIZE)
+
+    for i in range(bodies.shape[0]):
+        if bodies[i, IS_ACTIVE] == 0.0:
+            continue
+
+        sx, sy = camera.world_to_screen(float(bodies[i, X]), float(bodies[i, Y]))
+        radius = float(bodies[i, RADIUS])
+        screen_radius = camera.world_distance_to_screen(radius)
+        if screen_radius < LABEL_MIN_SCREEN_RADIUS:
+            continue
+
+        btype = int(bodies[i, BODY_TYPE])
+        label = f"{type_names.get(btype, '?')} #{i}"
+        text_color = type_colors.get(btype, (200, 200, 200))
+
+        text_surf = font.render(label, True, text_color)
+        tr = text_surf.get_rect(midbottom=(sx, sy + LABEL_OFFSET_Y))
+
+        bg = pygame.Surface((tr.width + 4, tr.height + 4), pygame.SRCALPHA)
+        bg.fill((0, 0, 0, LABEL_BG_ALPHA))
+        surface.blit(bg, (tr.x - 2, tr.y - 2))
+        surface.blit(text_surf, tr)
+
+
+# ============================================================================
+# 快捷键覆盖层
+# ============================================================================
+
+
+def draw_shortcuts_overlay(surface: pygame.Surface) -> None:
+    """绘制快捷键面板覆盖层。
+
+    半透明黑色背景覆盖屏幕，居中显示所有快捷键的键位和功能说明。
+    两列布局，键位用黄色，描述用淡紫色。
+
+    Args:
+        surface: 目标 Pygame Surface
+    """
+    # 半透明背景
+    overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 180))
+    surface.blit(overlay, (0, 0))
+
+    title_font = pygame.font.Font(None, 28)
+    font = pygame.font.Font(None, 18)
+
+    title = title_font.render("Shortcuts (H/Esc to close)", True, (255, 255, 255))
+    tr = title.get_rect(midtop=(WINDOW_WIDTH // 2, 60))
+    surface.blit(title, tr)
+
+    shortcuts = [
+        ("Space", "Pause/Resume"), ("G", "Toggle Grid"),
+        ("L", "Toggle Labels"), ("H", "Toggle Shortcuts"),
+        ("5", "1x Speed"), ("6", "2x Speed"),
+        ("7", "4x Speed"), ("8", "8x Speed"),
+        ("1~4", "Spawn Tools"), ("Del", "Delete Body"),
+        ("Right-Drag", "Aim Probe"), ("Right-Click", "Edit Body"),
+        ("Scroll", "Zoom"), ("Dbl-Click", "Reference Frame"),
+        ("Drag", "Grab Body"), ("Esc", "Back/Quit"),
+    ]
+
+    col1_x = WINDOW_WIDTH // 2 - 180
+    col2_x = WINDOW_WIDTH // 2 + 20
+    start_y = 110
+
+    for i, (key, desc) in enumerate(shortcuts):
+        col = i % 2
+        row = i // 2
+        x = col1_x if col == 0 else col2_x
+        y = start_y + row * 30
+
+        key_surf = font.render(key, True, (255, 220, 100))
+        surface.blit(key_surf, (x, y))
+        desc_surf = font.render(desc, True, (200, 200, 220))
+        surface.blit(desc_surf, (x + 70, y))

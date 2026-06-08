@@ -16,8 +16,7 @@ from src.config import (
     BODY_TYPE_STAR,
     CUSTOM_CHARGE_DEFAULT,
     CUSTOM_MASS_DEFAULT,
-    CUSTOM_RADIUS_FACTOR,
-    CUSTOM_SPEED_DEFAULT,
+    CUSTOM_RADIUS_DEFAULT,
     DEFAULT_CHARGE_CHARGED,
     DEFAULT_MASS_CHARGED,
     DEFAULT_MASS_PLANET,
@@ -29,6 +28,7 @@ from src.config import (
     DEFAULT_RADIUS_STAR,
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
+    WORLD_SCALE,
 )
 from src.rendering.input_dialog import EditBodyDialog, ScientificInputDialog
 from src.core.types import (
@@ -224,7 +224,6 @@ class HUDManager:
         # ============ 自定义粒子参数 ============
         self.custom_mass: float = CUSTOM_MASS_DEFAULT
         self.custom_charge: float = CUSTOM_CHARGE_DEFAULT
-        self.custom_speed: float = CUSTOM_SPEED_DEFAULT
 
         # 科学计数法输入弹窗
         self.custom_dialog_visible: bool = False
@@ -236,8 +235,8 @@ class HUDManager:
         self.edit_radius: float = 6.0
         self._edit_dialog: EditBodyDialog = EditBodyDialog()
 
-        # 自定义粒子参数（从弹窗读取）
-        self.custom_radius: float = 6.0
+        # 自定义粒子参数（从弹窗读取，单位：米）
+        self.custom_radius: float = CUSTOM_RADIUS_DEFAULT
 
         # ============ 信息面板 ============
         self.info_panel_visible: bool = False
@@ -250,6 +249,13 @@ class HUDManager:
         # 参考系状态
         self._reference_body_id: Optional[int] = None
         self._reference_body_type: int = -1
+
+        # 状态信息 (由 main.py 每帧更新)
+        self._num_bodies: int = 0
+        self._time_speed: float = 1.0
+        self._fps: float = 0.0
+        self._mouse_world_pos: tuple[float, float] = (0.0, 0.0)
+        self._has_mouse_pos: bool = False
 
     # ------------------------------------------------------------------
     # 更新方法
@@ -316,6 +322,25 @@ class HUDManager:
         self._reference_body_id = None
         self._reference_body_type = -1
 
+    def set_status_info(self, num_bodies: int, time_speed: float, fps: float,
+                        mouse_world_pos: tuple[float, float] | None = None) -> None:
+        """更新状态信息（由 main.py 每帧调用）。
+
+        Args:
+            num_bodies: 当前天体数量
+            time_speed: 时间倍速
+            fps: 当前帧率
+            mouse_world_pos: 鼠标世界坐标（None 表示无有效位置）
+        """
+        self._num_bodies = num_bodies
+        self._time_speed = time_speed
+        self._fps = fps
+        if mouse_world_pos is not None:
+            self._mouse_world_pos = mouse_world_pos
+            self._has_mouse_pos = True
+        else:
+            self._has_mouse_pos = False
+
     def get_tool_display_name(self, tool: str) -> str:
         """获取工具对应的天体类型名称。
 
@@ -361,8 +386,8 @@ class HUDManager:
             (mass, radius, charge, body_type) 元组
         """
         if tool == "TOOL_CUSTOM":
-            pixel_radius = CUSTOM_RADIUS_FACTOR * (self.custom_mass / CUSTOM_MASS_DEFAULT) ** 0.5
-            pixel_radius = max(2.0, min(pixel_radius, 30.0))
+            # custom_radius 存的是米，转回像素（因为调用方会 * WORLD_SCALE）
+            pixel_radius = max(2.0, min(self.custom_radius / WORLD_SCALE, 30.0))
             return (self.custom_mass, pixel_radius, self.custom_charge, float(BODY_TYPE_PLANET))
 
         mapping = {
@@ -409,7 +434,6 @@ class HUDManager:
                     # OK: 读取结果并更新自定义参数
                     self.custom_mass = dlg_result["mass"]
                     self.custom_charge = dlg_result["charge"]
-                    self.custom_speed = dlg_result["speed"]
                     self.custom_radius = dlg_result["radius"]
                     return "CUSTOM_DIALOG_OK"
                 elif dlg_result == "CANCEL":
@@ -508,11 +532,12 @@ class HUDManager:
     # 绘制
     # ------------------------------------------------------------------
 
-    def draw(self, surface: pygame.Surface) -> None:
+    def draw(self, surface: pygame.Surface, camera=None) -> None:
         """绘制所有 HUD 元素。
 
         Args:
             surface: 目标 Surface
+            camera: 可选的 Camera 对象，用于绘制比例尺
         """
         self._draw_info_panel(surface)
         self._draw_toolbar(surface)
@@ -523,6 +548,9 @@ class HUDManager:
         self._draw_time_controls(surface)
         self._draw_active_tool_indicator(surface)
         self._draw_selected_info_bar(surface)
+        self._draw_status_info(surface)
+        if camera is not None:
+            self._draw_scale_bar(surface, camera)
 
     def _draw_info_panel(self, surface: pygame.Surface) -> None:
         """绘制信息面板。
@@ -600,14 +628,6 @@ class HUDManager:
             hint = self.get_tool_display_name(self.active_tool)
             hint_surf = self._font_small.render(hint, True, TEXT_HIGHLIGHT)
             surface.blit(hint_surf, (5, 55))
-
-    def _compute_custom_radius(self) -> float:
-        """获取自定义粒子的世界半径（从弹窗读取，单位 m）。
-
-        Returns:
-            世界半径 (m)
-        """
-        return max(1.0, self.custom_radius)
 
     def _draw_custom_dialog(self, surface: pygame.Surface) -> None:
         """绘制居中科学计数法输入弹窗。
@@ -687,3 +707,81 @@ class HUDManager:
             bg.fill((0, 0, 0, 160))
             surface.blit(bg, (tr.x - 8, tr.y - 3))
             surface.blit(text_surf, tr)
+
+    def _draw_status_info(self, surface: pygame.Surface) -> None:
+        """绘制左上角状态信息（FPS、天体数、倍速、鼠标坐标）。
+
+        Args:
+            surface: 目标 Surface
+        """
+        lines = [
+            f"Bodies: {self._num_bodies}  |  Speed: {self._time_speed:.0f}x  |  FPS: {self._fps:.0f}",
+        ]
+        if self._has_mouse_pos:
+            wx, wy = self._mouse_world_pos
+            lines.append(f"Mouse: ({wx:.3e}, {wy:.3e}) m")
+
+        # 计算总宽高
+        line_height = 18
+        total_h = len(lines) * line_height + 8
+        max_w = max(self._font_small.size(l)[0] for l in lines) + 12
+
+        bg = pygame.Surface((max_w, total_h), pygame.SRCALPHA)
+        bg.fill((0, 0, 0, 120))
+        surface.blit(bg, (8, 8))
+
+        for i, line in enumerate(lines):
+            text_surf = self._font_small.render(line, True, TEXT_COLOR)
+            surface.blit(text_surf, (14, 12 + i * line_height))
+
+    def _draw_scale_bar(self, surface: pygame.Surface, camera) -> None:
+        """绘制右下角比例尺。
+
+        Args:
+            surface: 目标 Surface
+            camera: Camera 对象，用于计算世界距离
+        """
+        from src.config import SCALE_BAR_X, SCALE_BAR_Y
+
+        raw = 200.0 * camera.world_scale / camera.zoom  # 约 200px 对应的世界距离
+
+        # 取整到 1/2/5 倍数
+        magnitude = 10.0 ** math.floor(math.log10(raw))
+        normalized = raw / magnitude
+        if normalized < 1.5:
+            scaled = 1.0 * magnitude
+        elif normalized < 3.5:
+            scaled = 2.0 * magnitude
+        elif normalized < 7.0:
+            scaled = 5.0 * magnitude
+        else:
+            scaled = 10.0 * magnitude
+
+        screen_length = scaled * camera.zoom / camera.world_scale
+        int_length = int(screen_length)
+
+        x = self.width - SCALE_BAR_X - int_length
+        y = self.height - SCALE_BAR_Y
+
+        # 水平线条
+        bar_color = (200, 200, 220)
+        pygame.draw.line(surface, bar_color, (x, y), (x + int_length, y), 2)
+        # 两端竖线
+        pygame.draw.line(surface, bar_color, (x, y - 3), (x, y + 3), 2)
+        pygame.draw.line(surface, bar_color, (x + int_length, y - 3), (x + int_length, y + 3), 2)
+
+        # 文字
+        if scaled >= 1e12:
+            text = f"{scaled:.0e} m"
+        elif scaled >= 1e9:
+            text = f"{scaled:.0e} m"
+        elif scaled >= 1e6:
+            text = f"{scaled:.0e} m"
+        elif scaled >= 1e3:
+            text = f"{scaled:.0e} m"
+        else:
+            text = f"{scaled:.0f} m"
+
+        text_surf = self._font_small.render(text, True, (200, 200, 220))
+        tr = text_surf.get_rect(midtop=(x + int_length // 2, y + 6))
+        surface.blit(text_surf, tr)

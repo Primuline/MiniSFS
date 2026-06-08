@@ -42,21 +42,19 @@ HINT_COLOR = (120, 120, 140)
 
 # 每个输入框: (标签, 占位符, 允许小数点, 允许负号)
 # 索引: 0=mass_coeff, 1=mass_exp, 2=charge_coeff, 3=charge_exp,
-#       4=speed_coeff, 5=speed_exp
+#       4=radius_coeff, 5=radius_exp
 FIELD_DEFS: List[Tuple[str, str, bool, bool]] = [
-    ("Mass coeff",  "1.0", True,  True),
-    ("Mass exp",    "26",  False, True),
-    ("Charge coeff","0.0", True,  True),
-    ("Charge exp",  "0",   False, True),
-    ("Speed coeff", "5.0", True,  True),
-    ("Speed exp",   "1",   False, True),
-    ("Radius coeff","7.0", True,  False),
-    ("Radius exp",  "5",   False, False),
+    ("Mass coeff",    "1.0", True,  True),
+    ("Mass exp",      "26",  False, True),
+    ("Charge coeff",  "0.0", True,  True),
+    ("Charge exp",    "0",   False, True),
+    ("Radius coeff",  "6.4", True,  False),
+    ("Radius exp",    "3",   False, False),
 ]
 
 # 行标签
-ROW_LABELS: List[str] = ["Mass", "Charge", "Speed", "Radius"]
-ROW_UNITS: List[str] = ["kg", "C", "km/s", "km"]
+ROW_LABELS: List[str] = ["Mass", "Charge", "Radius"]
+ROW_UNITS: List[str] = ["kg", "C", "km"]
 
 # 编辑弹窗字段定义（2 行：Mass, Charge，无 Speed）
 EDIT_FIELD_DEFS: List[Tuple[str, str, bool, bool]] = [
@@ -64,8 +62,8 @@ EDIT_FIELD_DEFS: List[Tuple[str, str, bool, bool]] = [
     ("Mass exp",    "0",   False, True),
     ("Charge coeff","0.0", True,  True),
     ("Charge exp",  "0",   False, True),
-    ("Radius coeff","7.0", True,  False),
-    ("Radius exp",  "5",   False, False),
+    ("Radius coeff","6.4", True,  False),
+    ("Radius exp",  "3",   False, False),
 ]
 
 EDIT_ROW_LABELS: List[str] = ["Mass", "Charge", "Radius"]
@@ -549,28 +547,28 @@ class EditBodyDialog:
 class ScientificInputDialog:
     """科学计数法输入弹窗。
 
-    7 个输入框：质量系数/指数、电荷系数/指数、速度系数/指数、半径系数。
+    6 个输入框：质量系数/指数、电荷系数/指数、半径系数/指数。
     支持键盘输入（数字、小数点、负号、Backspace、Enter）。
     激活的输入框显示白色边框 + 闪烁光标。
     提供 OK / Cancel 按钮。
 
     handle_event 返回:
-        - {"mass": float, "charge": float, "speed": float, "radius": float}  — 确认
+        - {"mass": float, "charge": float, "radius": float}  — 确认
         - "CANCEL"                                                            — 取消
         - None                                                                — 事件已消费，无动作
     """
 
     # 布局常量
     PANEL_WIDTH: int = 340
-    PANEL_HEIGHT: int = 265
+    PANEL_HEIGHT: int = 275
     FIELD_HEIGHT: int = 24
     COEFF_WIDTH: int = 80
     EXP_WIDTH: int = 45
     BUTTON_WIDTH: int = 72
     BUTTON_HEIGHT: int = 28
     ROW_SPACING: int = 35
-    ROW_START_OFFSET: int = -55
-    BUTTON_Y_OFFSET: int = 107
+    ROW_START_OFFSET: int = -70
+    BUTTON_Y_OFFSET: int = 115
     BLINK_INTERVAL_MS: int = 500
 
     def __init__(self) -> None:
@@ -579,10 +577,10 @@ class ScientificInputDialog:
         self.active_field_index: int = -1  # -1 = 无激活
         self.cursor_visible: bool = True
 
-        # 7 个输入字段数据（6 个原字段 + 1 个 radius coeff）
+        # 6 个输入字段数据
         self.fields: List[Dict] = []
         for idx, (_, placeholder, allow_decimal, allow_negative) in enumerate(FIELD_DEFS):
-            coeff_field = idx in (0, 2, 4, 6)
+            coeff_field = idx in (0, 2, 4)
             width = self.COEFF_WIDTH if coeff_field else self.EXP_WIDTH
             self.fields.append({
                 "rect": pygame.Rect(0, 0, width, self.FIELD_HEIGHT),
@@ -645,7 +643,7 @@ class ScientificInputDialog:
             ef["rect"].centery = row_y + self.FIELD_HEIGHT // 2
 
         # OK / Cancel 按钮位置
-        btn_y = row_start_y + 3 * self.ROW_SPACING + 5
+        btn_y = row_start_y + 3 * self.ROW_SPACING + 10
         self.ok_rect.x = cx - 80
         self.ok_rect.y = btn_y
         self.cancel_rect.x = cx + 8
@@ -687,25 +685,21 @@ class ScientificInputDialog:
     # ------------------------------------------------------------------
 
     def prefill(self, mass: float) -> None:
-        """预填 radius 的默认值（根据质量自动计算）。
+        """预填 radius 的默认值。
 
         Args:
-            mass: 当前质量 (kg)，用于计算默认 radius
+            mass: 当前质量 (kg)，未使用（保留参数兼容）
         """
         # 重设所有字段为 placeholder
         for i, field in enumerate(self.fields):
             field["text"] = field["placeholder"]
 
-        # 自动计算默认 radius
-        # CUSTOM_RADIUS_FACTOR * sqrt(mass / CUSTOM_MASS_DEFAULT) 得到像素半径
-        # 需要转为 km 才能填入弹窗字段
-        from src.config import CUSTOM_RADIUS_FACTOR, CUSTOM_MASS_DEFAULT, WORLD_SCALE
-        default_radius_px = CUSTOM_RADIUS_FACTOR * (mass / CUSTOM_MASS_DEFAULT) ** 0.5
-        default_radius_px = max(2.0, min(default_radius_px, 30.0))
-        default_radius_km = default_radius_px * WORLD_SCALE / 1000.0
-        r_coeff, r_exp = _float_to_components(default_radius_km)
-        self.fields[6]["text"] = r_coeff
-        self.fields[7]["text"] = r_exp
+        # 使用固定默认半径（米）转为 km 填入弹窗
+        from src.config import CUSTOM_RADIUS_DEFAULT
+        radius_km = CUSTOM_RADIUS_DEFAULT / 1000.0
+        r_coeff, r_exp = _float_to_components(radius_km)
+        self.fields[4]["text"] = r_coeff
+        self.fields[5]["text"] = r_exp
 
     # ------------------------------------------------------------------
     # 字段值读取
@@ -715,17 +709,15 @@ class ScientificInputDialog:
         """读取所有输入框并计算最终参数。
 
         Returns:
-            {"mass": float (kg), "charge": float (C), "speed": float (m/s), "radius": float (m)}
+            {"mass": float (kg), "charge": float (C), "radius": float (m)}
 
-        注意：速度从 km/s 转为 m/s（×1000）。
-        半径从 km 转为 m（×1000）。
+        注意：半径从 km 转为 m（×1000）。
         解析失败时静默使用默认值（系数 1.0，指数 0）。
         """
         mass = self._get_field_value(0, 1)
         charge = self._get_field_value(2, 3)
-        speed = self._get_field_value(4, 5) * 1000.0  # km/s -> m/s
-        radius = self._get_field_value(6, 7) * 1000.0  # km -> m
-        return {"mass": mass, "charge": charge, "speed": speed, "radius": radius}
+        radius = self._get_field_value(4, 5) * 1000.0  # km -> m
+        return {"mass": mass, "charge": charge, "radius": radius}
 
     # ------------------------------------------------------------------
     # 输入校验
@@ -768,7 +760,7 @@ class ScientificInputDialog:
             event: Pygame 事件
 
         Returns:
-            - {"mass": float, "charge": float, "speed": float} — 确认
+            - {"mass": float, "charge": float, "radius": float} — 确认
             - "CANCEL" — 取消
             - None — 事件已消费，无动作
         """
@@ -884,7 +876,7 @@ class ScientificInputDialog:
         row_start_y = cy + self.ROW_START_OFFSET
         label_x = px + 15
 
-        for row in range(4):
+        for row in range(3):
             row_y = row_start_y + row * self.ROW_SPACING
             coeff_idx = row * 2
             exp_idx = row * 2 + 1

@@ -112,6 +112,8 @@ CUSTOM_MASS_DEFAULT: float = 1.0e26
 CUSTOM_CHARGE_DEFAULT: float = 0.0
 # 自定义粒子的默认速度 (m/s)
 CUSTOM_SPEED_DEFAULT: float = 1.0e4
+# 自定义粒子的默认半径 (m) — 地球半径 6400 km
+CUSTOM_RADIUS_DEFAULT: float = 6.4e6
 # 自定义粒子的质量调整步进 (倍数)
 CUSTOM_MASS_STEP: float = 10.0
 # 自定义粒子的电荷步进 (C)
@@ -181,3 +183,31 @@ CAMERA_ZOOM_MAX: float = 500.0
 
 # 鼠标拖拽选择半径 (像素)
 CLICK_SELECTION_RADIUS: float = 10.0
+
+# ============================================================================
+# 体验优化常量 (UX)
+# ============================================================================
+
+# 网格覆盖层
+GRID_COLOR: tuple[int, int, int] = (40, 40, 80)     # 网格线颜色
+GRID_ALPHA: int = 120                                 # 网格透明度
+
+# 比例尺
+SCALE_BAR_X: int = 20                                 # 距右侧偏移 (像素)
+SCALE_BAR_Y: int = 75                                 # 距底部偏移 (像素)，在时控栏上方
+SCALE_BAR_HEIGHT: int = 4                             # 比例尺条高度 (像素)
+
+# 平滑相机跟随因子 (0~1, 越小越平滑)
+# 参考系下每帧以该比例逼近目标位置，高速运动需较大值减少偏移
+CAMERA_FOLLOW_LERP: float = 0.5
+
+# 天体标签
+LABEL_FONT_SIZE: int = 12                             # 标签字号
+LABEL_OFFSET_Y: int = -12                             # 标签在天体上方偏移 (像素)
+LABEL_MIN_SCREEN_RADIUS: float = 3.0                  # 天体屏幕半径小于此值时不显示标签
+LABEL_BG_ALPHA: int = 100                             # 标签背景透明度
+
+# 默认显示状态（用户可通过快捷键切换）
+SHOW_FPS_DEFAULT: bool = True                         # 默认显示 FPS/信息
+SHOW_GRID_DEFAULT: bool = False                       # 默认不显示网格
+SHOW_LABELS_DEFAULT: bool = False                     # 默认不显示标签
