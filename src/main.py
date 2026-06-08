@@ -19,6 +19,8 @@ from src.config import (
     BODY_TYPE_PLANET,
     BODY_TYPE_PROBE,
     BODY_TYPE_STAR,
+    CAMERA_ZOOM_MAX,
+    CAMERA_ZOOM_MIN,
     CUSTOM_ARROW_MAX_LENGTH,
     CUSTOM_CHARGE_DEFAULT,
     CUSTOM_MASS_DEFAULT,
@@ -953,28 +955,23 @@ def main() -> None:
                     selected_body_id = found_id
                     renderer.selected_body_id = found_id
                     hud.set_selected_body(bodies[found_id], found_id)
+                elif found_id is not None:
+                    # 右键点在其他天体上 → 编辑该天体
+                    selected_body_id = found_id
+                    renderer.selected_body_id = found_id
+                    hud.set_selected_body(bodies[found_id], found_id)
+                    body_mass = float(bodies[found_id, MASS])
+                    body_charge = float(bodies[found_id, CHARGE])
+                    is_paused = True
+                    hud.set_play_pause_state(True)
+                    hud.show_edit_dialog(body_mass, body_charge)
                 else:
-                    # 兜底：编辑天体参数（如果有选中的天体）
-                    if selected_body_id is not None:
-                        # 如果右键点在了天体上（非探测器），选中该天体
-                        if found_id is not None:
-                            selected_body_id = found_id
-                            renderer.selected_body_id = found_id
-                            hud.set_selected_body(bodies[found_id], found_id)
-                        # 弹出编辑弹窗
-                        body_idx = selected_body_id
-                        body_mass = float(bodies[body_idx, MASS])
-                        body_charge = float(bodies[body_idx, CHARGE])
-                        is_paused = True
-                        hud.set_play_pause_state(True)
-                        hud.show_edit_dialog(body_mass, body_charge)
-                    else:
-                        # 取消选择
-                        selected_body_id = None
-                        renderer.selected_body_id = None
-                        hud.set_selected_body(None, -1)
-                        active_tool = None
-                        hud.set_tool_active(None)
+                    # 右键空白 → 取消选择
+                    selected_body_id = None
+                    renderer.selected_body_id = None
+                    hud.set_selected_body(None, -1)
+                    active_tool = None
+                    hud.set_tool_active(None)
 
             # --- 双击：跟随天体 ---
             elif cmd.startswith("DOUBLE_CLICK:"):
@@ -988,6 +985,13 @@ def main() -> None:
                     camera.follow(wx, wy)
                     reference_body_id = found_id
                     hud.set_reference_frame(found_id, int(bodies[found_id, BODY_TYPE]))
+                    # 自动缩放到让目标天体约 50px 大小
+                    target_screen_radius = 50.0
+                    body_world_radius = float(bodies[found_id, RADIUS])
+                    if body_world_radius > 0:
+                        desired_zoom = target_screen_radius * WORLD_SCALE / body_world_radius
+                        desired_zoom = max(CAMERA_ZOOM_MIN, min(CAMERA_ZOOM_MAX, desired_zoom))
+                        camera.zoom_at(desired_zoom / camera.zoom, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
 
             # --- 发射探测器 ---
             elif cmd.startswith("LAUNCH_PROBE:"):
