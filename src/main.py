@@ -522,10 +522,27 @@ def main() -> None:
                     world_x, world_y = camera.screen_to_world(sx, sy)
 
                     if simple_placement_stage == 1:
-                        # 阶段 1：固定预览位置，进入速度设定阶段
-                        simple_preview_pos = (world_x, world_y)
-                        simple_arrow_start = (world_x, world_y)
-                        simple_placement_stage = 2
+                        if simple_placement_tool == "TOOL_STAR":
+                            # 恒星：直接放置，跳过速度设定步骤
+                            mass, radius_pixels, charge, body_type = (
+                                hud.get_default_body_params(simple_placement_tool)
+                            )
+                            new_body = make_body(
+                                x=world_x, y=world_y,
+                                vx=0.0, vy=0.0,
+                                mass=mass,
+                                radius=radius_pixels * WORLD_SCALE,
+                                charge=charge,
+                                body_type=int(body_type),
+                                is_static=True,
+                            )
+                            bodies = add_body_to_array(bodies, new_body)
+                            _cancel_simple_placement()
+                        else:
+                            # 行星/探测器：固定预览位置，进入速度设定阶段
+                            simple_preview_pos = (world_x, world_y)
+                            simple_arrow_start = (world_x, world_y)
+                            simple_placement_stage = 2
                     elif simple_placement_stage == 2:
                         # 阶段 2：放置天体
                         if simple_preview_pos is not None:
@@ -662,9 +679,26 @@ def main() -> None:
                     world_x, world_y = camera.screen_to_world(sx, sy)
 
                     if simple_placement_stage == 1:
-                        simple_preview_pos = (world_x, world_y)
-                        simple_arrow_start = (world_x, world_y)
-                        simple_placement_stage = 2
+                        if simple_placement_tool == "TOOL_STAR":
+                            # 恒星：直接放置，跳过速度设定步骤
+                            mass, radius_pixels, charge, body_type = (
+                                hud.get_default_body_params(simple_placement_tool)
+                            )
+                            new_body = make_body(
+                                x=world_x, y=world_y,
+                                vx=0.0, vy=0.0,
+                                mass=mass,
+                                radius=radius_pixels * WORLD_SCALE,
+                                charge=charge,
+                                body_type=int(body_type),
+                                is_static=True,
+                            )
+                            bodies = add_body_to_array(bodies, new_body)
+                            _cancel_simple_placement()
+                        else:
+                            simple_preview_pos = (world_x, world_y)
+                            simple_arrow_start = (world_x, world_y)
+                            simple_placement_stage = 2
                     elif simple_placement_stage == 2:
                         if simple_preview_pos is not None:
                             px, py = simple_preview_pos
