@@ -269,6 +269,20 @@ class InputHandler(IInputHandler):
                 self.grabbed_body_id = None
                 return "GRAB_END"
 
+            if self.is_dragging:
+                self.is_dragging = False
+                # 检测框选结束（拖拽距离 > 10px）
+                sx, sy = event.pos
+                dx = sx - self.drag_start_x
+                dy = sy - self.drag_start_y
+                if math.sqrt(dx * dx + dy * dy) > 10:
+                    x1 = min(self.drag_start_x, sx)
+                    y1 = min(self.drag_start_y, sy)
+                    x2 = max(self.drag_start_x, sx)
+                    y2 = max(self.drag_start_y, sy)
+                    return f"BOX_SELECT_END:{x1},{y1},{x2},{y2}"
+                return None
+
             self.is_dragging = False
             # 如果拖拽距离大，视为发射探测器
             if self.is_aiming:

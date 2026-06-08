@@ -93,6 +93,11 @@ class Renderer(IRenderer):
         # 选中天体 ID
         self.selected_body_id: Optional[int] = None
 
+        # 框选状态
+        self.box_select_start: Optional[Tuple[int, int]] = None
+        self.box_select_end: Optional[Tuple[int, int]] = None
+        self.selected_body_ids: set = set()
+
         # 累计时间
         self._time: float = 0.0
 
@@ -149,8 +154,8 @@ class Renderer(IRenderer):
         # 绘制天体
         self._draw_bodies(bodies, camera)
 
-        # 选中天体高亮
-        if self.selected_body_id is not None:
+        # 选中天体高亮（单天体 + 多选）
+        if self.selected_body_id is not None or len(self.selected_body_ids) > 0:
             self._draw_selection_highlight(bodies, camera)
 
     def render_background(self) -> None:
@@ -285,13 +290,13 @@ class Renderer(IRenderer):
         g = min(255, int(150 + 50 * intensity))
         b = min(220, int(100 + 40 * intensity))
 
-        # 外发光层（大半径半透明）
-        glow_radius = radius * 3.0
+        # 外发光层（大半径半透明，最大 200px 防止 OOM）
+        glow_radius = min(radius * 3.0, 200.0)
         glow_surf = self._get_glow_surface(glow_radius, (r, g, b, 40))
         self.screen.blit(glow_surf, (sx - glow_radius, sy - glow_radius))
 
-        # 中发光层
-        mid_radius = radius * 2.0
+        # 中发光层（最大 150px）
+        mid_radius = min(radius * 2.0, 150.0)
         mid_surf = self._get_glow_surface(mid_radius, (r, g, b, 80))
         self.screen.blit(mid_surf, (sx - mid_radius, sy - mid_radius))
 
@@ -397,38 +402,45 @@ class Renderer(IRenderer):
     def _draw_selection_highlight(self, bodies: np.ndarray, camera: ICamera) -> None:
         """绘制选中天体的高亮圈。
 
+        同时绘制单天体选择（selected_body_id）和多选（selected_body_ids）的高亮。
+
         Args:
             bodies: 天体状态数组
             camera: 相机对象
         """
-        if self.selected_body_id is None:
-            return
-        idx = self.selected_body_id
-        if idx >= bodies.shape[0] or bodies[idx, IS_ACTIVE] == 0.0:
-            self.selected_body_id = None
-            return
+        # 收集需要高亮的天体 ID
+        highlight_ids: set = set()
+        if self.selected_body_id is not None:
+            highlight_ids.add(self.selected_body_id)
+        highlight_ids.update(self.selected_body_ids)
 
-        wx = float(bodies[idx, X])
-        wy = float(bodies[idx, Y])
-        radius = float(bodies[idx, RADIUS])
-        sx, sy = camera.world_to_screen(wx, wy)
-        screen_radius = camera.world_distance_to_screen(radius)
+        for idx in list(highlight_ids):
+            if idx >= bodies.shape[0] or bodies[idx, IS_ACTIVE] == 0.0:
+                if idx == self.selected_body_id:
+                    self.selected_body_id = None
+                continue
 
-        # 脉动高亮
-        pulse = 0.8 + 0.2 * math.sin(self._time * 4)
-        highlight_r = screen_radius * 1.5 * pulse
-        alpha = int(100 + 80 * (0.5 + 0.5 * math.sin(self._time * 4)))
+            wx = float(bodies[idx, X])
+            wy = float(bodies[idx, Y])
+            radius = float(bodies[idx, RADIUS])
+            sx, sy = camera.world_to_screen(wx, wy)
+            screen_radius = camera.world_distance_to_screen(radius)
 
-        # 使用临时 surface 支持透明度
-        size = int(highlight_r * 2) + 10
-        hl_surf = pygame.Surface((size, size), pygame.SRCALPHA)
-        hl_surf.fill((0, 0, 0, 0))
-        pygame.draw.circle(
-            hl_surf, (0, 200, 255, alpha),
-            (size // 2, size // 2),
-            highlight_r, 2,
-        )
-        self.screen.blit(hl_surf, (sx - size // 2, sy - size // 2))
+            # 脉动高亮
+            pulse = 0.8 + 0.2 * math.sin(self._time * 4)
+            highlight_r = screen_radius * 1.5 * pulse
+            alpha = int(100 + 80 * (0.5 + 0.5 * math.sin(self._time * 4)))
+
+            # 使用临时 surface 支持透明度
+            size = int(highlight_r * 2) + 10
+            hl_surf = pygame.Surface((size, size), pygame.SRCALPHA)
+            hl_surf.fill((0, 0, 0, 0))
+            pygame.draw.circle(
+                hl_surf, (0, 200, 255, alpha),
+                (size // 2, size // 2),
+                highlight_r, 2,
+            )
+            self.screen.blit(hl_surf, (sx - size // 2, sy - size // 2))
 
     def _get_glow_surface(self, radius: float, color: Tuple[int, int, int, int]) -> pygame.Surface:
         """获取发光 surface（带缓存）。
@@ -445,9 +457,8 @@ class Renderer(IRenderer):
         # 使用半径作为缓存键（取整到 1px 精度）
         cache_key = round(radius, 0)
         if cache_key not in self._glow_cache:
-            size = int(radius * 2)
-            if size <= 0:
-                size = 1
+            safe_radius = min(radius, 200.0)  # 安全上限
+            size = int(safe_radius * 2)
             surf = pygame.Surface((size, size), pygame.SRCALPHA)
             surf.fill((0, 0, 0, 0))
 
@@ -470,6 +481,40 @@ class Renderer(IRenderer):
             self._glow_cache[cache_key] = surf
 
         return self._glow_cache[cache_key]
+
+    # ------------------------------------------------------------------
+    # 框选框绘制
+    # ------------------------------------------------------------------
+
+    def draw_box_selection(self) -> None:
+        """绘制蓝色半透明框选框。
+
+        使用 box_select_start 和 box_select_end 确定选框范围。
+        两个坐标的 min/max 确保选框能朝任意方向拖拽。
+        只有选框尺寸 > 10px 时才绘制。
+        """
+        start = self.box_select_start
+        end = self.box_select_end
+        if start is None or end is None:
+            return
+
+        x1, y1 = min(start[0], end[0]), min(start[1], end[1])
+        x2, y2 = max(start[0], end[0]), max(start[1], end[1])
+
+        # 小于 10px 的选框不绘制（避免微小点击产生的闪烁）
+        if (x2 - x1) < 10 and (y2 - y1) < 10:
+            return
+
+        # 半透明填充
+        s = pygame.Surface((x2 - x1, y2 - y1), pygame.SRCALPHA)
+        s.fill((0, 100, 255, 60))
+        self.screen.blit(s, (x1, y1))
+
+        # 边框
+        pygame.draw.rect(
+            self.screen, (0, 150, 255),
+            (x1, y1, x2 - x1, y2 - y1), 1,
+        )
 
     # ------------------------------------------------------------------
     # 自定义粒子放置预览方法

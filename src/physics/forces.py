@@ -291,7 +291,21 @@ def predict_single_star_trajectory(
         # 1. 碰撞检测（最高优先级）
         if dist < collision_radius:
             collided = True
-            trajectory.append(pos_cur.copy())
+            # 回退插值到星体表面：从上一已知安全位置沿方向插值到 surface
+            if len(trajectory) >= 2:
+                last_safe = trajectory[-1]
+                r_safe = last_safe - star_pos_f64
+                d_safe = float(np.linalg.norm(r_safe))
+                cur_raw = dist - softening  # 去掉 softening
+                if d_safe > cur_raw:
+                    # 在安全位置与穿透位置之间线性插值到碰撞半径
+                    t = (d_safe - collision_radius) / (d_safe - cur_raw)
+                    t = max(0.0, min(t, 1.0))
+                    hit_pt = last_safe + (pos_cur - last_safe) * t
+                    trajectory.append(hit_pt)
+                    trajectory.append(surface_pt)
+            else:
+                trajectory.append(pos_cur.copy())
             break
 
         # 2. 逃逸检测
