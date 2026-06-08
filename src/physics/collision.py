@@ -1,22 +1,25 @@
 """碰撞检测与响应模块。
 
-支持两种碰撞处理策略:
-    - 弹性碰撞: 质量加权速度交换，适用于同等级质量的天体
-    - 合并碰撞: 小质量天体被大质量天体吸收，适用于大质量差场景
+支持三种碰撞处理策略:
+    - 恒星 vs 行星: 恒星吸收行星（质量、电荷相加）
+    - 行星 vs 行星: 合并为新天体（质心位置，动量守恒）
+    - 探测器 vs 任何天体: 探测器被摧毁
 
 碰撞事件返回给调用方，供渲染器做特效（闪光、碎裂）。
 
 用法::
 
-    from src.physics.collision import detect_collisions, resolve_elastic, resolve_merge
+    from src.physics.collision import detect_collisions, handle_collisions
 """
 
 from typing import Dict, List, Tuple
 
 import numpy as np
 
+from src.config import BODY_TYPE_PLANET, BODY_TYPE_PROBE, BODY_TYPE_STAR
 from src.core.types import (
     BODY_TYPE,
+    CHARGE,
     IS_ACTIVE,
     IS_STATIC,
     MASS,
@@ -251,15 +254,17 @@ def handle_collisions(
     bodies: np.ndarray,
     merge_threshold: float = 10.0,
 ) -> Tuple[np.ndarray, List[CollisionEvent]]:
-    """碰撞检测与自动响应。
+    """碰撞检测与自动响应（新版规则）。
 
-    根据质量比自动选择碰撞处理策略:
-        - 质量比 > merge_threshold: 合并碰撞
-        - 质量比 <= merge_threshold: 弹性碰撞
+    根据天体类型和碰撞规则处理碰撞:
+        - 恒星 vs 行星: 质量相加（合并到恒星），电荷相加，删除行星
+        - 行星 vs 行星: 质量相加，电荷相加，动量相加；位置设在二者质心；
+          删除两个原实体，用第一个实体位置存放合并结果
+        - 探测器 vs 任何天体: 只删除探测器（IS_ACTIVE=0）
 
     Args:
         bodies: shape (N, NUM_FIELDS) 的天体状态数组
-        merge_threshold: 质量比阈值，超过此值时采用合并而非弹性碰撞
+        merge_threshold: 保留参数（不再使用），保持接口兼容
 
     Returns:
         (bodies, events) 元组: 更新后的天体状态和碰撞事件列表
@@ -268,25 +273,119 @@ def handle_collisions(
     if not collision_list:
         return bodies, []
 
-    # 分离弹性碰撞和合并碰撞
-    elastic_pairs: List[Tuple[int, int]] = []
-    merge_pairs: List[Tuple[int, int]] = []
+    events: List[CollisionEvent] = []
+    processed: set = set()  # 已参与碰撞的天体，避免重复处理
 
     for i, j in collision_list:
-        m1 = bodies[i, MASS]
-        m2 = bodies[j, MASS]
-        if m1 <= 0 or m2 <= 0:
+        # 跳过已经处理过的或已不活跃的天体
+        if bodies[i, IS_ACTIVE] == 0.0 or bodies[j, IS_ACTIVE] == 0.0:
             continue
-        max_mass = max(m1, m2)
-        min_mass = min(m1, m2)
-        ratio = max_mass / min_mass
+        if i in processed or j in processed:
+            continue
 
-        if ratio > merge_threshold:
-            merge_pairs.append((i, j))
-        else:
-            elastic_pairs.append((i, j))
+        type_i = int(bodies[i, BODY_TYPE])
+        type_j = int(bodies[j, BODY_TYPE])
 
-    bodies, events_elastic = resolve_elastic(bodies, elastic_pairs)
-    bodies, events_merge = resolve_merge(bodies, merge_pairs)
+        # ================================================================
+        # 规则 1: 探测器 vs 任何天体 → 只删除探测器
+        # ================================================================
+        if type_i == BODY_TYPE_PROBE:
+            bodies[i, IS_ACTIVE] = 0.0
+            processed.add(i)
+            events.append({
+                "type": "probe_destroyed",
+                "id_a": int(i),
+                "id_b": int(j),
+                "pos_x": float(bodies[i, X]),
+                "pos_y": float(bodies[i, Y]),
+            })
+            continue
 
-    return bodies, events_elastic + events_merge
+        if type_j == BODY_TYPE_PROBE:
+            bodies[j, IS_ACTIVE] = 0.0
+            processed.add(j)
+            events.append({
+                "type": "probe_destroyed",
+                "id_a": int(j),
+                "id_b": int(i),
+                "pos_x": float(bodies[j, X]),
+                "pos_y": float(bodies[j, Y]),
+            })
+            continue
+
+        # ================================================================
+        # 规则 2: 恒星 vs 行星 → 合并到恒星
+        # ================================================================
+        if type_i == BODY_TYPE_STAR and type_j == BODY_TYPE_PLANET:
+            bodies[i, MASS] += bodies[j, MASS]
+            bodies[i, CHARGE] += bodies[j, CHARGE]
+            bodies[j, IS_ACTIVE] = 0.0
+            processed.add(j)
+            events.append({
+                "type": "star_merge",
+                "id_a": int(i),
+                "id_b": int(j),
+                "pos_x": float(bodies[i, X]),
+                "pos_y": float(bodies[i, Y]),
+            })
+            continue
+
+        if type_j == BODY_TYPE_STAR and type_i == BODY_TYPE_PLANET:
+            bodies[j, MASS] += bodies[i, MASS]
+            bodies[j, CHARGE] += bodies[i, CHARGE]
+            bodies[i, IS_ACTIVE] = 0.0
+            processed.add(i)
+            events.append({
+                "type": "star_merge",
+                "id_a": int(j),
+                "id_b": int(i),
+                "pos_x": float(bodies[j, X]),
+                "pos_y": float(bodies[j, Y]),
+            })
+            continue
+
+        # ================================================================
+        # 规则 3: 行星 vs 行星 → 合并（质心位置，动量守恒）
+        # ================================================================
+        if type_i == BODY_TYPE_PLANET and type_j == BODY_TYPE_PLANET:
+            m1 = bodies[i, MASS]
+            m2 = bodies[j, MASS]
+            total_mass = m1 + m2
+
+            # 质心位置
+            cx = (bodies[i, X] * m1 + bodies[j, X] * m2) / total_mass
+            cy = (bodies[i, Y] * m1 + bodies[j, Y] * m2) / total_mass
+
+            # 动量守恒计算合并后速度
+            total_vx = (bodies[i, VX] * m1 + bodies[j, VX] * m2) / total_mass
+            total_vy = (bodies[i, VY] * m1 + bodies[j, VY] * m2) / total_mass
+
+            # 合并到 i（复用 i）
+            bodies[i, X] = cx
+            bodies[i, Y] = cy
+            bodies[i, VX] = total_vx
+            bodies[i, VY] = total_vy
+            bodies[i, MASS] = total_mass
+            bodies[i, CHARGE] = bodies[i, CHARGE] + bodies[j, CHARGE]
+            # 半径：体积相加后取立方根
+            bodies[i, RADIUS] = (
+                bodies[i, RADIUS] ** 3 + bodies[j, RADIUS] ** 3
+            ) ** (1.0 / 3.0)
+
+            bodies[j, IS_ACTIVE] = 0.0
+            processed.add(j)
+
+            events.append({
+                "type": "planet_merge",
+                "id_a": int(i),
+                "id_b": int(j),
+                "pos_x": float(cx),
+                "pos_y": float(cy),
+            })
+            continue
+
+        # ================================================================
+        # 其他类型碰撞（未定义规则）：跳过（保留原有状态）
+        # ================================================================
+
+    return bodies, events
