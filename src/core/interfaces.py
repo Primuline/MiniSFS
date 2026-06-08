@@ -1,12 +1,12 @@
-"""MiniSFS 模块接口抽象定义。
+"""Abstract interface definitions for MiniSFS modules.
 
-所有核心模块通过此文件定义的抽象基类 (ABC) 进行交互。
+All core modules interact through the abstract base classes (ABCs) defined in this file.
 
-接口设计原则:
-    - **物理引擎不依赖 Pygame** — PhysicsEngine 的输入输出均为 NumPy 数组
-    - **渲染器只读物理状态** — Renderer 接收 bodies 数组但不修改
-    - **四叉树是纯数据结构** — Quadtree 不关心天体类型，只做空间划分
-    - **可测试性** — 所有接口可在无 GUI 环境下实例化和测试
+Interface design principles:
+    - **Physics engine does not depend on Pygame** — PhysicsEngine input and output are NumPy arrays only
+    - **Renderer is read-only on physics state** — Renderer receives the bodies array but does not modify it
+    - **Quadtree is a pure data structure** — Quadtree does not care about body types, it only performs spatial partitioning
+    - **Testability** — All interfaces can be instantiated and tested without a GUI environment
 """
 
 from abc import ABC, abstractmethod
@@ -18,13 +18,13 @@ from src.core.types import WorldPoint
 
 
 class Rect(NamedTuple):
-    """二维轴对齐矩形。
+    """A 2D axis-aligned rectangle.
 
     Attributes:
-        x: 矩形左上角 x 坐标
-        y: 矩形左上角 y 坐标
-        w: 矩形宽度
-        h: 矩形高度
+        x: X-coordinate of the top-left corner
+        y: Y-coordinate of the top-left corner
+        w: Width of the rectangle
+        h: Height of the rectangle
     """
     x: float
     y: float
@@ -33,45 +33,47 @@ class Rect(NamedTuple):
 
 
 # ============================================================================
-# 物理引擎接口
+# Physics Engine Interface
 # ============================================================================
 
 
 class IPhysicsEngine(ABC):
-    """物理引擎接口。
+    """Physics engine interface.
 
-    负责多体引力/库仑力计算、数值积分、碰撞检测与响应。
+    Responsible for multi-body gravitational / Coulomb force computation,
+    numerical integration, collision detection and response.
     """
 
     @abstractmethod
     def update(self, bodies: np.ndarray, dt: float) -> np.ndarray:
-        """更新所有天体状态一个时间步。
+        """Update all body states by one time step.
 
-        内部流程:
-            1. 计算所有天体之间的受力
-            2. 用数值积分器更新速度和位置
-            3. 检测并处理碰撞
-            4. 移除 IS_ACTIVE == 0 的天体
+        Internal workflow:
+            1. Compute forces between all bodies
+            2. Update velocities and positions using numerical integrator
+            3. Detect and handle collisions
+            4. Remove bodies with IS_ACTIVE == 0
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
-            dt: 时间步长 (秒)
+            bodies: Body state array of shape (N, NUM_FIELDS)
+            dt: Time step (seconds)
 
         Returns:
-            更新后的天体状态数组 (可能移除或合并了天体，行数可能变化)
+            Updated body state array (bodies may be removed or merged,
+            row count may change)
         """
 
     @abstractmethod
     def compute_forces(self, bodies: np.ndarray) -> np.ndarray:
-        """计算所有天体受到的合力。
+        """Compute the net force on all bodies.
 
-        返回 shape (N, 2) 的力数组，每行对应 (fx, fy)。
+        Returns a force array of shape (N, 2), each row corresponds to (fx, fy).
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            bodies: Body state array of shape (N, NUM_FIELDS)
 
         Returns:
-            shape (N, 2) 的合力数组 (N)
+            Net force array of shape (N, 2) (N)
         """
 
     @abstractmethod
@@ -82,190 +84,200 @@ class IPhysicsEngine(ABC):
         steps: int,
         dt: float,
     ) -> np.ndarray:
-        """预测探测器未来轨迹。
+        """Predict the future trajectory of a probe.
 
-        使用 RK4 进行推演，不修改真实状态。
-        当探测器与天体碰撞或超出边界时停止预测。
+        Uses RK4 for simulation without modifying real state.
+        Stops predicting when the probe collides with a body or goes out of bounds.
 
         Args:
-            probe: shape (1, NUM_FIELDS) 的探测器状态
-            bodies: shape (N, NUM_FIELDS) 的静态天体状态
-            steps: 预测步数
-            dt: 每步时间间隔 (秒)
+            probe: Probe state of shape (1, NUM_FIELDS)
+            bodies: Static body state array of shape (N, NUM_FIELDS)
+            steps: Number of prediction steps
+            dt: Time interval per step (seconds)
 
         Returns:
-            shape (M, 2) 的预测轨迹坐标数组 (M <= steps, 因碰撞会提前终止)
+            Predicted trajectory coordinate array of shape (M, 2)
+            (M <= steps, may terminate early due to collision)
         """
 
     @abstractmethod
     def handle_collisions(self, bodies: np.ndarray) -> np.ndarray:
-        """检测并处理碰撞。
+        """Detect and handle collisions.
 
-        支持弹性碰撞 (质量加权速度交换) 和合并碰撞 (小质量天体被吸收)。
+        Supports elastic collisions (mass-weighted velocity exchange)
+        and merger collisions (smaller bodies are absorbed).
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            bodies: Body state array of shape (N, NUM_FIELDS)
 
         Returns:
-            处理碰撞后的天体状态数组
+            Body state array after collision handling
         """
 
 
 # ============================================================================
-# 四叉树接口
+# Quadtree Interface
 # ============================================================================
 
 
 class IQuadtree(ABC):
-    """四叉树接口。
+    """Quadtree interface.
 
-    用于空间划分加速引力计算和碰撞检测。
+    Used for spatial partitioning to accelerate gravity computation
+    and collision detection.
     """
 
     @abstractmethod
     def insert(self, body_id: int, x: float, y: float) -> bool:
-        """插入天体 ID 到四叉树。
+        """Insert a body ID into the quadtree.
 
         Args:
-            body_id: 天体在 bodies 数组中的行索引
-            x: 天体 x 坐标
-            y: 天体 y 坐标
+            body_id: Row index of the body in the bodies array
+            x: X-coordinate of the body
+            y: Y-coordinate of the body
 
         Returns:
-            插入成功返回 True，超出边界返回 False
+            True if insertion is successful, False if out of bounds
         """
 
     @abstractmethod
     def rebuild(self, bodies: np.ndarray) -> None:
-        """清空并重建四叉树。
+        """Clear and rebuild the quadtree.
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            bodies: Body state array of shape (N, NUM_FIELDS)
         """
 
     @abstractmethod
     def query_range(
         self, x: float, y: float, radius: float
     ) -> List[int]:
-        """范围查询: 返回指定圆形区域内的天体 ID 列表。
+        """Range query: return the list of body IDs within a specified circular area.
 
         Args:
-            x: 圆心 x 坐标
-            y: 圆心 y 坐标
-            radius: 圆形半径
+            x: X-coordinate of the circle center
+            y: Y-coordinate of the circle center
+            radius: Radius of the circle
 
         Returns:
-            区域内的天体 ID 列表
+            List of body IDs within the area
         """
 
     @abstractmethod
     def query_nearest(
         self, x: float, y: float
     ) -> Optional[int]:
-        """最近邻查询: 返回离指定坐标最近的天体 ID。
+        """Nearest neighbor query: return the ID of the body closest
+        to the specified coordinates.
 
         Args:
-            x: 查询点 x 坐标
-            y: 查询点 y 坐标
+            x: X-coordinate of the query point
+            y: Y-coordinate of the query point
 
         Returns:
-            最近的天体 ID，无天体时返回 None
+            ID of the nearest body, or None if no bodies exist
         """
 
     @abstractmethod
     def barnes_hut_force(
         self, body_id: int, bodies: np.ndarray, theta: float
     ) -> Tuple[float, float]:
-        """使用 Barnes-Hut 近似计算指定天体受到的总引力。
+        """Compute the total gravitational force on a specified body
+        using the Barnes-Hut approximation.
 
-        对于远距离节点，用节点质心代替子树中所有天体的分别计算。
-        判断条件: s / d < theta (s=节点边长, d=到质心距离)
+        For distant nodes, the node's center of mass is used instead of
+        computing each body in the subtree individually.
+        Decision condition: s / d < theta (s = node side length,
+        d = distance to center of mass)
 
         Args:
-            body_id: 目标天体的 ID
-            bodies: 所有天体的状态数组
-            theta: Barnes-Hut 阈值 (通常 0.5)
+            body_id: ID of the target body
+            bodies: State array of all bodies
+            theta: Barnes-Hut threshold (typically 0.5)
 
         Returns:
-            (fx, fy) 合力向量 (N)
+            (fx, fy) force vector (N)
         """
 
 
 # ============================================================================
-# 尾迹缓冲区接口
+# Trail Buffer Interface
 # ============================================================================
 
 
 class ITrailBuffer(ABC):
-    """尾迹缓冲区接口。
+    """Trail buffer interface.
 
-    使用 collections.deque 为每个天体维护固定长度的历史轨迹。
+    Uses collections.deque to maintain a fixed-length history of
+    positions for each body.
     """
 
     @abstractmethod
     def push_frame(self, body_id: int, x: float, y: float) -> None:
-        """追加一帧的坐标到指定天体的尾迹中。
+        """Append a frame of coordinates to the trail of the specified body.
 
         Args:
-            body_id: 天体 ID
-            x: 当前帧 x 坐标
-            y: 当前帧 y 坐标
+            body_id: Body ID
+            x: Current frame x-coordinate
+            y: Current frame y-coordinate
         """
 
     @abstractmethod
     def push_all(self, bodies: np.ndarray) -> None:
-        """为所有活跃天体的当前位置追加尾迹帧。
+        """Append trail frames for the current positions of all active bodies.
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            bodies: Body state array of shape (N, NUM_FIELDS)
         """
 
     @abstractmethod
     def get_trail(self, body_id: int) -> List[Tuple[float, float]]:
-        """获取指定天体的尾迹坐标列表 (从旧到新)。
+        """Get the trail coordinate list for the specified body
+        (oldest to newest).
 
         Args:
-            body_id: 天体 ID
+            body_id: Body ID
 
         Returns:
-            坐标列表 [(x1,y1), (x2,y2), ...]，空列表表示无尾迹
+            Coordinate list [(x1,y1), (x2,y2), ...],
+            empty list indicates no trail
         """
 
     @abstractmethod
     def rewind(self, body_id: int, frames: int) -> Optional[Tuple[float, float]]:
-        """返回指定天体 frames 帧前的坐标。
+        """Return the coordinates of the specified body from `frames` frames ago.
 
         Args:
-            body_id: 天体 ID
-            frames: 回退帧数
+            body_id: Body ID
+            frames: Number of frames to rewind
 
         Returns:
-            (x, y) 坐标，若历史不足则返回 None
+            (x, y) coordinates, or None if insufficient history
         """
 
     @abstractmethod
     def clear(self, body_id: int) -> None:
-        """清除指定天体的尾迹。
+        """Clear the trail of the specified body.
 
         Args:
-            body_id: 天体 ID
+            body_id: Body ID
         """
 
     @abstractmethod
     def clear_all(self) -> None:
-        """清除所有天体的尾迹。"""
+        """Clear the trails of all bodies."""
 
 
 # ============================================================================
-# 渲染器接口
+# Renderer Interface
 # ============================================================================
 
 
 class IRenderer(ABC):
-    """渲染器接口。
+    """Renderer interface.
 
-    接收物理状态数组，绘制到 Pygame 窗口。
-    渲染器**不修改**物理状态。
+    Receives physics state arrays and draws to the Pygame window.
+    The renderer does **not modify** the physics state.
     """
 
     @abstractmethod
@@ -275,225 +287,228 @@ class IRenderer(ABC):
         trails: Dict[int, List[Tuple[float, float]]],
         camera: "ICamera",
     ) -> None:
-        """渲染一帧画面。
+        """Render a single frame.
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
-            trails: 尾迹数据 {body_id: [(x1,y1), (x2,y2), ...]}
-            camera: 相机对象，用于世界坐标到屏幕坐标的转换
+            bodies: Body state array of shape (N, NUM_FIELDS)
+            trails: Trail data {body_id: [(x1,y1), (x2,y2), ...]}
+            camera: Camera object, used for world-to-screen
+                    coordinate transformation
         """
 
     @abstractmethod
     def render_background(self) -> None:
-        """渲染静态背景 (星云、网格等)。"""
+        """Render the static background (nebula, grid, etc.)."""
 
     @abstractmethod
     def render_hud(self, game_state: str, score: Optional[Dict[str, float]]) -> None:
-        """渲染 HUD 信息。
+        """Render HUD information.
 
         Args:
-            game_state: 当前游戏状态
-            score: 评分数据 (可选)
+            game_state: Current game state
+            score: Score data (optional)
         """
 
     @abstractmethod
     def render_predicted_trajectory(
         self, trajectory: np.ndarray, camera: "ICamera"
     ) -> None:
-        """渲染预测轨迹 (虚线/半透明)。
+        """Render the predicted trajectory (dashed / semi-transparent).
 
         Args:
-            trajectory: shape (M, 2) 的预测轨迹坐标
-            camera: 相机对象
+            trajectory: Predicted trajectory coordinates of shape (M, 2)
+            camera: Camera object
         """
 
     @abstractmethod
     def render_target_zone(
         self, x: float, y: float, radius: float, camera: "ICamera"
     ) -> None:
-        """渲染目标区域 (脉冲动画)。
+        """Render the target zone (pulsing animation).
 
         Args:
-            x, y: 目标中心世界坐标
-            radius: 目标区域半径 (米)
-            camera: 相机对象
+            x, y: World coordinates of the target center
+            radius: Target zone radius (meters)
+            camera: Camera object
         """
 
 
 # ============================================================================
-# 相机接口
+# Camera Interface
 # ============================================================================
 
 
 class ICamera(ABC):
-    """相机接口。
+    """Camera interface.
 
-    管理视口变换: 世界坐标 <-> 屏幕坐标。
+    Manages viewport transformation: world coordinates <-> screen coordinates.
     """
 
     @abstractmethod
     def world_to_screen(
         self, world_x: float, world_y: float
     ) -> Tuple[int, int]:
-        """世界坐标 转 屏幕像素坐标。
+        """Convert world coordinates to screen pixel coordinates.
 
         Args:
-            world_x: 世界 x 坐标 (m)
-            world_y: 世界 y 坐标 (m)
+            world_x: World x-coordinate (m)
+            world_y: World y-coordinate (m)
 
         Returns:
-            (screen_x, screen_y) 像素坐标
+            (screen_x, screen_y) pixel coordinates
         """
 
     @abstractmethod
     def screen_to_world(
         self, screen_x: int, screen_y: int
     ) -> Tuple[float, float]:
-        """屏幕像素坐标 转 世界坐标。
+        """Convert screen pixel coordinates to world coordinates.
 
         Args:
-            screen_x: 屏幕 x 坐标 (像素)
-            screen_y: 屏幕 y 坐标 (像素)
+            screen_x: Screen x-coordinate (pixels)
+            screen_y: Screen y-coordinate (pixels)
 
         Returns:
-            (world_x, world_y) 世界坐标 (m)
+            (world_x, world_y) world coordinates (m)
         """
 
     @abstractmethod
     def pan(self, dx: float, dy: float) -> None:
-        """平移相机。
+        """Pan the camera.
 
         Args:
-            dx: x 方向偏移量 (像素)
-            dy: y 方向偏移量 (像素)
+            dx: Offset in the x-direction (pixels)
+            dy: Offset in the y-direction (pixels)
         """
 
     @abstractmethod
     def zoom_at(self, factor: float, screen_center_x: int, screen_center_y: int) -> None:
-        """以屏幕某点为中心缩放。
+        """Zoom centered on a specific screen point.
 
         Args:
-            factor: 缩放倍数 (>1 放大, <1 缩小)
-            screen_center_x: 缩放中心 x (像素)
-            screen_center_y: 缩放中心 y (像素)
+            factor: Zoom factor (>1 zoom in, <1 zoom out)
+            screen_center_x: Zoom center x (pixels)
+            screen_center_y: Zoom center y (pixels)
         """
 
     @abstractmethod
     def follow(self, world_x: float, world_y: float) -> None:
-        """相机跟随指定世界坐标 (居中)。
+        """Make the camera follow the specified world coordinates (centered).
 
         Args:
-            world_x: 目标 x 坐标 (m)
-            world_y: 目标 y 坐标 (m)
+            world_x: Target x-coordinate (m)
+            world_y: Target y-coordinate (m)
         """
 
     @abstractmethod
     def reset(self) -> None:
-        """重置相机到初始位置和缩放。"""
+        """Reset the camera to its initial position and zoom."""
 
 
 # ============================================================================
-# 游戏逻辑接口
+# Game Logic Interface
 # ============================================================================
 
 
 class IGameManager(ABC):
-    """游戏管理器接口。
+    """Game manager interface.
 
-    管理游戏状态机 (MENU -> PLAYING -> PAUSED / WIN / LOSE)、
-    关卡加载、条件判定和评分。
+    Manages the game state machine
+    (MENU -> PLAYING -> PAUSED / WIN / LOSE),
+    level loading, condition evaluation, and scoring.
     """
 
     @abstractmethod
     def load_level(self, level_id: str) -> np.ndarray:
-        """加载关卡，返回该关卡的天体初始状态数组。
+        """Load a level and return the initial body state array for that level.
 
         Args:
-            level_id: 关卡标识符 (如 "1-1", "1-2")
+            level_id: Level identifier (e.g. "1-1", "1-2")
 
         Returns:
-            shape (N, NUM_FIELDS) 的初始天体状态数组
+            Initial body state array of shape (N, NUM_FIELDS)
 
         Raises:
-            FileNotFoundError: 关卡文件不存在时
+            FileNotFoundError: If the level file does not exist
         """
 
     @abstractmethod
     def check_win_condition(
         self, probe_pos: Tuple[float, float]
     ) -> bool:
-        """检查探测器是否到达目标区域。
+        """Check whether the probe has reached the target zone.
 
         Args:
-            probe_pos: 探测器当前世界坐标 (x, y)
+            probe_pos: Current world coordinates of the probe (x, y)
 
         Returns:
-            到达目标返回 True
+            True if the probe has reached the target
         """
 
     @abstractmethod
     def check_lose_condition(
         self, probe: np.ndarray, bodies: np.ndarray, bounds: Rect
     ) -> bool:
-        """检查是否满足失败条件。
+        """Check whether the lose condition is met.
 
         Args:
-            probe: 探测器状态数组
-            bodies: 所有天体状态数组
-            bounds: 世界边界 (飞出即失败)
+            probe: Probe state array
+            bodies: All body state arrays
+            bounds: World boundaries (flying out means losing)
 
         Returns:
-            失败返回 True
+            True if the condition is met (lose)
         """
 
     @abstractmethod
     def get_score(self) -> Dict[str, float]:
-        """获取当前评分。
+        """Get the current score.
 
         Returns:
             {'stars': 3, 'time': 45.2, 'fuel': 0.7, 'total': 0.85}
-            stars 为 1-3 整数，其余为浮点数
+            stars is an integer from 1-3, the rest are floats
         """
 
     @abstractmethod
     def set_state(self, new_state: str) -> None:
-        """设置游戏状态。
+        """Set the game state.
 
         Args:
-            new_state: 新状态 (MENU / PLAYING / PAUSED / WIN / LOSE)
+            new_state: New state (MENU / PLAYING / PAUSED / WIN / LOSE)
         """
 
     @abstractmethod
     def get_state(self) -> str:
-        """获取当前游戏状态。"""
+        """Get the current game state."""
 
 
 # ============================================================================
-# 输入处理器接口
+# Input Handler Interface
 # ============================================================================
 
 
 class IInputHandler(ABC):
-    """输入处理器接口。
+    """Input handler interface.
 
-    将 Pygame 事件转换为游戏操作，与渲染逻辑分离。
+    Converts Pygame events into game actions, decoupled from rendering logic.
     """
 
     @abstractmethod
     def process_events(self) -> List[str]:
-        """处理所有待处理的 Pygame 事件。
+        """Process all pending Pygame events.
 
         Returns:
-            操作命令字符串列表, 如 ['SELECT:3', 'PAN_LEFT', 'ZOOM_IN', 'PAUSE']
+            List of action command strings,
+            e.g. ['SELECT:3', 'PAN_LEFT', 'ZOOM_IN', 'PAUSE']
         """
 
     @abstractmethod
     def get_mouse_world_pos(self, camera: ICamera) -> WorldPoint:
-        """获取鼠标当前所在的世界坐标。
+        """Get the current world coordinates of the mouse.
 
         Args:
-            camera: 相机对象
+            camera: Camera object
 
         Returns:
-            (x, y) 世界坐标
+            (x, y) world coordinates
         """
