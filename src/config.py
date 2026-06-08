@@ -44,7 +44,7 @@ TARGET_FPS: int = 60
 BACKGROUND_COLOR: tuple[int, int, int] = (10, 10, 30)
 
 # 世界单位/像素比 (m per pixel) — 取决于模拟规模
-WORLD_SCALE: float = 1e9  # 1 像素 = 1e9 米
+WORLD_SCALE: float = 8.0e5  # 1 像素 = 800 km
 
 # ============================================================================
 # 四叉树常量 (Quadtree)
@@ -85,15 +85,15 @@ BODY_TYPE_PROBE: int = 2     # 探测器 — 玩家可控
 BODY_TYPE_CHARGED: int = 3   # 带电粒子 — 受库仑力影响
 
 # 不同类型天体的默认半径 (像素)
-DEFAULT_RADIUS_STAR: float = 20.0
+DEFAULT_RADIUS_STAR: float = 875.0     # 7e8 m = 7e5 km @ 800 km/px
 DEFAULT_RADIUS_PLANET: float = 8.0
-DEFAULT_RADIUS_PROBE: float = 3.0
+DEFAULT_RADIUS_PROBE: float = 1.0
 DEFAULT_RADIUS_CHARGED: float = 6.0
 
 # 不同类型天体的默认质量 (kg)
-DEFAULT_MASS_STAR: float = 1.0e30
-DEFAULT_MASS_PLANET: float = 5.0e28
-DEFAULT_MASS_PROBE: float = 1.0e3
+DEFAULT_MASS_STAR: float = 2.0e30
+DEFAULT_MASS_PLANET: float = 6.0e26
+DEFAULT_MASS_PROBE: float = 1.0
 DEFAULT_MASS_CHARGED: float = 1.0e10
 
 # 不同类型天体的默认电荷 (C)
@@ -126,6 +126,13 @@ CUSTOM_ARROW_MAX_LENGTH: float = 40.0
 
 # 简单放置工具（Star/Planet/Probe）速度/像素转换系数 (m/s per pixel)
 PLACEMENT_SPEED_PER_PX: float = 500.0
+
+# 轨迹预览常量
+DASH_GAP: float = 4.0       # 重采样间距（像素）
+DASH_ON: float = 6.0        # 虚线画多少像素
+DASH_OFF: float = 6.0       # 虚线跳多少像素
+MAX_TRAJECTORY_STEPS: int = 2000  # 最大积分步数
+ESCAPE_RATIO: float = 50.0  # 逃逸判定：距离超过初始距离的倍数
 
 # ============================================================================
 # 游戏常量 (Game)
@@ -166,8 +173,8 @@ CAMERA_PAN_SPEED: float = 500.0
 CAMERA_ZOOM_SPEED: float = 0.1
 
 # 相机最小/最大缩放倍数
-CAMERA_ZOOM_MIN: float = 0.1
-CAMERA_ZOOM_MAX: float = 10.0
+CAMERA_ZOOM_MIN: float = 0.0005
+CAMERA_ZOOM_MAX: float = 500.0
 
 # 鼠标拖拽选择半径 (像素)
 CLICK_SELECTION_RADIUS: float = 10.0
