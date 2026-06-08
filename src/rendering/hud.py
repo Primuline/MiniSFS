@@ -242,6 +242,10 @@ class HUDManager:
         # 选中天体信息
         self.selected_body_info: Optional[str] = None
 
+        # 参考系状态
+        self._reference_body_id: Optional[int] = None
+        self._reference_body_type: int = -1
+
     # ------------------------------------------------------------------
     # 更新方法
     # ------------------------------------------------------------------
@@ -286,6 +290,26 @@ class HUDManager:
             f"{type_name} #{body_id}  "
             f"速度: {speed:.2e} m/s"
         )
+
+    @property
+    def reference_body_id(self) -> Optional[int]:
+        """获取当前参考系天体 ID。"""
+        return self._reference_body_id
+
+    def set_reference_frame(self, body_id: int, body_type: int) -> None:
+        """设置参考系天体。
+
+        Args:
+            body_id: 天体 ID
+            body_type: 天体类型
+        """
+        self._reference_body_id = body_id
+        self._reference_body_type = body_type
+
+    def clear_reference_frame(self) -> None:
+        """清除参考系。"""
+        self._reference_body_id = None
+        self._reference_body_type = -1
 
     def get_tool_display_name(self, tool: str) -> str:
         """获取工具对应的天体类型名称。
@@ -616,17 +640,26 @@ class HUDManager:
             surface.blit(text_surf, (50, 5))
 
     def _draw_selected_info_bar(self, surface: pygame.Surface) -> None:
-        """绘制选中天体信息条（顶部居中）。
+        """绘制选中天体信息条和参考系指示（顶部居中）。
 
         Args:
             surface: 目标 Surface
         """
+        lines = []
         if self.selected_body_info:
-            text_surf = self._font_label.render(
-                self.selected_body_info, True, TEXT_HIGHLIGHT
-            )
-            tr = text_surf.get_rect(midtop=(self.width // 2, 5))
-            # 背景
+            lines.append(self.selected_body_info)
+        if self._reference_body_id is not None:
+            type_names = {0: "Star", 1: "Planet", 2: "Probe", 3: "Charged"}
+            type_name = type_names.get(self._reference_body_type, "Unknown")
+            lines.append(f"Frame: {type_name} #{self._reference_body_id}")
+
+        if not lines:
+            return
+
+        line_height = 20
+        for i, line in enumerate(lines):
+            text_surf = self._font_label.render(line, True, TEXT_HIGHLIGHT)
+            tr = text_surf.get_rect(midtop=(self.width // 2, 5 + i * line_height))
             bg = pygame.Surface((tr.width + 16, tr.height + 6), pygame.SRCALPHA)
             bg.fill((0, 0, 0, 160))
             surface.blit(bg, (tr.x - 8, tr.y - 3))

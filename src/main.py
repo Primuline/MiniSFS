@@ -696,6 +696,12 @@ def main() -> None:
                     )
                     bodies = add_body_to_array(bodies, new_body)
 
+                    # 参考系速度叠加
+                    if reference_body_id is not None and reference_body_id < bodies.shape[0]:
+                        if int(bodies[reference_body_id, IS_ACTIVE]) == 1:
+                            bodies[-1, VX] += bodies[reference_body_id, VX]
+                            bodies[-1, VY] += bodies[reference_body_id, VY]
+
                     # 如果放置的是探测器，选择它并允许瞄准
                     if int(body_type) == BODY_TYPE_PROBE:
                         selected_body_id = bodies.shape[0] - 1
@@ -849,6 +855,11 @@ def main() -> None:
                         body_type=int(body_type),
                     )
                     bodies = add_body_to_array(bodies, new_body)
+                    # 参考系速度叠加
+                    if reference_body_id is not None and reference_body_id < bodies.shape[0]:
+                        if int(bodies[reference_body_id, IS_ACTIVE]) == 1:
+                            bodies[-1, VX] += bodies[reference_body_id, VX]
+                            bodies[-1, VY] += bodies[reference_body_id, VY]
                     if int(body_type) == BODY_TYPE_PROBE:
                         selected_body_id = bodies.shape[0] - 1
                         renderer.selected_body_id = selected_body_id
@@ -1132,6 +1143,12 @@ def main() -> None:
 
         # 更新粒子系统
         particle_system.update(frame_dt)
+
+        # 参考系天体消失检查
+        if reference_body_id is not None:
+            if reference_body_id >= bodies.shape[0] or bodies[reference_body_id, IS_ACTIVE] == 0.0:
+                reference_body_id = None
+                hud.clear_reference_frame()
 
         # ================================================================
         # 6. 渲染
