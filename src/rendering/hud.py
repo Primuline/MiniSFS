@@ -177,10 +177,10 @@ class HUDManager:
         tool_spacing = 46
         self.tool_buttons: List[Button] = []
         tools = [
-            ("S", "TOOL_STAR", "恒星"),
-            ("P", "TOOL_PLANET", "行星"),
-            ("D", "TOOL_PROBE", "探测器"),
-            ("+/-", "TOOL_CHARGED", "带电粒子"),
+            ("S", "TOOL_STAR", "Star"),
+            ("P", "TOOL_PLANET", "Planet"),
+            ("D", "TOOL_PROBE", "Probe"),
+            ("+/-", "TOOL_CHARGED", "Charged"),
         ]
         for i, (label, action, _) in enumerate(tools):
             btn = Button(
@@ -258,8 +258,8 @@ class HUDManager:
         self._info_body_type = int(body_data[BODY_TYPE])
 
         # 生成简要描述
-        type_names = {0: "恒星", 1: "行星", 2: "探测器", 3: "带电粒子"}
-        type_name = type_names.get(self._info_body_type, "未知")
+        type_names = {0: "Star", 1: "Planet", 2: "Probe", 3: "Charged"}
+        type_name = type_names.get(self._info_body_type, "Unknown")
         speed = math.sqrt(
             float(body_data[VX]) ** 2 + float(body_data[VY]) ** 2
         )
@@ -278,10 +278,10 @@ class HUDManager:
             显示名称
         """
         names = {
-            "TOOL_STAR": "恒星",
-            "TOOL_PLANET": "行星",
-            "TOOL_PROBE": "探测器",
-            "TOOL_CHARGED": "带电粒子",
+            "TOOL_STAR": "Star",
+            "TOOL_PLANET": "Planet",
+            "TOOL_PROBE": "Probe",
+            "TOOL_CHARGED": "Charged",
         }
         return names.get(tool, tool)
 
@@ -421,8 +421,8 @@ class HUDManager:
         )
 
         # 标题
-        type_names = {0: "恒星", 1: "行星", 2: "探测器", 3: "带电粒子"}
-        type_name = type_names.get(self._info_body_type, "未知")
+        type_names = {0: "Star", 1: "Planet", 2: "Probe", 3: "Charged"}
+        type_name = type_names.get(self._info_body_type, "Unknown")
         title = f"{type_name} #{int(self._info_body_data['id'])}"
         title_surf = self._font_title.render(title, True, TEXT_HIGHLIGHT)
         surface.blit(title_surf, (panel_x + 10, panel_y + 8))
@@ -430,19 +430,19 @@ class HUDManager:
         # 信息行
         data = self._info_body_data
         lines = [
-            ("坐标", f"({data['x']:.2e}, {data['y']:.2e})"),
-            ("速度", f"({data['vx']:.2e}, {data['vy']:.2e}) m/s"),
-            ("质量", f"{data['mass']:.3e} kg"),
-            ("半径", f"{data['radius']:.2e} m"),
+            ("Pos", f"({data['x']:.2e}, {data['y']:.2e})"),
+            ("Vel", f"({data['vx']:.2e}, {data['vy']:.2e}) m/s"),
+            ("Mass", f"{data['mass']:.3e} kg"),
+            ("Radius", f"{data['radius']:.2e} m"),
         ]
         if self._info_body_type == BODY_TYPE_CHARGED:
-            lines.append(("电荷", f"{data['charge']:.2e} C"))
+            lines.append(("Charge", f"{data['charge']:.2e} C"))
 
         speed = math.sqrt(data['vx']**2 + data['vy']**2)
-        lines.append(("速率", f"{speed:.2e} m/s"))
+        lines.append(("Speed", f"{speed:.2e} m/s"))
 
         if data.get('static', 0) == 1.0:
-            lines.append(("状态", "静态"))
+            lines.append(("Fixed", "Static"))
 
         for i, (label, value) in enumerate(lines):
             y = panel_y + 32 + i * 20
@@ -463,7 +463,7 @@ class HUDManager:
         surface.blit(tool_bg, (0, 0))
 
         # 工具标题
-        title_surf = self._font_title.render("工具", True, LABEL_COLOR)
+        title_surf = self._font_title.render("Tools", True, LABEL_COLOR)
         surface.blit(title_surf, (6, 70))
 
         # 工具按钮
@@ -502,7 +502,7 @@ class HUDManager:
         # 速度指示
         speed_text = f"{self.time_speed:.0f}x"
         if self.is_paused:
-            speed_text = "暂停"
+            speed_text = "PAUSED"
         speed_surf = self._font_small.render(speed_text, True, TEXT_COLOR)
         sr = speed_surf.get_rect(
             midtop=(self.width // 2, bar_y - 16)
@@ -517,7 +517,7 @@ class HUDManager:
         """
         if self.active_tool:
             tool_name = self.get_tool_display_name(self.active_tool)
-            text = f"当前工具: {tool_name}  (右键取消)"
+            text = f"Active: {tool_name}  (right-click to cancel)"
             text_surf = self._font_small.render(text, True, (180, 180, 200))
             surface.blit(text_surf, (50, 5))
 

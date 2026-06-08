@@ -254,7 +254,8 @@ def main() -> None:
     # 物理时间步
     physics_dt = TIME_STEP  # 固定 1/60 秒
     accumulator = 0.0
-    time_speed = 1.0
+    # 世界尺度 1e9 m/px，需要 ~3e6 倍时间加速才能让轨道运动肉眼可见
+    time_speed = 3_000_000.0
     is_paused = False
 
     # 工具状态
