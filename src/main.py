@@ -62,7 +62,7 @@ from src.core.types import (
 )
 from src.input.handler import InputHandler
 from src.physics.engine import PhysicsEngine
-# from src.physics.forces import find_nearest_star
+from src.physics.forces import find_nearest_star
 from src.quadtree.trail import TrailBuffer
 from src.rendering.camera import Camera
 from src.rendering.effects import ParticleSystem
@@ -356,10 +356,13 @@ def main() -> None:
         star_info: Optional[Tuple[np.ndarray, float, float]],
         body_radius_world: float,
     ) -> Optional[Dict[str, object]]:
-        """计算放置预览轨迹。
+        """计算放置预览轨迹（长预测，RK4 + 全量引力）。
 
-        使用物理引擎的 RK4 + 全量引力进行预测，与探测器实时预测一致。
-        无引力源时画直线。
+        预测时间约 10 秒视觉时间。
+        终止条件（按优先级）：
+          1. 撞到任何天体
+          2. 距离参考恒星半径 > 原距离 × 3（逃逸）
+          3. 绕参考恒星角度变化 ≥ 2π
 
         Args:
             pos: shape (2,) 预览位置世界坐标
@@ -374,46 +377,125 @@ def main() -> None:
         if speed < 1.0:
             return None
 
-        # 构造临时探测器用于预测
-        # 使用与模拟相同的 dt 和时间倍率，预测约 1-2 秒视觉时间
-        if time_speed > 100:
-            pred_dt = physics_dt * time_speed
-            pred_steps = max(3, int(60 // max(1, time_multiplier)))
-        else:
-            pred_dt = physics_dt
-            pred_steps = 60
-
-        probe_body = make_body(
-            x=float(pos[0]), y=float(pos[1]),
-            vx=float(vel[0]), vy=float(vel[1]),
-            mass=1.0, radius=body_radius_world,
-            body_type=BODY_TYPE_PROBE,
-        )
-
-        try:
-            raw_traj = physics_engine.predict_trajectory(
-                probe_body, bodies, steps=pred_steps, dt=pred_dt,
-            )
-            if raw_traj.shape[0] < 2:
-                return None
-            collided = raw_traj.shape[0] < pred_steps
-            return {
-                "trajectory": raw_traj,
-                "collided": collided,
-                "escaped": False,
-                "orbited": False,
-            }
-        except Exception:
-            return None
+        # 找参考恒星（最近恒星 or 参考系天体）
+        ref_star = _get_gravity_source(bodies, reference_body_id)
+        if ref_star is None:
+            # 无星体时画直线
+            pts = 200
+            total_dist = speed * 1e7
+            pts_list = []
             for i in range(pts):
                 t = i / (pts - 1)
-                pts_list.append(pos + vel * t * time_total)
+                pts_list.append(pos + vel * t * total_dist / speed)
             return {
                 "trajectory": np.array(pts_list, dtype=np.float64),
                 "collided": False,
                 "escaped": False,
                 "orbited": False,
             }
+
+        star_pos, star_mass, star_radius = ref_star
+
+        # 初始距离参考值
+        initial_delta = pos - star_pos
+        initial_dist = float(np.linalg.norm(initial_delta))
+        escape_dist_threshold = initial_dist * 3.0
+        collision_radius = star_radius + body_radius_world
+        initial_angle = math.atan2(initial_delta[1], initial_delta[0])
+
+        # 预测参数：长预测约 10 秒
+        if time_speed > 100:
+            pred_dt = physics_dt * max(time_speed, 1.0)
+        else:
+            pred_dt = physics_dt
+        pred_dt = min(pred_dt, 20000.0)  # 单步上限
+        max_steps = 5000
+
+        # 构造临时探测器（shape (1, NUM_FIELDS)）
+        probe = make_body(
+            x=float(pos[0]), y=float(pos[1]),
+            vx=float(vel[0]), vy=float(vel[1]),
+            mass=1.0, radius=body_radius_world,
+            body_type=BODY_TYPE_PROBE,
+        )
+
+        import copy
+        sim_bodies = np.vstack([probe, bodies.copy()])
+        p_pos = sim_bodies[0:1, [X, Y]].copy()
+        p_vel = sim_bodies[0:1, [VX, VY]].copy()
+
+        trajectory = [p_pos[0].copy()]
+        collided = False
+        escaped = False
+        orbited = False
+        total_angle = 0.0
+        prev_angle = initial_angle
+
+        from src.physics.integrators import rk4_step
+
+        for _ in range(max_steps):
+            p_pos, p_vel, _ = rk4_step(
+                p_pos, p_vel, physics_engine._probe_acceleration_fn, sim_bodies, pred_dt
+            )
+
+            sim_bodies[0, X] = p_pos[0, 0]
+            sim_bodies[0, Y] = p_pos[0, 1]
+            sim_bodies[0, VX] = p_vel[0, 0]
+            sim_bodies[0, VY] = p_vel[0, 1]
+            trajectory.append(p_pos[0].copy())
+
+            # 1. 碰撞检测（任何天体）
+            probe_radius = body_radius_world
+            hit = False
+            for b_idx in range(1, sim_bodies.shape[0]):
+                if sim_bodies[b_idx, IS_ACTIVE] == 0.0:
+                    continue
+                delta = p_pos[0] - sim_bodies[b_idx, [X, Y]]
+                d = float(np.sqrt(np.dot(delta, delta)))
+                body_r = float(sim_bodies[b_idx, 6])  # RADIUS
+                if d < probe_radius + body_r:
+                    hit = True
+                    collided = True
+                    # 插值到表面
+                    if len(trajectory) >= 2:
+                        last = trajectory[-2]
+                        d_last = float(np.linalg.norm(last - sim_bodies[b_idx, [X, Y]]))
+                        if d_last > 0:
+                            t_hit = (d_last - (probe_radius + body_r)) / d_last
+                            t_hit = max(0.0, min(t_hit, 1.0))
+                            hit_pt = last + (p_pos[0] - last) * t_hit
+                            trajectory[-1] = hit_pt
+                    break
+            if hit:
+                break
+
+            # 2. 逃逸检测（距参考恒星 > 3×初始距离）
+            r_vec = p_pos[0] - star_pos
+            current_dist = float(np.linalg.norm(r_vec))
+            if current_dist > escape_dist_threshold:
+                escaped = True
+                break
+
+            # 3. 角度变化检测
+            current_angle = math.atan2(r_vec[1], r_vec[0])
+            delta_angle = current_angle - prev_angle
+            while delta_angle > math.pi:
+                delta_angle -= 2.0 * math.pi
+            while delta_angle < -math.pi:
+                delta_angle += 2.0 * math.pi
+            total_angle += abs(delta_angle)
+            prev_angle = current_angle
+
+            if total_angle >= 2.0 * math.pi:
+                orbited = True
+                break
+
+        return {
+            "trajectory": np.array(trajectory, dtype=np.float64),
+            "collided": collided,
+            "escaped": escaped,
+            "orbited": orbited,
+        }
 
     # ==================================================================
     # 主循环
