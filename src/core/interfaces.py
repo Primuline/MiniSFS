@@ -369,7 +369,7 @@ class ICamera(ABC):
         """
 
     @abstractmethod
-    def zoom(self, factor: float, screen_center_x: int, screen_center_y: int) -> None:
+    def zoom_at(self, factor: float, screen_center_x: int, screen_center_y: int) -> None:
         """以屏幕某点为中心缩放。
 
         Args:

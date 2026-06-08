@@ -362,12 +362,12 @@ class InputHandler(IInputHandler):
             elif cmd.startswith("ZOOM_IN"):
                 parts = cmd.split(":")
                 sx, sy = int(parts[1]), int(parts[2]) if len(parts) == 3 else (camera.width // 2, camera.height // 2)
-                camera.zoom(1.0 + CAMERA_ZOOM_SPEED, sx, sy)
+                camera.zoom_at(1.0 + CAMERA_ZOOM_SPEED, sx, sy)
 
             elif cmd.startswith("ZOOM_OUT"):
                 parts = cmd.split(":")
                 sx, sy = int(parts[1]), int(parts[2]) if len(parts) == 3 else (camera.width // 2, camera.height // 2)
-                camera.zoom(1.0 - CAMERA_ZOOM_SPEED, sx, sy)
+                camera.zoom_at(1.0 - CAMERA_ZOOM_SPEED, sx, sy)
 
     # ------------------------------------------------------------------
     # 选择检测

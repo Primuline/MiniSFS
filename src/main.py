@@ -348,12 +348,12 @@ def main() -> None:
             elif cmd.startswith("ZOOM_IN"):
                 parts = cmd.split(":")
                 sx, sy = int(parts[1]), int(parts[2])
-                camera.zoom(1.1, sx, sy)
+                camera.zoom_at(1.1, sx, sy)
 
             elif cmd.startswith("ZOOM_OUT"):
                 parts = cmd.split(":")
                 sx, sy = int(parts[1]), int(parts[2])
-                camera.zoom(1.0 / 1.1, sx, sy)
+                camera.zoom_at(1.0 / 1.1, sx, sy)
 
             # --- 时间控制 ---
             elif cmd == "TOGGLE_PAUSE":

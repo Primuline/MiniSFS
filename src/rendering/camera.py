@@ -132,7 +132,7 @@ class Camera(ICamera):
         self.center_x += world_dx
         self.center_y += world_dy
 
-    def zoom(self, factor: float, screen_center_x: int, screen_center_y: int) -> None:
+    def zoom_at(self, factor: float, screen_center_x: int, screen_center_y: int) -> None:
         """以屏幕某点为中心缩放。
 
         保持指定屏幕坐标对应的世界坐标不变。
