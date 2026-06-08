@@ -597,7 +597,7 @@ def main() -> None:
                             dx_screen = float(sx) - sx0
                             dy_screen = float(sy) - sy0
                             arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
-                            if arrow_dist > 0:
+                            if arrow_dist > 3:
                                 actual_speed = arrow_dist * PLACEMENT_SPEED_PER_PX
                                 ux = dx_screen / arrow_dist
                                 uy = dy_screen / arrow_dist
@@ -643,7 +643,7 @@ def main() -> None:
                             dx_screen = float(sx) - sx0
                             dy_screen = float(sy) - sy0
                             arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
-                            if arrow_dist > 0:
+                            if arrow_dist > 3:
                                 clamped_dist = min(arrow_dist, CUSTOM_ARROW_MAX_LENGTH)
                                 actual_speed = hud.custom_speed * (clamped_dist / CUSTOM_ARROW_MAX_LENGTH)
                                 ux = dx_screen / arrow_dist
@@ -751,7 +751,7 @@ def main() -> None:
                             dx_screen = float(sx) - sx0
                             dy_screen = float(sy) - sy0
                             arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
-                            if arrow_dist > 0:
+                            if arrow_dist > 3:
                                 actual_speed = arrow_dist * PLACEMENT_SPEED_PER_PX
                                 ux = dx_screen / arrow_dist
                                 uy = dy_screen / arrow_dist
@@ -793,7 +793,7 @@ def main() -> None:
                             dx_screen = float(sx) - sx0
                             dy_screen = float(sy) - sy0
                             arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
-                            if arrow_dist > 0:
+                            if arrow_dist > 3:
                                 clamped_dist = min(arrow_dist, CUSTOM_ARROW_MAX_LENGTH)
                                 actual_speed = hud.custom_speed * (clamped_dist / CUSTOM_ARROW_MAX_LENGTH)
                                 ux = dx_screen / arrow_dist
@@ -1133,13 +1133,18 @@ def main() -> None:
             renderer.draw_placement_preview(
                 px, py, radius_world, camera, renderer.screen
             )
-            renderer.draw_velocity_arrow(
-                (px, py),
-                (input_handler.mouse_screen_x, input_handler.mouse_screen_y),
-                CUSTOM_ARROW_MAX_LENGTH,
-                camera,
-                renderer.screen,
-            )
+            # 只有箭头长度 > 3px 时才绘制速度箭头
+            spx, spy = camera.world_to_screen(px, py)
+            mx, my = input_handler.mouse_screen_x, input_handler.mouse_screen_y
+            arrow_screen_dist = math.sqrt((mx - spx) ** 2 + (my - spy) ** 2)
+            if arrow_screen_dist > 3:
+                renderer.draw_velocity_arrow(
+                    (px, py),
+                    (input_handler.mouse_screen_x, input_handler.mouse_screen_y),
+                    CUSTOM_ARROW_MAX_LENGTH,
+                    camera,
+                    renderer.screen,
+                )
 
         # 简单放置预览（Star/Planet/Probe）
         if simple_placement_stage == 1 and simple_placement_tool is not None:
@@ -1158,13 +1163,18 @@ def main() -> None:
             renderer.draw_placement_preview(
                 px, py, radius_world, camera, renderer.screen
             )
-            renderer.draw_velocity_arrow(
-                (px, py),
-                (input_handler.mouse_screen_x, input_handler.mouse_screen_y),
-                float("inf"),  # 无长度上限
-                camera,
-                renderer.screen,
-            )
+            # 只有箭头长度 > 3px 时才绘制速度箭头
+            spx, spy = camera.world_to_screen(px, py)
+            mx, my = input_handler.mouse_screen_x, input_handler.mouse_screen_y
+            arrow_screen_dist = math.sqrt((mx - spx) ** 2 + (my - spy) ** 2)
+            if arrow_screen_dist > 3:
+                renderer.draw_velocity_arrow(
+                    (px, py),
+                    (input_handler.mouse_screen_x, input_handler.mouse_screen_y),
+                    float("inf"),  # 无长度上限
+                    camera,
+                    renderer.screen,
+                )
 
         # 绘制瞄准线
         if is_aiming:
