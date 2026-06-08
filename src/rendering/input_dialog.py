@@ -41,11 +41,11 @@ HINT_COLOR = (120, 120, 140)
 #       4=speed_coeff, 5=speed_exp
 FIELD_DEFS: List[Tuple[str, str, bool, bool]] = [
     ("Mass coeff",  "1.0", True,  True),
-    ("Mass exp",    "25",  False, True),
+    ("Mass exp",    "0",   False, True),
     ("Charge coeff","0.0", True,  True),
-    ("Charge exp",  "6",   False, True),
-    ("Speed coeff", "1.0", True,  True),
-    ("Speed exp",   "4",   False, True),
+    ("Charge exp",  "0",   False, True),
+    ("Speed coeff", "5.0", True,  True),
+    ("Speed exp",   "1",   False, True),
 ]
 
 # 行标签
@@ -388,12 +388,6 @@ class ScientificInputDialog:
                 midleft=(self.fields[exp_idx]["rect"].right + 4, row_y + self.FIELD_HEIGHT // 2)
             )
             surface.blit(unit_surf, unit_rect)
-
-        # 半径提示行
-        radius_y = row_start_y + 3 * self.ROW_SPACING
-        rad_lbl = self._font_small.render("Radius: auto from mass (2-30 px)", True, (120, 120, 140))
-        rad_rect = rad_lbl.get_rect(midleft=(label_x, radius_y + 3))
-        surface.blit(rad_lbl, rad_rect)
 
         # OK / Cancel 按钮
         self._draw_button(
