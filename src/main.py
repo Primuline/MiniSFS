@@ -337,7 +337,9 @@ def main() -> None:
                     if len(coords) == 2:
                         dx = float(coords[0])
                         dy = float(coords[1])
-                        camera.pan(-dx, -dy)
+                        # 死区阈值：抖动 < 3px 忽略
+                        if abs(dx) + abs(dy) > 3:
+                            camera.pan(-dx, -dy)
 
             elif cmd == "PAN_LEFT":
                 camera.pan(-500.0 * frame_dt, 0)
