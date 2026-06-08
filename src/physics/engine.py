@@ -24,7 +24,13 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from src.config import COULOMB_CONSTANT, GRAVITATIONAL_CONSTANT, SOFTENING, SUBSTEPS
+from src.config import (
+    COULOMB_CONSTANT,
+    GRAVITATIONAL_CONSTANT,
+    QUADTREE_COLLISION_THRESHOLD,
+    SOFTENING,
+    SUBSTEPS,
+)
 from src.core.interfaces import IPhysicsEngine
 from src.core.types import (
     BODY_TYPE,
@@ -65,6 +71,7 @@ class PhysicsEngine(IPhysicsEngine):
         softening: float = SOFTENING,
         substeps: int = SUBSTEPS,
         use_quadtree: bool = False,
+        quadtree_threshold: int = QUADTREE_COLLISION_THRESHOLD,
     ) -> None:
         """初始化物理引擎。
 
@@ -73,13 +80,16 @@ class PhysicsEngine(IPhysicsEngine):
             k: 库仑常数，默认 8.98755e9
             softening: 软化参数 (m)，默认 1.0
             substeps: 每帧子步数，默认 4
-            use_quadtree: 是否启用四叉树 Barnes-Hut 加速，默认否
+            use_quadtree: 是否启用四叉树加速，默认否
+            quadtree_threshold: 启用四叉树宽阶段的活跃天体数阈值
         """
         self.g: float = g
         self.k: float = k
         self.softening: float = softening
         self.substeps: int = substeps
         self.use_quadtree: bool = use_quadtree
+        self.quadtree_threshold: int = quadtree_threshold
+        self._quadtree: Optional[object] = None
 
         # 用于 Velocity Verlet 缓存上一子步的加速度
         self._last_acc: Optional[np.ndarray] = None
@@ -214,8 +224,21 @@ class PhysicsEngine(IPhysicsEngine):
             bodies[static_indices, VX] = 0.0
             bodies[static_indices, VY] = 0.0
 
+        # 碰撞检测宽阶段（四叉树加速）
+        collision_candidates = None
+        if self.use_quadtree:
+            n_active = int(np.sum(bodies[:, IS_ACTIVE] == 1.0))
+            if n_active >= self.quadtree_threshold:
+                if self._quadtree is None:
+                    from src.quadtree.quadtree import Quadtree
+                    from src.core.interfaces import Rect
+
+                    self._quadtree = Quadtree(Rect(0, 0, 1, 1))
+                self._quadtree.rebuild(bodies)
+                collision_candidates = self._quadtree.query_collision_candidates()
+
         # 处理碰撞
-        bodies, _ = resolve_collisions(bodies)
+        bodies, _ = resolve_collisions(bodies, collision_pairs=collision_candidates)
 
         # 移除不活跃的天体
         bodies = self._remove_inactive(bodies)
