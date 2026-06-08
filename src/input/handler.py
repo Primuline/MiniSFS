@@ -426,3 +426,107 @@ class InputHandler(IInputHandler):
                 best_id = i
 
         return best_id
+
+    # ------------------------------------------------------------------
+    # 测试用注入 API（模拟输入事件）
+    # ------------------------------------------------------------------
+
+    def inject_mouse_click(self, x: int, y: int, button: int = 1) -> str:
+        """模拟鼠标点击事件，返回生成的命令字符串。
+
+        生成 MOUSEBUTTONDOWN + MOUSEBUTTONUP 事件并处理。
+        左键(button=1)生成"CLICK:x,y"，中键(button=2)启动平移。
+
+        Args:
+            x: 屏幕 x 坐标 (像素)
+            y: 屏幕 y 坐标 (像素)
+            button: 鼠标按钮 (1=左键, 2=中键, 3=右键)
+
+        Returns:
+            生成的命令字符串，若无命令则返回空字符串
+        """
+        down_event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {'pos': (x, y), 'button': button}
+        )
+        cmd = self.handle_event(down_event)
+
+        up_event = pygame.event.Event(
+            pygame.MOUSEBUTTONUP, {'pos': (x, y), 'button': button}
+        )
+        self.handle_event(up_event)
+
+        return cmd if cmd is not None else ""
+
+    def inject_mouse_drag(
+        self, x1: int, y1: int, x2: int, y2: int, button: int = 1
+    ) -> List[str]:
+        """模拟鼠标拖拽操作（按下->移动->释放），返回命令列表。
+
+        用于模拟左键拖拽选中、中键平移相机等操作。
+
+        Args:
+            x1, y1: 起始屏幕坐标 (像素)
+            x2, y2: 结束屏幕坐标 (像素)
+            button: 鼠标按钮 (1=左键, 2=中键, 3=右键)
+
+        Returns:
+            生成的命令字符串列表
+        """
+        cmds: List[str] = []
+
+        # 鼠标按下
+        down_event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {'pos': (x1, y1), 'button': button}
+        )
+        cmd = self.handle_event(down_event)
+        if cmd is not None:
+            cmds.append(cmd)
+
+        # 更新鼠标位置
+        self.mouse_screen_x, self.mouse_screen_y = x2, y2
+
+        # 如果正在平移，生成移动事件
+        if self.is_panning:
+            move_event = pygame.event.Event(
+                pygame.MOUSEMOTION, {'pos': (x2, y2)}
+            )
+            cmd = self.handle_event(move_event)
+            if cmd is not None:
+                cmds.append(cmd)
+
+        # 鼠标释放
+        up_event = pygame.event.Event(
+            pygame.MOUSEBUTTONUP, {'pos': (x2, y2), 'button': button}
+        )
+        cmd = self.handle_event(up_event)
+        if cmd is not None:
+            cmds.append(cmd)
+
+        return cmds
+
+    def inject_key_press(self, key: str) -> str:
+        """模拟键盘按键事件，返回生成的命令字符串。
+
+        通过 pygame 键常量名（如 'K_SPACE', 'K_r'）模拟按键。
+
+        Args:
+            key: pygame.K_* 的字符串名，如 'K_SPACE'、'K_r'、'K_ESCAPE'
+
+        Returns:
+            生成的命令字符串，若无命令则返回空字符串
+        """
+        key_attr = getattr(pygame, key, None)
+        if key_attr is None:
+            return ""
+
+        event = pygame.event.Event(pygame.KEYDOWN, {'key': key_attr})
+        cmd = self.handle_event(event)
+        return cmd if cmd is not None else ""
+
+    def get_mouse_pos(self) -> Tuple[int, int]:
+        """返回当前鼠标屏幕位置。
+
+        Returns:
+            (x, y) 屏幕坐标 (像素)
+        """
+        return (self.mouse_screen_x, self.mouse_screen_y)

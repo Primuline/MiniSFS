@@ -10,7 +10,7 @@
     - R 键重置视角
 """
 
-from typing import Tuple
+from typing import Dict, Tuple
 
 import numpy as np
 
@@ -194,6 +194,18 @@ class Camera(ICamera):
             像素距离
         """
         return world_dist / self.world_scale * self._zoom
+
+    def get_state(self) -> Dict[str, float]:
+        """返回相机当前状态。
+
+        Returns:
+            {'center_x': float, 'center_y': float, 'zoom': float} 字典
+        """
+        return {
+            'center_x': self.center_x,
+            'center_y': self.center_y,
+            'zoom': self._zoom,
+        }
 
     def is_visible(self, world_x: float, world_y: float, margin: float = 0.0) -> bool:
         """判断世界坐标是否在当前视野内（含边距）。

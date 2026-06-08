@@ -20,16 +20,19 @@
     trajectory = engine.predict_trajectory(probe, bodies, 120, dt)
 """
 
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
 from src.config import COULOMB_CONSTANT, GRAVITATIONAL_CONSTANT, SOFTENING, SUBSTEPS
 from src.core.interfaces import IPhysicsEngine
 from src.core.types import (
+    BODY_TYPE,
+    CHARGE,
     IS_ACTIVE,
     IS_STATIC,
     MASS,
+    RADIUS,
     VX,
     VY,
     X,
@@ -307,3 +310,90 @@ class PhysicsEngine(IPhysicsEngine):
                 f"不支持的积分器 '{integrator}'，可选: {valid}"
             )
         self._integrator = integrator
+
+    # ------------------------------------------------------------------
+    # 测试用查询 API（只读，不修改状态）
+    # ------------------------------------------------------------------
+
+    def get_body_count(self, bodies: np.ndarray) -> int:
+        """返回活跃天体数量。
+
+        Args:
+            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+
+        Returns:
+            活跃天体数量
+        """
+        active = bodies[bodies[:, IS_ACTIVE] == 1.0]
+        return int(active.shape[0])
+
+    def get_body_state(self, bodies: np.ndarray, body_id: int) -> Dict[str, object]:
+        """返回指定天体的完整状态字典。
+
+        Args:
+            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            body_id: 天体的行索引
+
+        Returns:
+            包含 x, y, vx, vy, mass, charge, radius, body_type, is_static, is_active 的字典
+        """
+        body = bodies[body_id]
+        return {
+            'x': float(body[X]),
+            'y': float(body[Y]),
+            'vx': float(body[VX]),
+            'vy': float(body[VY]),
+            'mass': float(body[MASS]),
+            'charge': float(body[CHARGE]),
+            'radius': float(body[RADIUS]),
+            'body_type': int(body[BODY_TYPE]),
+            'is_static': bool(body[IS_STATIC]),
+            'is_active': bool(body[IS_ACTIVE]),
+        }
+
+    def get_total_energy(self, bodies: np.ndarray) -> float:
+        """计算系统总机械能（动能 + 引力势能），用于验证能量守恒。
+
+        Args:
+            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+
+        Returns:
+            总机械能 (J)
+        """
+        active = bodies[bodies[:, IS_ACTIVE] == 1.0]
+        n = active.shape[0]
+        if n == 0:
+            return 0.0
+
+        # 动能
+        v_sq = active[:, VX] ** 2 + active[:, VY] ** 2
+        ke = 0.5 * float(np.sum(active[:, MASS] * v_sq))
+
+        # 引力势能
+        pe = 0.0
+        positions = active[:, [X, Y]]
+        masses = active[:, MASS]
+        for i in range(n):
+            for j in range(i + 1, n):
+                delta = positions[i] - positions[j]
+                dist = float(np.sqrt(np.dot(delta, delta)))
+                if dist > 1e-12:
+                    pe -= self.g * float(masses[i]) * float(masses[j]) / dist
+
+        return ke + pe
+
+    def get_total_momentum(self, bodies: np.ndarray) -> Tuple[float, float]:
+        """计算系统总动量 (px, py)，用于验证动量守恒。
+
+        Args:
+            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+
+        Returns:
+            (px, py) 总动量 (kg m/s)
+        """
+        active = bodies[bodies[:, IS_ACTIVE] == 1.0]
+        if active.shape[0] == 0:
+            return (0.0, 0.0)
+        px = float(np.sum(active[:, MASS] * active[:, VX]))
+        py = float(np.sum(active[:, MASS] * active[:, VY]))
+        return (px, py)
