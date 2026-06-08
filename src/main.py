@@ -599,12 +599,21 @@ def main() -> None:
         if not should_recalc:
             _last_predicted_body_id = None
 
-        if should_recalc and _prediction_frame_counter % 3 == 1:
+        if should_recalc and _prediction_frame_counter % 6 == 1:
             probe_data = bodies[selected_body_id:selected_body_id + 1].copy()
             other_bodies = np.delete(bodies, selected_body_id, axis=0)
             if other_bodies.shape[0] > 0:
+                # 使用与模拟相同的 dt，预测约 1 秒视觉时间
+                if time_speed > 100:
+                    pred_dt = physics_dt * time_speed  # 和模拟一样的 dt
+                    # 1 秒的视觉步数 = 60fps / multiplier
+                    pred_steps = int(TARGET_FPS / max(1, time_multiplier))
+                    pred_steps = max(3, min(pred_steps, 60))
+                else:
+                    pred_dt = physics_dt
+                    pred_steps = 60
                 pred = physics_engine.predict_trajectory(
-                    probe_data, other_bodies, steps=60, dt=physics_dt
+                    probe_data, other_bodies, steps=pred_steps, dt=pred_dt
                 )
                 if pred.shape[0] > 0:
                     predicted_trajectory = pred
