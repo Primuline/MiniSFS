@@ -35,9 +35,11 @@ from src.config import (
     DEFAULT_RADIUS_PLANET,
     DEFAULT_RADIUS_PROBE,
     DEFAULT_RADIUS_STAR,
+    GRAVITATIONAL_CONSTANT,
     PLACEMENT_SPEED_PER_PX,
     GAME_STATE_PAUSED,
     GAME_STATE_PLAYING,
+    SOFTENING,
     SUBSTEPS,
     TARGET_FPS,
     TIME_STEP,
@@ -60,6 +62,7 @@ from src.core.types import (
 )
 from src.input.handler import InputHandler
 from src.physics.engine import PhysicsEngine
+from src.physics.forces import find_nearest_star, predict_single_star_trajectory
 from src.quadtree.trail import TrailBuffer
 from src.rendering.camera import Camera
 from src.rendering.effects import ParticleSystem
@@ -310,6 +313,9 @@ def main() -> None:
     simple_preview_pos: Optional[Tuple[float, float]] = None
     simple_arrow_start: Optional[Tuple[float, float]] = None
 
+    # 放置速度设定时的轨迹预览
+    placement_trajectory: Optional[Dict[str, object]] = None
+
     # ==================================================================
     # 辅助函数
     # ==================================================================
@@ -347,6 +353,106 @@ def main() -> None:
             hud.set_tool_active(None)
         is_paused = False
         hud.set_play_pause_state(False)
+
+    # --- 轨迹预览辅助函数 ---
+
+    def _get_gravity_source(
+        bodies_arr: np.ndarray,
+        ref_body_id: Optional[int],
+    ) -> Optional[Tuple[np.ndarray, float, float]]:
+        """获取引力源天体信息。
+
+        Args:
+            bodies_arr: 天体状态数组
+            ref_body_id: 参考系天体 ID（可能为 None）
+
+        Returns:
+            (star_pos, star_mass, star_radius) 或 None（无引力源时）
+        """
+        if ref_body_id is not None and ref_body_id < bodies_arr.shape[0]:
+            if int(bodies_arr[ref_body_id, IS_ACTIVE]) == 1:
+                star_pos = bodies_arr[ref_body_id, [X, Y]].copy()
+                star_mass = float(bodies_arr[ref_body_id, MASS])
+                star_radius = float(bodies_arr[ref_body_id, RADIUS])
+                return (star_pos, star_mass, star_radius)
+
+        # 无参考系时找最近的恒星
+        nearest = find_nearest_star(
+            np.array([0.0, 0.0], dtype=np.float64), bodies_arr
+        )
+        if nearest is not None:
+            _, star_pos, star_mass, star_radius = nearest
+            return (star_pos, star_mass, star_radius)
+
+        return None
+
+    def _compute_placement_trajectory(
+        pos: np.ndarray,
+        vel: np.ndarray,
+        star_info: Optional[Tuple[np.ndarray, float, float]],
+        body_radius_world: float,
+    ) -> Optional[Dict[str, object]]:
+        """计算放置预览轨迹。
+
+        有引力源时计算二体弯曲轨迹，无引力源时画直线。
+
+        Args:
+            pos: shape (2,) 预览位置世界坐标
+            vel: shape (2,) 速度向量
+            star_info: (star_pos, star_mass, star_radius) 或 None
+            body_radius_world: 放置天体半径（米）
+
+        Returns:
+            predict_single_star_trajectory 格式的字典，或 None
+                （无引力源时返回直线轨迹字典）
+        """
+        speed = float(np.linalg.norm(vel))
+        if speed < 1.0:
+            return None
+
+        if star_info is not None:
+            star_pos, star_mass, star_radius = star_info
+            # 根据速度调整步数和 dt
+            if speed > 1e5:
+                traj_steps = 600
+                traj_dt = 20000.0
+            elif speed > 1e4:
+                traj_steps = 400
+                traj_dt = 10000.0
+            else:
+                traj_steps = 300
+                traj_dt = 5000.0
+
+            return predict_single_star_trajectory(
+                pos=pos,
+                vel=vel,
+                star_pos=star_pos,
+                star_mass=star_mass,
+                star_radius=star_radius,
+                body_radius=body_radius_world,
+                g=GRAVITATIONAL_CONSTANT,
+                softening=SOFTENING,
+                steps=traj_steps,
+                dt=traj_dt,
+            )
+        else:
+            # 无引力源：沿速度方向画直线
+            pts = 100
+            time_total = 5e6  # 总预测时间 5e6 秒
+            total_dist = speed * time_total
+            if total_dist < 1.0:
+                return None
+            ux = vel[0] / speed
+            uy = vel[1] / speed
+            pts_list = []
+            for i in range(pts):
+                t = i / (pts - 1)
+                pts_list.append(pos + vel * t * time_total)
+            return {
+                "trajectory": np.array(pts_list, dtype=np.float64),
+                "collided": False,
+                "escaped": False,
+            }
 
     # ==================================================================
     # 主循环
@@ -1190,6 +1296,54 @@ def main() -> None:
             )
             aim_current_world = (world_x, world_y)
 
+        # 计算放置轨迹预览
+        placement_trajectory = None
+        if custom_placement_stage == 3 and custom_arrow_start is not None:
+            px, py = custom_preview_pos
+            # 计算速度向量（与放置时相同的逻辑）
+            spx, spy = camera.world_to_screen(px, py)
+            mx, my = input_handler.mouse_screen_x, input_handler.mouse_screen_y
+            dx_screen = float(mx) - spx
+            dy_screen = float(my) - spy
+            arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
+            if arrow_dist > 10:
+                clamped_dist = min(arrow_dist, CUSTOM_ARROW_MAX_LENGTH)
+                actual_speed = hud.custom_speed * (clamped_dist / CUSTOM_ARROW_MAX_LENGTH)
+                ux = dx_screen / arrow_dist
+                uy = dy_screen / arrow_dist
+                vel = np.array([ux * actual_speed, uy * actual_speed], dtype=np.float64)
+                # 获取引力源
+                star_info = _get_gravity_source(bodies, reference_body_id)
+                # 计算轨迹
+                body_radius_pixels = hud._compute_custom_radius()
+                body_radius = body_radius_pixels * WORLD_SCALE
+                placement_trajectory = _compute_placement_trajectory(
+                    np.array([px, py], dtype=np.float64), vel,
+                    star_info, body_radius,
+                )
+        elif simple_placement_stage == 2 and simple_arrow_start is not None:
+            px, py = simple_preview_pos
+            _, radius_pixels, _, body_type = hud.get_default_body_params(simple_placement_tool)
+            # 计算速度向量（与放置时相同的逻辑）
+            spx, spy = camera.world_to_screen(px, py)
+            mx, my = input_handler.mouse_screen_x, input_handler.mouse_screen_y
+            dx_screen = float(mx) - spx
+            dy_screen = float(my) - spy
+            arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
+            if arrow_dist > 10:
+                actual_speed = arrow_dist * PLACEMENT_SPEED_PER_PX
+                ux = dx_screen / arrow_dist
+                uy = dy_screen / arrow_dist
+                vel = np.array([ux * actual_speed, uy * actual_speed], dtype=np.float64)
+                # 获取引力源
+                star_info = _get_gravity_source(bodies, reference_body_id)
+                # 计算轨迹
+                body_radius = radius_pixels * WORLD_SCALE
+                placement_trajectory = _compute_placement_trajectory(
+                    np.array([px, py], dtype=np.float64), vel,
+                    star_info, body_radius,
+                )
+
         # 渲染
         renderer.render(bodies, trails, camera, fade_factors)
 
@@ -1252,6 +1406,10 @@ def main() -> None:
                     camera,
                     renderer.screen,
                 )
+
+        # 绘制放置轨迹预览
+        if placement_trajectory is not None:
+            renderer.render_placement_trajectory(placement_trajectory, camera)
 
         # 绘制瞄准线
         if is_aiming:

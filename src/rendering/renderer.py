@@ -6,6 +6,7 @@
 
 import math
 from typing import Dict, List, Optional, Tuple
+import numpy as np
 
 import numpy as np
 import pygame
@@ -38,6 +39,7 @@ from src.core.types import (
 )
 from src.rendering.effects import (
     StarField,
+    draw_placement_trajectory,
     draw_predicted_trajectory,
     draw_trails,
     draw_target_zone,
@@ -205,6 +207,19 @@ class Renderer(IRenderer):
         """
         draw_predicted_trajectory(self.screen, trajectory, camera)
 
+    def render_placement_trajectory(
+        self,
+        result: Dict[str, object],
+        camera: ICamera,
+    ) -> None:
+        """渲染放置速度设定时的轨迹预览。
+
+        Args:
+            result: predict_single_star_trajectory 返回的字典
+            camera: 相机对象
+        """
+        draw_placement_trajectory(self.screen, result, camera)
+
     def render_target_zone(
         self, x: float, y: float, radius: float, camera: ICamera
     ) -> None:
@@ -235,6 +250,8 @@ class Renderer(IRenderer):
             body_type = int(bodies[i, BODY_TYPE])
             wx = float(bodies[i, X])
             wy = float(bodies[i, Y])
+            if np.isnan(wx) or np.isnan(wy):
+                continue  # 跳过位置无效的天体
             radius = float(bodies[i, RADIUS])
             mass = float(bodies[i, MASS])
             vx = float(bodies[i, VX])

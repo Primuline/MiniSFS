@@ -6,7 +6,7 @@
 
 import math
 import random
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pygame
@@ -311,6 +311,80 @@ def draw_predicted_trajectory(
     if len(points_screen) > 0:
         last = points_screen[-1]
         pygame.draw.circle(surface, (100, 200, 255, 100), last, 3, 1)
+
+
+def draw_placement_trajectory(
+    surface: pygame.Surface,
+    result: Dict[str, object],
+    camera: "ICamera",  # type: ignore
+) -> None:
+    """绘制放置速度设定时的轨迹预览。
+
+    轨迹线为淡蓝色半透明虚线，线宽 2px。
+    碰撞时末端显示红点，逃逸时末端淡出。
+    无引力源时绘制沿速度方向的直线虚线。
+
+    Args:
+        surface: 目标 Pygame Surface
+        result: predict_single_star_trajectory 返回的字典，必须包含:
+            - "trajectory": shape (N, 2) 的轨迹坐标
+            - "collided": bool
+            - "escaped": bool
+            - 可选 "collision_pos": shape (2,)
+        camera: 相机对象
+    """
+    trajectory = result["trajectory"]
+    if not isinstance(trajectory, np.ndarray) or trajectory.shape[0] < 2:
+        return
+
+    collided: bool = bool(result.get("collided", False))
+    escaped: bool = bool(result.get("escaped", False))
+
+    points_screen: List[Tuple[int, int]] = []
+    for i in range(trajectory.shape[0]):
+        sx, sy = camera.world_to_screen(
+            float(trajectory[i, 0]), float(trajectory[i, 1])
+        )
+        # 跳过屏幕外的点但保留最后一个可见点
+        points_screen.append((sx, sy))
+
+    if len(points_screen) < 2:
+        return
+
+    total_segments = len(points_screen) - 1
+
+    # 绘制淡蓝色半透明虚线
+    for i in range(total_segments):
+        # 每隔 2 段画一段（虚线效果）
+        if (i // 2) % 2 == 0:
+            # 透明度渐变：从头到尾稍微淡出
+            t = i / max(total_segments, 1)
+            alpha = int(150 - 50 * t)
+            alpha = max(40, alpha)
+            color = (100, 180, 255, alpha)
+            _draw_alpha_line(
+                surface, color,
+                points_screen[i], points_screen[i + 1],
+                2.0,
+            )
+
+    # 碰撞标记：末端绘制红色闪烁圆点
+    if collided:
+        last = points_screen[-1]
+        # 红色实心圆
+        pygame.draw.circle(surface, (255, 50, 50), last, 5)
+        # 外圈
+        pygame.draw.circle(surface, (255, 50, 50, 100), last, 8, 1)
+
+    # 逃逸标记：末端小圆淡出
+    elif escaped and len(points_screen) > 0:
+        last = points_screen[-1]
+        pygame.draw.circle(surface, (100, 180, 255, 60), last, 3, 1)
+
+    # 正常轨迹末端
+    elif len(points_screen) > 0:
+        last = points_screen[-1]
+        pygame.draw.circle(surface, (100, 180, 255, 80), last, 3, 1)
 
 
 # ============================================================================
