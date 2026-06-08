@@ -185,6 +185,11 @@ class PhysicsEngine(IPhysicsEngine):
         bodies = bodies.copy()
         dt_sub = dt / self.substeps
 
+        # 保存 IS_STATIC==1 的天体的初始位置和索引
+        static_mask = bodies[:, IS_STATIC] == 1.0
+        static_indices = np.where(static_mask)[0]
+        saved_positions = bodies[static_indices, [X, Y]].copy()
+
         for _ in range(self.substeps):
             # 提取活跃天体的位置和速度
             pos = bodies[:, [X, Y]].copy()      # (N, 2)
@@ -200,6 +205,13 @@ class PhysicsEngine(IPhysicsEngine):
             bodies[:, Y] = pos_new[:, 1]
             bodies[:, VX] = vel_new[:, 0]
             bodies[:, VY] = vel_new[:, 1]
+
+        # 恢复静态天体的位置并将速度置零（保证恒星纹丝不动）
+        if len(static_indices) > 0:
+            bodies[static_indices, X] = saved_positions[:, 0]
+            bodies[static_indices, Y] = saved_positions[:, 1]
+            bodies[static_indices, VX] = 0.0
+            bodies[static_indices, VY] = 0.0
 
         # 处理碰撞
         bodies, _ = resolve_collisions(bodies)
