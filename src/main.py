@@ -517,6 +517,54 @@ def main() -> None:
                 sx_str = parts[1].split(",")
                 sx, sy = int(sx_str[0]), int(sx_str[1])
 
+                # 简单放置流程的点击处理（Star/Planet/Probe）
+                if simple_placement_stage > 0:
+                    world_x, world_y = camera.screen_to_world(sx, sy)
+
+                    if simple_placement_stage == 1:
+                        # 阶段 1：固定预览位置，进入速度设定阶段
+                        simple_preview_pos = (world_x, world_y)
+                        simple_arrow_start = (world_x, world_y)
+                        simple_placement_stage = 2
+                    elif simple_placement_stage == 2:
+                        # 阶段 2：放置天体
+                        if simple_preview_pos is not None:
+                            px, py = simple_preview_pos
+                            mass, radius_pixels, charge, body_type = (
+                                hud.get_default_body_params(simple_placement_tool)
+                            )
+                            new_body = make_body(
+                                x=px, y=py,
+                                vx=0.0, vy=0.0,
+                                mass=mass,
+                                radius=radius_pixels * WORLD_SCALE,
+                                charge=charge,
+                                body_type=int(body_type),
+                            )
+                            bodies = add_body_to_array(bodies, new_body)
+
+                            # 计算速度（箭头长度 × PLACEMENT_SPEED_PER_PX，无长度上限）
+                            sx0, sy0 = camera.world_to_screen(px, py)
+                            dx_screen = float(sx) - sx0
+                            dy_screen = float(sy) - sy0
+                            arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
+                            if arrow_dist > 0:
+                                actual_speed = arrow_dist * PLACEMENT_SPEED_PER_PX
+                                ux = dx_screen / arrow_dist
+                                uy = dy_screen / arrow_dist
+                                bodies[-1, VX] = ux * actual_speed
+                                bodies[-1, VY] = uy * actual_speed
+
+                            # 如果放置的是探测器，选择它
+                            if int(body_type) == BODY_TYPE_PROBE:
+                                selected_body_id = bodies.shape[0] - 1
+                                renderer.selected_body_id = selected_body_id
+                                hud.set_selected_body(bodies[selected_body_id], selected_body_id)
+
+                        # 清理放置状态
+                        _cancel_simple_placement()
+                    continue
+
                 # 自定义粒子放置流程的点击处理
                 if custom_placement_stage >= 2:
                     world_x, world_y = camera.screen_to_world(sx, sy)
@@ -607,6 +655,50 @@ def main() -> None:
                 sx_str = parts[1].split(",")
                 body_id = int(sx_str[0])
                 sx, sy = int(sx_str[1]), int(sx_str[2])
+
+                # 简单放置流程的点击处理（与 CLICK 相同逻辑）
+                if simple_placement_stage > 0:
+                    input_handler.reset_grab()
+                    world_x, world_y = camera.screen_to_world(sx, sy)
+
+                    if simple_placement_stage == 1:
+                        simple_preview_pos = (world_x, world_y)
+                        simple_arrow_start = (world_x, world_y)
+                        simple_placement_stage = 2
+                    elif simple_placement_stage == 2:
+                        if simple_preview_pos is not None:
+                            px, py = simple_preview_pos
+                            mass, radius_pixels, charge, body_type = (
+                                hud.get_default_body_params(simple_placement_tool)
+                            )
+                            new_body = make_body(
+                                x=px, y=py,
+                                vx=0.0, vy=0.0,
+                                mass=mass,
+                                radius=radius_pixels * WORLD_SCALE,
+                                charge=charge,
+                                body_type=int(body_type),
+                            )
+                            bodies = add_body_to_array(bodies, new_body)
+
+                            sx0, sy0 = camera.world_to_screen(px, py)
+                            dx_screen = float(sx) - sx0
+                            dy_screen = float(sy) - sy0
+                            arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
+                            if arrow_dist > 0:
+                                actual_speed = arrow_dist * PLACEMENT_SPEED_PER_PX
+                                ux = dx_screen / arrow_dist
+                                uy = dy_screen / arrow_dist
+                                bodies[-1, VX] = ux * actual_speed
+                                bodies[-1, VY] = uy * actual_speed
+
+                            if int(body_type) == BODY_TYPE_PROBE:
+                                selected_body_id = bodies.shape[0] - 1
+                                renderer.selected_body_id = selected_body_id
+                                hud.set_selected_body(bodies[selected_body_id], selected_body_id)
+
+                        _cancel_simple_placement()
+                    continue
 
                 # 自定义粒子放置流程的点击处理（与 CLICK 相同的阶段逻辑）
                 if custom_placement_stage >= 2:
@@ -712,6 +804,18 @@ def main() -> None:
                 sx_str = parts[1].split(",")
                 sx, sy = int(sx_str[0]), int(sx_str[1])
 
+                # 简单放置流程的右键处理
+                if simple_placement_stage > 0:
+                    if simple_placement_stage == 2:
+                        # 阶段 2：回到阶段 1（重新选择位置）
+                        simple_placement_stage = 1
+                        simple_preview_pos = None
+                        simple_arrow_start = None
+                    else:
+                        # 阶段 1：取消整个操作
+                        _cancel_simple_placement()
+                    continue
+
                 # 自定义粒子放置流程的右键处理
                 if custom_placement_stage > 0:
                     if custom_placement_stage == 3:
@@ -806,7 +910,9 @@ def main() -> None:
                     hud.set_selected_body(None, -1)
 
             elif cmd == "MENU":
-                if custom_placement_stage > 0:
+                if simple_placement_stage > 0:
+                    _cancel_simple_placement()
+                elif custom_placement_stage > 0:
                     _cancel_custom_placement()
                 else:
                     running = False
