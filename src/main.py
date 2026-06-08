@@ -597,7 +597,7 @@ def main() -> None:
                             dx_screen = float(sx) - sx0
                             dy_screen = float(sy) - sy0
                             arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
-                            if arrow_dist > 3:
+                            if arrow_dist > 10:
                                 actual_speed = arrow_dist * PLACEMENT_SPEED_PER_PX
                                 ux = dx_screen / arrow_dist
                                 uy = dy_screen / arrow_dist
@@ -643,7 +643,7 @@ def main() -> None:
                             dx_screen = float(sx) - sx0
                             dy_screen = float(sy) - sy0
                             arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
-                            if arrow_dist > 3:
+                            if arrow_dist > 10:
                                 clamped_dist = min(arrow_dist, CUSTOM_ARROW_MAX_LENGTH)
                                 actual_speed = hud.custom_speed * (clamped_dist / CUSTOM_ARROW_MAX_LENGTH)
                                 ux = dx_screen / arrow_dist
@@ -751,7 +751,7 @@ def main() -> None:
                             dx_screen = float(sx) - sx0
                             dy_screen = float(sy) - sy0
                             arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
-                            if arrow_dist > 3:
+                            if arrow_dist > 10:
                                 actual_speed = arrow_dist * PLACEMENT_SPEED_PER_PX
                                 ux = dx_screen / arrow_dist
                                 uy = dy_screen / arrow_dist
@@ -793,7 +793,7 @@ def main() -> None:
                             dx_screen = float(sx) - sx0
                             dy_screen = float(sy) - sy0
                             arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
-                            if arrow_dist > 3:
+                            if arrow_dist > 10:
                                 clamped_dist = min(arrow_dist, CUSTOM_ARROW_MAX_LENGTH)
                                 actual_speed = hud.custom_speed * (clamped_dist / CUSTOM_ARROW_MAX_LENGTH)
                                 ux = dx_screen / arrow_dist
@@ -1137,7 +1137,7 @@ def main() -> None:
             spx, spy = camera.world_to_screen(px, py)
             mx, my = input_handler.mouse_screen_x, input_handler.mouse_screen_y
             arrow_screen_dist = math.sqrt((mx - spx) ** 2 + (my - spy) ** 2)
-            if arrow_screen_dist > 3:
+            if arrow_screen_dist > 10:
                 renderer.draw_velocity_arrow(
                     (px, py),
                     (input_handler.mouse_screen_x, input_handler.mouse_screen_y),
@@ -1167,7 +1167,7 @@ def main() -> None:
             spx, spy = camera.world_to_screen(px, py)
             mx, my = input_handler.mouse_screen_x, input_handler.mouse_screen_y
             arrow_screen_dist = math.sqrt((mx - spx) ** 2 + (my - spy) ** 2)
-            if arrow_screen_dist > 3:
+            if arrow_screen_dist > 10:
                 renderer.draw_velocity_arrow(
                     (px, py),
                     (input_handler.mouse_screen_x, input_handler.mouse_screen_y),
