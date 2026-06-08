@@ -468,22 +468,32 @@ def main() -> None:
             elif cmd.startswith("TOOL_"):
                 if active_tool == cmd:
                     # 取消选择工具
-                    if custom_placement_stage > 0:
+                    if simple_placement_stage > 0:
+                        _cancel_simple_placement()
+                    elif custom_placement_stage > 0:
                         _cancel_custom_placement()
                     active_tool = None
                 else:
                     # 如果之前有工具处于放置中，先取消
+                    if simple_placement_stage > 0:
+                        _cancel_simple_placement()
                     if custom_placement_stage > 0:
                         _cancel_custom_placement()
                     active_tool = cmd
-                    # 自定义粒子工具：冻结时间 + 打开科学计数法输入弹窗
                     if cmd == "TOOL_CUSTOM":
+                        # 自定义粒子工具：冻结时间 + 打开科学计数法输入弹窗
                         is_paused = True
                         hud.set_play_pause_state(True)
                         custom_placement_stage = 1
                         hud.custom_dialog_visible = True
                         hud._input_dialog.visible = True
                         hud._input_dialog.active_field_index = -1
+                    elif cmd in ("TOOL_STAR", "TOOL_PLANET", "TOOL_PROBE"):
+                        # 简单放置工具：冻结时间 + 进入预览位置阶段
+                        is_paused = True
+                        hud.set_play_pause_state(True)
+                        simple_placement_stage = 1
+                        simple_placement_tool = cmd
                 hud.set_tool_active(active_tool)
 
             # --- 自定义粒子弹窗命令 ---
