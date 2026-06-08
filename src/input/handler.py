@@ -316,7 +316,7 @@ class InputHandler(IInputHandler):
         elif event.key == pygame.K_3:
             return "TOOL_PROBE"
         elif event.key == pygame.K_4:
-            return "TOOL_CHARGED"
+            return "TOOL_CUSTOM"
         elif event.key == pygame.K_DELETE or event.key == pygame.K_BACKSPACE:
             return "DELETE_SELECTED"
         elif event.key == pygame.K_f:

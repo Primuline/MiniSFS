@@ -405,6 +405,10 @@ def main() -> None:
                     active_tool = cmd
                 hud.set_tool_active(active_tool)
 
+            # --- 自定义粒子参数调节 ---
+            elif cmd.startswith("CUSTOM_"):
+                hud.handle_custom_param(cmd)
+
             # --- 鼠标点击 ---
             elif cmd.startswith("CLICK:"):
                 parts = cmd.split(":")
@@ -429,6 +433,10 @@ def main() -> None:
                         body_type=int(body_type),
                     )
                     bodies = add_body_to_array(bodies, new_body)
+
+                    # 自定义粒子：使用面板配置的速度（方向向上）
+                    if active_tool == "TOOL_CUSTOM":
+                        bodies[-1, VY] = -hud.custom_speed  # 向上发射
 
                     # 如果放置的是探测器，选择它并允许瞄准
                     if int(body_type) == BODY_TYPE_PROBE:
@@ -499,6 +507,8 @@ def main() -> None:
                     bodies[grabbed_body_id, Y] = wy
 
             elif cmd == "GRAB_END":
+                if grabbed_body_id is not None:
+                    trail_buffer.clear(grabbed_body_id)  # 清除拖拽产生的跳跃尾迹
                 is_grabbing = False
                 grabbed_body_id = None
                 is_paused = False

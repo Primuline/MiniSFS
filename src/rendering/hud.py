@@ -14,6 +14,15 @@ from src.config import (
     BODY_TYPE_PLANET,
     BODY_TYPE_PROBE,
     BODY_TYPE_STAR,
+    CUSTOM_CHARGE_DEFAULT,
+    CUSTOM_CHARGE_STEP,
+    CUSTOM_MASS_DEFAULT,
+    CUSTOM_MASS_MAX,
+    CUSTOM_MASS_MIN,
+    CUSTOM_MASS_STEP,
+    CUSTOM_RADIUS_FACTOR,
+    CUSTOM_SPEED_DEFAULT,
+    CUSTOM_SPEED_STEP,
     DEFAULT_CHARGE_CHARGED,
     DEFAULT_MASS_CHARGED,
     DEFAULT_MASS_PLANET,
@@ -180,7 +189,7 @@ class HUDManager:
             ("S", "TOOL_STAR", "Star"),
             ("P", "TOOL_PLANET", "Planet"),
             ("D", "TOOL_PROBE", "Probe"),
-            ("+/-", "TOOL_CHARGED", "Charged"),
+            ("C", "TOOL_CUSTOM", "Custom"),
         ]
         for i, (label, action, _) in enumerate(tools):
             btn = Button(
@@ -214,6 +223,31 @@ class HUDManager:
         # 时间速度标签
         self.time_speed: float = 1.0
         self.is_paused: bool = False
+
+        # ============ 自定义粒子参数 ============
+        self.custom_mass: float = CUSTOM_MASS_DEFAULT
+        self.custom_charge: float = CUSTOM_CHARGE_DEFAULT
+        self.custom_speed: float = CUSTOM_SPEED_DEFAULT
+        self._custom_params_visible: bool = False
+
+        # 参数调整按钮 (在工具栏右侧的小面板)
+        param_x = 60
+        param_y = 100
+        param_spacing = 24
+        self.custom_param_buttons: List[Button] = []
+
+        # 质量 - / +
+        self.custom_param_buttons.append(Button(param_x + 145, param_y, 22, 20, "-", "CUSTOM_MASS_DOWN", font_size=12))
+        self.custom_param_buttons.append(Button(param_x + 195, param_y, 22, 20, "+", "CUSTOM_MASS_UP", font_size=12))
+        # 电荷 - / +
+        self.custom_param_buttons.append(Button(param_x + 145, param_y + param_spacing, 22, 20, "-", "CUSTOM_CHARGE_DOWN", font_size=12))
+        self.custom_param_buttons.append(Button(param_x + 195, param_y + param_spacing, 22, 20, "+", "CUSTOM_CHARGE_UP", font_size=12))
+        # 速度 - / +
+        self.custom_param_buttons.append(Button(param_x + 145, param_y + param_spacing*2, 22, 20, "-", "CUSTOM_SPEED_DOWN", font_size=12))
+        self.custom_param_buttons.append(Button(param_x + 195, param_y + param_spacing*2, 22, 20, "+", "CUSTOM_SPEED_UP", font_size=12))
+
+        for btn in self.custom_param_buttons:
+            btn.visible = False
 
         # ============ 信息面板 ============
         self.info_panel_visible: bool = False
@@ -282,6 +316,7 @@ class HUDManager:
             "TOOL_PLANET": "Planet",
             "TOOL_PROBE": "Probe",
             "TOOL_CHARGED": "Charged",
+            "TOOL_CUSTOM": "Custom",
         }
         return names.get(tool, tool)
 
@@ -302,6 +337,25 @@ class HUDManager:
         }
         return mapping.get(tool, BODY_TYPE_PLANET)
 
+    def handle_custom_param(self, cmd: str) -> None:
+        """处理自定义粒子参数调整命令。
+
+        Args:
+            cmd: 命令字符串 (如 CUSTOM_MASS_UP, CUSTOM_CHARGE_DOWN)
+        """
+        if cmd == "CUSTOM_MASS_UP":
+            self.custom_mass = min(self.custom_mass * CUSTOM_MASS_STEP, CUSTOM_MASS_MAX)
+        elif cmd == "CUSTOM_MASS_DOWN":
+            self.custom_mass = max(self.custom_mass / CUSTOM_MASS_STEP, CUSTOM_MASS_MIN)
+        elif cmd == "CUSTOM_CHARGE_UP":
+            self.custom_charge += CUSTOM_CHARGE_STEP
+        elif cmd == "CUSTOM_CHARGE_DOWN":
+            self.custom_charge -= CUSTOM_CHARGE_STEP
+        elif cmd == "CUSTOM_SPEED_UP":
+            self.custom_speed *= CUSTOM_SPEED_STEP
+        elif cmd == "CUSTOM_SPEED_DOWN":
+            self.custom_speed = max(self.custom_speed / CUSTOM_SPEED_STEP, 0.0)
+
     def get_default_body_params(self, tool: str) -> Tuple[float, float, float, float]:
         """获取工具的默认天体参数。
 
@@ -311,6 +365,11 @@ class HUDManager:
         Returns:
             (mass, radius, charge, body_type) 元组
         """
+        if tool == "TOOL_CUSTOM":
+            pixel_radius = CUSTOM_RADIUS_FACTOR * (self.custom_mass / CUSTOM_MASS_DEFAULT) ** 0.5
+            pixel_radius = max(2.0, min(pixel_radius, 30.0))
+            return (self.custom_mass, pixel_radius, self.custom_charge, float(BODY_TYPE_PLANET))
+
         mapping = {
             "TOOL_STAR": (DEFAULT_MASS_STAR, DEFAULT_RADIUS_STAR, 0.0, float(BODY_TYPE_STAR)),
             "TOOL_PLANET": (DEFAULT_MASS_PLANET, DEFAULT_RADIUS_PLANET, 0.0, float(BODY_TYPE_PLANET)),
@@ -338,6 +397,13 @@ class HUDManager:
             if action:
                 return action
 
+        # 自定义粒子参数按钮
+        for btn in self.custom_param_buttons:
+            if btn.visible:
+                action = btn.handle_event(event)
+                if action:
+                    return action
+
         # 时间控制事件
         for btn in self.time_buttons:
             action = btn.handle_event(event)
@@ -355,6 +421,11 @@ class HUDManager:
         self.active_tool = tool
         for btn in self.tool_buttons:
             btn.active = (btn.action == tool)
+        # 自定义粒子工具激活时显示参数调节按钮
+        is_custom = (tool == "TOOL_CUSTOM")
+        self._custom_params_visible = is_custom
+        for btn in self.custom_param_buttons:
+            btn.visible = is_custom
 
     def set_play_pause_state(self, is_paused: bool) -> None:
         """设置播放/暂停状态。
@@ -393,6 +464,8 @@ class HUDManager:
         """
         self._draw_info_panel(surface)
         self._draw_toolbar(surface)
+        if self._custom_params_visible:
+            self._draw_custom_param_panel(surface)
         self._draw_time_controls(surface)
         self._draw_active_tool_indicator(surface)
         self._draw_selected_info_bar(surface)
@@ -475,6 +548,50 @@ class HUDManager:
             hint = self.get_tool_display_name(self.active_tool)
             hint_surf = self._font_small.render(hint, True, TEXT_HIGHLIGHT)
             surface.blit(hint_surf, (5, 55))
+
+    def _draw_custom_param_panel(self, surface: pygame.Surface) -> None:
+        """绘制自定义粒子参数调节面板。
+
+        Args:
+            surface: 目标 Surface
+        """
+        px, py = 55, 95
+        pw, ph = 220, 90
+
+        # 背景
+        panel_surf = pygame.Surface((pw, ph), pygame.SRCALPHA)
+        panel_surf.fill(PANEL_BG)
+        surface.blit(panel_surf, (px, py))
+        pygame.draw.rect(surface, PANEL_BORDER, (px, py, pw, ph), 1, border_radius=4)
+
+        line_h = 24
+        # Mass
+        mass_label = self._font_small.render("Mass", True, LABEL_COLOR)
+        surface.blit(mass_label, (px + 8, py + 4))
+        mass_val = self._font_small.render(f"{self.custom_mass:.1e} kg", True, TEXT_COLOR)
+        surface.blit(mass_val, (px + 60, py + 4))
+
+        # Charge
+        chg_label = self._font_small.render("Charge", True, LABEL_COLOR)
+        surface.blit(chg_label, (px + 8, py + 4 + line_h))
+        chg_val = self._font_small.render(f"{self.custom_charge:+.1e} C", True, TEXT_COLOR)
+        surface.blit(chg_val, (px + 60, py + 4 + line_h))
+
+        # Speed
+        spd_label = self._font_small.render("Speed", True, LABEL_COLOR)
+        surface.blit(spd_label, (px + 8, py + 4 + line_h * 2))
+        spd_val = self._font_small.render(f"{self.custom_speed:.1e} m/s", True, TEXT_COLOR)
+        surface.blit(spd_val, (px + 60, py + 4 + line_h * 2))
+
+        # Radius hint
+        pixel_radius = CUSTOM_RADIUS_FACTOR * (self.custom_mass / CUSTOM_MASS_DEFAULT) ** 0.5
+        pixel_radius = max(2.0, min(pixel_radius, 30.0))
+        rad_hint = self._font_small.render(f"R: {pixel_radius:.0f}px", True, (140, 140, 160))
+        surface.blit(rad_hint, (px + 130, py + 4 + line_h * 2))
+
+        # 按钮
+        for btn in self.custom_param_buttons:
+            btn.draw(surface)
 
     def _draw_time_controls(self, surface: pygame.Surface) -> None:
         """绘制时间控制按钮。

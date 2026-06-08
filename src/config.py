@@ -100,6 +100,28 @@ DEFAULT_MASS_CHARGED: float = 1.0e10
 DEFAULT_CHARGE_CHARGED: float = 1.0e6
 
 # ============================================================================
+# 自定义粒子常量 (Custom Particle)
+# ============================================================================
+
+# 自定义粒子的默认质量 (kg)
+CUSTOM_MASS_DEFAULT: float = 1.0e25
+# 自定义粒子的默认电荷 (C)
+CUSTOM_CHARGE_DEFAULT: float = 0.0
+# 自定义粒子的默认速度 (m/s)
+CUSTOM_SPEED_DEFAULT: float = 1.0e4
+# 自定义粒子的质量调整步进 (倍数)
+CUSTOM_MASS_STEP: float = 10.0
+# 自定义粒子的电荷步进 (C)
+CUSTOM_CHARGE_STEP: float = 1.0e5
+# 自定义粒子的速度步进 (倍数)
+CUSTOM_SPEED_STEP: float = 2.0
+# 自定义粒子半径公式系数: radius = CUSTOM_RADIUS_FACTOR * sqrt(mass / 1e25) (像素)
+CUSTOM_RADIUS_FACTOR: float = 6.0
+# 自定义粒子质量范围
+CUSTOM_MASS_MIN: float = 1.0e3
+CUSTOM_MASS_MAX: float = 1.0e30
+
+# ============================================================================
 # 游戏常量 (Game)
 # ============================================================================
 
