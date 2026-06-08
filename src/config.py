@@ -1,213 +1,216 @@
-"""MiniSFS 游戏全局配置与常量。
+"""MiniSFS global configuration and constants.
 
-此文件存放所有可调的游戏常量。各模块通过 ``from src.config import ...`` 导入使用。
-常量分为物理、渲染、四叉树、游戏、输入等类别，按字母顺序组织在每个类别中。
+This file holds all tunable game constants. Modules import them via
+``from src.config import ...``. Constants are grouped by category
+(physics, rendering, quadtree, game, input, UX) and sorted alphabetically
+within each group.
 """
 
 # ============================================================================
-# 物理常量 (Physics)
+# Physics Constants
 # ============================================================================
 
-# 万有引力常数 (N m^2 / kg^2)
+# Gravitational constant (N m^2 / kg^2)
 GRAVITATIONAL_CONSTANT: float = 6.67430e-11
 
-# 库仑常数 (N m^2 / C^2)
+# Coulomb constant (N m^2 / C^2)
 COULOMB_CONSTANT: float = 8.987551787e9
 
-# 默认物理更新时间步 (秒)
+# Default physics time step (seconds)
 TIME_STEP: float = 1.0 / 60.0
 
-# 最大物理更新时间步，防止大 dt 导致物体穿越 (秒)
+# Maximum physics time step — prevents tunneling at large dt (seconds)
 TIME_STEP_MAX: float = 1.0 / 30.0
 
-# 软化参数 (m) — 防止距离过近时引力发散
+# Softening parameter (m) — prevents force divergence at close distances
 SOFTENING: float = 1.0
 
-# 物理子步数 — 每帧将 dt 拆分为子步以提高稳定性
+# Physics sub-steps per frame — splits dt for better stability
 SUBSTEPS: int = 4
 
-# 最小允许质量 (kg) — 低于此值会被移除
+# Minimum allowed mass (kg) — bodies below this are removed
 MIN_MASS: float = 1.0
 
 # ============================================================================
-# 渲染常量 (Rendering)
+# Rendering Constants
 # ============================================================================
 
-# 窗口尺寸 (像素)
+# Window dimensions (pixels)
 WINDOW_WIDTH: int = 1280
 WINDOW_HEIGHT: int = 720
 
-# 目标帧率 (FPS)
+# Target frame rate (FPS)
 TARGET_FPS: int = 60
 
-# 背景颜色 (RGB)
+# Background color (RGB)
 BACKGROUND_COLOR: tuple[int, int, int] = (10, 10, 30)
 
-# 世界单位/像素比 (m per pixel) — 取决于模拟规模
-WORLD_SCALE: float = 8.0e5  # 1 像素 = 800 km
+# World scale factor (m per pixel) — depends on simulation scale
+WORLD_SCALE: float = 8.0e5  # 1 pixel = 800 km
 
 # ============================================================================
-# 四叉树常量 (Quadtree)
+# Quadtree Constants
 # ============================================================================
 
-# Barnes-Hut 近似阈值 θ (s / d < theta 时使用质心近似)
+# Barnes-Hut approximation threshold theta (s/d < theta → use COM approximation)
 BARNES_HUT_THETA: float = 0.5
 
-# 四叉树每个节点最大容量 (超过则分裂)
+# Maximum points per quadtree node before subdivision
 QUADTREE_CAPACITY: int = 4
 
-# 是否强制使用四叉树 (否则在 N < 50 时退化为 O(n^2))
+# Force quadtree usage (otherwise fall back to O(n^2) when N < 50)
 QUADTREE_FORCE_ENABLED: bool = False
 
-# 四叉树碰撞检测宽阶段阈值 - 活跃天体数 >= 此值时启用四叉树宽阶段
+# Collision broad-phase threshold — enable quadtree when active bodies >= this value
 QUADTREE_COLLISION_THRESHOLD: int = 50
 
 # ============================================================================
-# 尾迹 / 轨迹常量 (Trail)
+# Trail / Trajectory Constants
 # ============================================================================
 
-# 每个天体最大轨迹点数 (帧)
+# Maximum trail points per body (frames)
 MAX_TRAIL_LENGTH: int = 300
 
-# 尾迹颜色 — 速度从慢到快的渐变 (RGB)
-TRAIL_COLOR_SLOW: tuple[int, int, int] = (50, 150, 255)    # 冷色
-TRAIL_COLOR_FAST: tuple[int, int, int] = (255, 150, 50)    # 暖色
+# Trail color gradient — slow to fast speed (RGB)
+TRAIL_COLOR_SLOW: tuple[int, int, int] = (50, 150, 255)    # cool
+TRAIL_COLOR_FAST: tuple[int, int, int] = (255, 150, 50)    # warm
 
-# 尾迹透明度 (0-255)
+# Trail alpha values (0-255)
 TRAIL_ALPHA_NEW: int = 200
 TRAIL_ALPHA_OLD: int = 30
 
 # ============================================================================
-# 天体类型常量 (Body Types)
+# Body Type Constants
 # ============================================================================
 
-# 天体类型枚举值 (存于 BodyState 数组的第 BODY_TYPE 列)
-BODY_TYPE_STAR: int = 0      # 恒星 — 大质量发光
-BODY_TYPE_PLANET: int = 1    # 行星 — 普通天体
-BODY_TYPE_PROBE: int = 2     # 探测器 — 玩家可控
-BODY_TYPE_CHARGED: int = 3   # 带电粒子 — 受库仑力影响
+# Body type enum values (stored in the BODY_TYPE column of BodyState array)
+BODY_TYPE_STAR: int = 0      # star — massive, luminous
+BODY_TYPE_PLANET: int = 1    # planet — ordinary body
+BODY_TYPE_PROBE: int = 2     # probe — player-controlled
+BODY_TYPE_CHARGED: int = 3   # charged particle — affected by Coulomb force
 
-# 不同类型天体的默认半径 (像素)
+# Default body radii (pixels)
 DEFAULT_RADIUS_STAR: float = 875.0     # 7e8 m = 7e5 km @ 800 km/px
 DEFAULT_RADIUS_PLANET: float = 8.0
 DEFAULT_RADIUS_PROBE: float = 1.0
 DEFAULT_RADIUS_CHARGED: float = 6.0
 
-# 不同类型天体的默认质量 (kg)
+# Default body masses (kg)
 DEFAULT_MASS_STAR: float = 2.0e30
 DEFAULT_MASS_PLANET: float = 6.0e26
 DEFAULT_MASS_PROBE: float = 1.0
 DEFAULT_MASS_CHARGED: float = 1.0e10
 
-# 不同类型天体的默认电荷 (C)
+# Default body charges (C)
 DEFAULT_CHARGE_CHARGED: float = 1.0e6
 
 # ============================================================================
-# 自定义粒子常量 (Custom Particle)
+# Custom Particle Constants
 # ============================================================================
 
-# 自定义粒子的默认质量 (kg)
+# Default custom particle mass (kg)
 CUSTOM_MASS_DEFAULT: float = 1.0e26
-# 自定义粒子的默认电荷 (C)
+# Default custom particle charge (C)
 CUSTOM_CHARGE_DEFAULT: float = 0.0
-# 自定义粒子的默认速度 (m/s)
+# Default custom particle speed (m/s)
 CUSTOM_SPEED_DEFAULT: float = 1.0e4
-# 自定义粒子的默认半径 (m) — 地球半径 6400 km
+# Default custom particle radius (m) — Earth radius 6400 km
 CUSTOM_RADIUS_DEFAULT: float = 6.4e6
-# 自定义粒子的质量调整步进 (倍数)
+# Custom particle mass adjustment step (multiplier)
 CUSTOM_MASS_STEP: float = 10.0
-# 自定义粒子的电荷步进 (C)
+# Custom particle charge step (C)
 CUSTOM_CHARGE_STEP: float = 1.0e5
-# 自定义粒子的速度步进 (倍数)
+# Custom particle speed adjustment step (multiplier)
 CUSTOM_SPEED_STEP: float = 2.0
-# 自定义粒子半径公式系数: radius = CUSTOM_RADIUS_FACTOR * sqrt(mass / 1e25) (像素)
+# Custom particle radius formula: radius = CUSTOM_RADIUS_FACTOR * sqrt(mass / 1e25) (pixels)
 CUSTOM_RADIUS_FACTOR: float = 6.0
-# 自定义粒子质量范围
+# Custom particle mass range
 CUSTOM_MASS_MIN: float = 1.0e3
 CUSTOM_MASS_MAX: float = 1.0e30
 
-# 自定义粒子箭头最大长度 (像素)
+# Custom particle arrow maximum length (pixels)
 CUSTOM_ARROW_MAX_LENGTH: float = 40.0
 
-# 简单放置工具（Star/Planet/Probe）速度/像素转换系数 (m/s per pixel)
+# Simple placement tool (Star/Planet/Probe) speed-per-pixel factor (m/s per pixel)
 PLACEMENT_SPEED_PER_PX: float = 500.0
 
-# 轨迹预览常量
-DASH_GAP: float = 4.0       # 重采样间距（像素）
-DASH_ON: float = 6.0        # 虚线画多少像素
-DASH_OFF: float = 6.0       # 虚线跳多少像素
-MAX_TRAJECTORY_STEPS: int = 2000  # 最大积分步数
-ESCAPE_RATIO: float = 50.0  # 逃逸判定：距离超过初始距离的倍数
+# Trajectory preview constants
+DASH_GAP: float = 4.0       # Resampling gap (pixels)
+DASH_ON: float = 6.0        # Dash length (pixels)
+DASH_OFF: float = 6.0       # Gap length (pixels)
+MAX_TRAJECTORY_STEPS: int = 2000  # Maximum integration steps
+ESCAPE_RATIO: float = 50.0  # Escape threshold: distance > initial_dist * ESCAPE_RATIO
 
 # ============================================================================
-# 游戏常量 (Game)
+# Game Constants
 # ============================================================================
 
-# 游戏状态枚举值
+# Game state enum values
 GAME_STATE_MENU: str = "MENU"
 GAME_STATE_PLAYING: str = "PLAYING"
 GAME_STATE_PAUSED: str = "PAUSED"
 GAME_STATE_WIN: str = "WIN"
 GAME_STATE_LOSE: str = "LOSE"
 
-# 关卡文件扩展名
+# Level file extension
 LEVEL_FILE_EXTENSION: str = ".json"
 
-# 关卡目录路径 (相对于项目根目录)
+# Level directory path (relative to project root)
 LEVEL_DIR: str = "assets/levels"
 
-# 目标区域判定半径 (像素)
+# Target zone detection radius (pixels)
 TARGET_ZONE_RADIUS: float = 15.0
 
-# 探测器燃料上限 (秒)
+# Probe fuel cap (seconds)
 PROBE_FUEL_MAX: float = 10.0
 
-# 评分权重
+# Score weights
 SCORE_WEIGHT_TIME: float = 0.3
 SCORE_WEIGHT_FUEL: float = 0.3
 SCORE_WEIGHT_BODIES: float = 0.4
 
 # ============================================================================
-# 输入常量 (Input)
+# Input Constants
 # ============================================================================
 
-# 相机移动速度 (像素/秒)
+# Camera pan speed (pixels/second)
 CAMERA_PAN_SPEED: float = 500.0
 
-# 相机缩放速度 (每滚轮步)
+# Camera zoom speed (per scroll step)
 CAMERA_ZOOM_SPEED: float = 0.1
 
-# 相机最小/最大缩放倍数
+# Camera min/max zoom levels
 CAMERA_ZOOM_MIN: float = 0.0005
 CAMERA_ZOOM_MAX: float = 500.0
 
-# 鼠标拖拽选择半径 (像素)
+# Mouse click selection radius (pixels)
 CLICK_SELECTION_RADIUS: float = 10.0
 
 # ============================================================================
-# 体验优化常量 (UX)
+# UX Optimization Constants
 # ============================================================================
 
-# 网格覆盖层
-GRID_COLOR: tuple[int, int, int] = (40, 40, 80)     # 网格线颜色
-GRID_ALPHA: int = 120                                 # 网格透明度
+# Grid overlay
+GRID_COLOR: tuple[int, int, int] = (40, 40, 80)     # Grid line color
+GRID_ALPHA: int = 120                                 # Grid transparency
 
-# 比例尺
-SCALE_BAR_X: int = 20                                 # 距右侧偏移 (像素)
-SCALE_BAR_Y: int = 75                                 # 距底部偏移 (像素)，在时控栏上方
-SCALE_BAR_HEIGHT: int = 4                             # 比例尺条高度 (像素)
+# Scale bar
+SCALE_BAR_X: int = 20                                 # Offset from right (pixels)
+SCALE_BAR_Y: int = 75                                 # Offset from bottom (pixels), above controls
+SCALE_BAR_HEIGHT: int = 4                             # Scale bar height (pixels)
 
-# 平滑相机跟随因子 (0~1, 越小越平滑)
-# 参考系下每帧以该比例逼近目标位置，高速运动需较大值减少偏移
+# Smooth camera follow factor (0~1, smaller = smoother)
+# Under reference frame, the camera approaches the target by this ratio each frame.
+# High-speed targets need a larger value to reduce lag.
 CAMERA_FOLLOW_LERP: float = 0.5
 
-# 天体标签
-LABEL_FONT_SIZE: int = 12                             # 标签字号
-LABEL_OFFSET_Y: int = -12                             # 标签在天体上方偏移 (像素)
-LABEL_MIN_SCREEN_RADIUS: float = 3.0                  # 天体屏幕半径小于此值时不显示标签
-LABEL_BG_ALPHA: int = 100                             # 标签背景透明度
+# Body labels
+LABEL_FONT_SIZE: int = 12                             # Label font size
+LABEL_OFFSET_Y: int = -12                             # Label offset above body (pixels)
+LABEL_MIN_SCREEN_RADIUS: float = 3.0                  # Minimum screen radius to show label
+LABEL_BG_ALPHA: int = 100                             # Label background transparency
 
-# 默认显示状态（用户可通过快捷键切换）
-SHOW_FPS_DEFAULT: bool = True                         # 默认显示 FPS/信息
-SHOW_GRID_DEFAULT: bool = False                       # 默认不显示网格
-SHOW_LABELS_DEFAULT: bool = False                     # 默认不显示标签
+# Default display states (toggled by hotkeys)
+SHOW_FPS_DEFAULT: bool = True                         # Show FPS/info by default
+SHOW_GRID_DEFAULT: bool = False                       # Grid hidden by default
+SHOW_LABELS_DEFAULT: bool = False                     # Labels hidden by default
