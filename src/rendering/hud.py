@@ -504,15 +504,13 @@ class HUDManager:
         data = self._info_body_data
         lines = [
             ("Pos", f"({data['x']:.2e}, {data['y']:.2e})"),
-            ("Vel", f"({data['vx']:.2e}, {data['vy']:.2e}) m/s"),
+            ("Vx", f"{data['vx']:.2e} m/s"),
+            ("Vy", f"{data['vy']:.2e} m/s"),
             ("Mass", f"{data['mass']:.3e} kg"),
             ("Radius", f"{data['radius']:.2e} m"),
         ]
         if self._info_body_type == BODY_TYPE_CHARGED:
             lines.append(("Charge", f"{data['charge']:.2e} C"))
-
-        speed = math.sqrt(data['vx']**2 + data['vy']**2)
-        lines.append(("Speed", f"{speed:.2e} m/s"))
 
         if data.get('static', 0) == 1.0:
             lines.append(("Fixed", "Static"))
