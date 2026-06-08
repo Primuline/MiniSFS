@@ -77,6 +77,9 @@ def compute_gravitational_forces(
 
     # Squared distance + softening^2 (avoid division by zero)
     r_squared = np.sum(delta ** 2, axis=-1) + softening ** 2          # (N, N)
+    # Prevent zero on diagonal (self-interaction) even when softening=0,
+    # which would otherwise produce inf*0=NaN and pollute all force vectors.
+    np.fill_diagonal(r_squared, max(softening ** 2, 1e-30))
     r = np.sqrt(r_squared)                                             # (N, N)
 
     # Force magnitude: F = G * m_i * m_j / r^2
@@ -136,6 +139,8 @@ def compute_coulomb_forces(
 
     delta = positions[:, np.newaxis, :] - positions[np.newaxis, :, :]  # (N, N, 2)
     r_squared = np.sum(delta ** 2, axis=-1) + softening ** 2          # (N, N)
+    # Prevent zero on diagonal (self-interaction) even when softening=0
+    np.fill_diagonal(r_squared, max(softening ** 2, 1e-30))
     r = np.sqrt(r_squared)                                             # (N, N)
 
     # Coulomb force: F = k * q_i * q_j / r^2 (positive = repulsion, negative = attraction)

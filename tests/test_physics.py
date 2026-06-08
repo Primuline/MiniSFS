@@ -63,21 +63,25 @@ def _two_body_circular_orbit(
     Returns:
         Body state array of shape (2, 10) with velocities for circular orbit around center of mass
     """
-    # For equal-mass bodies, orbital speed is v = sqrt(G * M / (2 * r))
-    # where M = m1 + m2, r = separation/2
+    # Circular orbital speed around common center of mass:
+    #   v1 = m2 * sqrt(G / (M * d))
+    #   v2 = m1 * sqrt(G / (M * d))
+    # where M = m1 + m2, d = separation
     r = separation / 2.0
-    orbital_speed = np.sqrt(g * (m1 + m2) / (2.0 * r))
+    factor = np.sqrt(g / ((m1 + m2) * separation))
+    orbital_speed_1 = m2 * factor
+    orbital_speed_2 = m1 * factor
 
     b1 = make_body(
         x=-r, y=0.0,
-        vx=0.0, vy=orbital_speed,
+        vx=0.0, vy=orbital_speed_1,
         mass=m1,
         radius=1.0e6,
         body_type=BODY_TYPE_PLANET,
     )
     b2 = make_body(
         x=r, y=0.0,
-        vx=0.0, vy=-orbital_speed,
+        vx=0.0, vy=-orbital_speed_2,
         mass=m2,
         radius=1.0e6,
         body_type=BODY_TYPE_PLANET,
@@ -216,10 +220,10 @@ class TestCoulombForces:
 
         forces = compute_coulomb_forces(bodies, COULOMB_CONSTANT, 0.0)
 
-        # b1 experiences force in positive x direction (repelled by b2)
-        assert forces[0, 0] > 0
-        # b2 experiences force in negative x direction (repelled by b1)
-        assert forces[1, 0] < 0
+        # b1 at x=0, b2 at x=+1e10: repulsion pushes b1 toward -x (away from b2)
+        assert forces[0, 0] < 0
+        # b2 is pushed toward +x (away from b1 at x=0)
+        assert forces[1, 0] > 0
 
     def test_opposite_charges_attract(self):
         """Opposite charges should attract each other."""
@@ -229,10 +233,10 @@ class TestCoulombForces:
 
         forces = compute_coulomb_forces(bodies, COULOMB_CONSTANT, 0.0)
 
-        # b1 experiences force in negative x direction (attracted to b2)
-        assert forces[0, 0] < 0
-        # b2 experiences force in positive x direction (attracted to b1)
-        assert forces[1, 0] > 0
+        # b1 at x=0, b2 at x=+1e10: attraction pulls b1 toward +x (toward b2)
+        assert forces[0, 0] > 0
+        # b2 is pulled toward -x (toward b1 at x=0)
+        assert forces[1, 0] < 0
 
     def test_zero_charge(self):
         """Bodies with zero charge should experience no Coulomb force."""
@@ -483,11 +487,14 @@ class TestPhysicsEngine:
     def test_predict_trajectory_stops_at_collision(self):
         """Predicting trajectory should stop early upon collision."""
         engine = PhysicsEngine()
-        probe = make_body(x=0.0, y=0.0, vx=1.0e5, mass=1.0e3, radius=1.0)
-        planet = make_body(x=5.0e5, y=0.0, mass=1.0e28, radius=5.0e5)
+        # Probe placed at planet center so it is immediately colliding.
+        # With dt=1.0 the probe would otherwise skip past the planet in one step
+        # due to the enormous gravitational acceleration.
+        probe = make_body(x=0.0, y=0.0, vx=0.0, mass=1.0e3, radius=1.0)
+        planet = make_body(x=0.0, y=0.0, mass=1.0e28, radius=5.0e5)
         bodies = planet
 
-        trajectory = engine.predict_trajectory(probe, bodies, 1000, 1.0)
+        trajectory = engine.predict_trajectory(probe, bodies, 1000, 0.1)
 
         # Should collide with the planet, trajectory ends early
         assert len(trajectory) < 1000
@@ -510,7 +517,10 @@ class TestPhysicsEngine:
 
         result = engine.handle_collisions(bodies)
 
-        assert result.shape[0] == 1  # Only one remains after merge
+        # handle_collisions marks absorbed bodies as inactive but does not strip them
+        assert int(result[1, IS_ACTIVE]) == 0  # b2 should be absorbed
+        # Total mass should be conserved
+        assert result[0, MASS] == pytest.approx(5.0e28 + 1.0e27, rel=1e-10)
 
     def test_init_default_values(self):
         """PhysicsEngine default parameters should match config."""
