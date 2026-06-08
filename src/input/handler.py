@@ -46,8 +46,8 @@ class InputHandler(IInputHandler):
 
         # 平移状态
         self.is_panning: bool = False
-        self.pan_start_x: int = 0
-        self.pan_start_y: int = 0
+        self.pan_last_x: int = 0
+        self.pan_last_y: int = 0
         self.pan_camera_center_x: float = 0.0
         self.pan_camera_center_y: float = 0.0
 
@@ -136,8 +136,9 @@ class InputHandler(IInputHandler):
 
             # 拖拽平移
             if self.is_panning:
-                dx = event.pos[0] - self.pan_start_x
-                dy = event.pos[1] - self.pan_start_y
+                dx = event.pos[0] - self.pan_last_x
+                dy = event.pos[1] - self.pan_last_y
+                self.pan_last_x, self.pan_last_y = event.pos
                 return f"PAN:{dx},{dy}"
 
             # 探测器瞄准拖拽
@@ -206,8 +207,7 @@ class InputHandler(IInputHandler):
 
         elif event.button == 2:  # 中键 - 平移
             self.is_panning = True
-            self.pan_start_x = x
-            self.pan_start_y = y
+            self.pan_last_x, self.pan_last_y = event.pos
             return None
 
         elif event.button == 3:  # 右键 - 发射探测器或取消选择
