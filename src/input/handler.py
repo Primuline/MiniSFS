@@ -348,6 +348,7 @@ class InputHandler(IInputHandler):
                 camera.reset()
 
             elif cmd.startswith("PAN:"):
+                # cmd = "PAN:dx,dy" 或 "PAN:100,200"
                 parts = cmd.split(":")
                 if len(parts) >= 2:
                     coords = parts[1].split(",")
@@ -367,13 +368,23 @@ class InputHandler(IInputHandler):
 
             elif cmd.startswith("ZOOM_IN"):
                 parts = cmd.split(":")
-                sx, sy = int(parts[1]), int(parts[2]) if len(parts) == 3 else (camera.width // 2, camera.height // 2)
-                camera.zoom_at(1.0 + CAMERA_ZOOM_SPEED, sx, sy)
+                if len(parts) >= 2:
+                    coords = parts[1].split(",")
+                    if len(coords) == 2:
+                        sx, sy = int(coords[0]), int(coords[1])
+                        camera.zoom_at(1.0 + CAMERA_ZOOM_SPEED, sx, sy)
+                else:
+                    camera.zoom_at(1.0 + CAMERA_ZOOM_SPEED, camera.width // 2, camera.height // 2)
 
             elif cmd.startswith("ZOOM_OUT"):
                 parts = cmd.split(":")
-                sx, sy = int(parts[1]), int(parts[2]) if len(parts) == 3 else (camera.width // 2, camera.height // 2)
-                camera.zoom_at(1.0 - CAMERA_ZOOM_SPEED, sx, sy)
+                if len(parts) >= 2:
+                    coords = parts[1].split(",")
+                    if len(coords) == 2:
+                        sx, sy = int(coords[0]), int(coords[1])
+                        camera.zoom_at(1.0 - CAMERA_ZOOM_SPEED, sx, sy)
+                else:
+                    camera.zoom_at(1.0 - CAMERA_ZOOM_SPEED, camera.width // 2, camera.height // 2)
 
     # ------------------------------------------------------------------
     # 选择检测
