@@ -269,7 +269,7 @@ class Quadtree(IQuadtree):
         Returns:
             插入成功返回 True，超出边界返回 False
         """
-        return self._root.insert(body_id, x, y, 0.0)
+        return self._root.insert(body_id, x, y, 1.0)
 
     def rebuild(self, bodies: np.ndarray) -> None:
         """清空并重建四叉树。
