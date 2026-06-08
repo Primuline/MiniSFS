@@ -452,6 +452,108 @@ class Renderer(IRenderer):
 
         return self._glow_cache[cache_key]
 
+    # ------------------------------------------------------------------
+    # 自定义粒子放置预览方法
+    # ------------------------------------------------------------------
+
+    def draw_placement_preview(
+        self, world_x: float, world_y: float,
+        radius_world: float, camera: ICamera,
+        surface: pygame.Surface,
+    ) -> None:
+        """绘制虚线放置预览圆 + 十字准星。
+
+        Args:
+            world_x: 预览中心世界 x 坐标 (m)
+            world_y: 预览中心世界 y 坐标 (m)
+            radius_world: 预览半径世界坐标 (m)
+            camera: 相机对象
+            surface: 目标绘制 Surface
+        """
+        sx, sy = camera.world_to_screen(world_x, world_y)
+        screen_radius = max(2.0, camera.world_distance_to_screen(radius_world))
+        int_sr = int(screen_radius)
+        isx, isy = int(sx), int(sy)
+
+        color = (200, 200, 255)
+
+        # 虚线圆：32 段，每隔一段绘制
+        num_segments = 32
+        for i in range(0, num_segments, 2):
+            angle1 = 2.0 * math.pi * i / num_segments
+            angle2 = 2.0 * math.pi * (i + 1) / num_segments
+            x1 = isx + int_sr * math.cos(angle1)
+            y1 = isy + int_sr * math.sin(angle1)
+            x2 = isx + int_sr * math.cos(angle2)
+            y2 = isy + int_sr * math.sin(angle2)
+            pygame.draw.line(surface, color, (x1, y1), (x2, y2), 2)
+
+        # 十字准星
+        cross_len = max(5, int_sr // 3)
+        pygame.draw.line(surface, color, (isx - cross_len, isy), (isx + cross_len, isy), 1)
+        pygame.draw.line(surface, color, (isx, isy - cross_len), (isx, isy + cross_len), 1)
+
+        # 中心点
+        pygame.draw.circle(surface, color, (isx, isy), 2)
+
+    def draw_velocity_arrow(
+        self, start_world: Tuple[float, float],
+        end_screen: Tuple[int, int],
+        max_length: float,
+        camera: ICamera,
+        surface: pygame.Surface,
+    ) -> None:
+        """绘制速度方向箭头（橙色）。
+
+        箭头的方向从 start_world 指向鼠标屏幕位置，长度限制为 max_length 像素。
+        超过最大长度时截断但方向不变。
+
+        Args:
+            start_world: 箭头起点的世界坐标 (x, y)
+            end_screen: 箭头终点的屏幕坐标 (sx, sy)
+            max_length: 箭头最大长度（像素）
+            camera: 相机对象
+            surface: 目标绘制 Surface
+        """
+        sx0, sy0 = camera.world_to_screen(start_world[0], start_world[1])
+        ex, ey = end_screen
+
+        dx = ex - sx0
+        dy = ey - sy0
+        dist = math.sqrt(dx * dx + dy * dy)
+
+        if dist < 1.0:
+            return
+
+        # 截断超过最大长度的箭头
+        if dist > max_length:
+            dx = dx / dist * max_length
+            dy = dy / dist * max_length
+            ex = int(sx0 + dx)
+            ey = int(sy0 + dy)
+
+        isx0, isy0 = int(sx0), int(sy0)
+        iex, iey = int(ex), int(ey)
+
+        # 主线条（橙色，宽度 3）
+        arrow_color = (255, 180, 50)
+        pygame.draw.line(surface, arrow_color, (isx0, isy0), (iex, iey), 3)
+
+        # 箭头三角形
+        arrow_size = 12
+        angle = math.atan2(dy, dx)  # 从起点到终点的方向
+        wing_angle = math.atan2(1.0, 1.0)  # 约 45 度（实际是 math.pi/4）
+        wing_offset = math.pi * 5.0 / 6.0  # 150 度，箭头翼向后张开
+
+        wing1_x = iex + arrow_size * math.cos(angle + wing_offset)
+        wing1_y = iey + arrow_size * math.sin(angle + wing_offset)
+        wing2_x = iex + arrow_size * math.cos(angle - wing_offset)
+        wing2_y = iey + arrow_size * math.sin(angle - wing_offset)
+
+        pygame.draw.polygon(surface, arrow_color, [
+            (iex, iey), (int(wing1_x), int(wing1_y)), (int(wing2_x), int(wing2_y))
+        ])
+
     def set_title_fps(self, fps: float) -> None:
         """在窗口标题显示帧率。
 

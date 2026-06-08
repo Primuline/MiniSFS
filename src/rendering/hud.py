@@ -228,26 +228,10 @@ class HUDManager:
         self.custom_mass: float = CUSTOM_MASS_DEFAULT
         self.custom_charge: float = CUSTOM_CHARGE_DEFAULT
         self.custom_speed: float = CUSTOM_SPEED_DEFAULT
-        self._custom_params_visible: bool = False
 
-        # 参数调整按钮 (在工具栏右侧的小面板)
-        param_x = 60
-        param_y = 100
-        param_spacing = 24
-        self.custom_param_buttons: List[Button] = []
-
-        # 质量 - / +
-        self.custom_param_buttons.append(Button(param_x + 145, param_y, 22, 20, "-", "CUSTOM_MASS_DOWN", font_size=12))
-        self.custom_param_buttons.append(Button(param_x + 195, param_y, 22, 20, "+", "CUSTOM_MASS_UP", font_size=12))
-        # 电荷 - / +
-        self.custom_param_buttons.append(Button(param_x + 145, param_y + param_spacing, 22, 20, "-", "CUSTOM_CHARGE_DOWN", font_size=12))
-        self.custom_param_buttons.append(Button(param_x + 195, param_y + param_spacing, 22, 20, "+", "CUSTOM_CHARGE_UP", font_size=12))
-        # 速度 - / +
-        self.custom_param_buttons.append(Button(param_x + 145, param_y + param_spacing*2, 22, 20, "-", "CUSTOM_SPEED_DOWN", font_size=12))
-        self.custom_param_buttons.append(Button(param_x + 195, param_y + param_spacing*2, 22, 20, "+", "CUSTOM_SPEED_UP", font_size=12))
-
-        for btn in self.custom_param_buttons:
-            btn.visible = False
+        # 参数配置弹窗
+        self.custom_dialog_visible: bool = False
+        self.custom_dialog_buttons: List[Button] = []
 
         # ============ 信息面板 ============
         self.info_panel_visible: bool = False
@@ -337,25 +321,6 @@ class HUDManager:
         }
         return mapping.get(tool, BODY_TYPE_PLANET)
 
-    def handle_custom_param(self, cmd: str) -> None:
-        """处理自定义粒子参数调整命令。
-
-        Args:
-            cmd: 命令字符串 (如 CUSTOM_MASS_UP, CUSTOM_CHARGE_DOWN)
-        """
-        if cmd == "CUSTOM_MASS_UP":
-            self.custom_mass = min(self.custom_mass * CUSTOM_MASS_STEP, CUSTOM_MASS_MAX)
-        elif cmd == "CUSTOM_MASS_DOWN":
-            self.custom_mass = max(self.custom_mass / CUSTOM_MASS_STEP, CUSTOM_MASS_MIN)
-        elif cmd == "CUSTOM_CHARGE_UP":
-            self.custom_charge += CUSTOM_CHARGE_STEP
-        elif cmd == "CUSTOM_CHARGE_DOWN":
-            self.custom_charge -= CUSTOM_CHARGE_STEP
-        elif cmd == "CUSTOM_SPEED_UP":
-            self.custom_speed *= CUSTOM_SPEED_STEP
-        elif cmd == "CUSTOM_SPEED_DOWN":
-            self.custom_speed = max(self.custom_speed / CUSTOM_SPEED_STEP, 0.0)
-
     def get_default_body_params(self, tool: str) -> Tuple[float, float, float, float]:
         """获取工具的默认天体参数。
 
@@ -391,18 +356,18 @@ class HUDManager:
         Returns:
             动作字符串（如 "TOOL_STAR", "PLAY_PAUSE"）
         """
+        # 弹窗按钮优先处理（当弹窗可见时）
+        if self.custom_dialog_visible:
+            for btn in self.custom_dialog_buttons:
+                action = btn.handle_event(event)
+                if action:
+                    return action
+
         # 工具栏事件
         for btn in self.tool_buttons:
             action = btn.handle_event(event)
             if action:
                 return action
-
-        # 自定义粒子参数按钮
-        for btn in self.custom_param_buttons:
-            if btn.visible:
-                action = btn.handle_event(event)
-                if action:
-                    return action
 
         # 时间控制事件
         for btn in self.time_buttons:
@@ -421,11 +386,6 @@ class HUDManager:
         self.active_tool = tool
         for btn in self.tool_buttons:
             btn.active = (btn.action == tool)
-        # 自定义粒子工具激活时显示参数调节按钮
-        is_custom = (tool == "TOOL_CUSTOM")
-        self._custom_params_visible = is_custom
-        for btn in self.custom_param_buttons:
-            btn.visible = is_custom
 
     def set_play_pause_state(self, is_paused: bool) -> None:
         """设置播放/暂停状态。
@@ -464,8 +424,8 @@ class HUDManager:
         """
         self._draw_info_panel(surface)
         self._draw_toolbar(surface)
-        if self._custom_params_visible:
-            self._draw_custom_param_panel(surface)
+        if self.custom_dialog_visible:
+            self._draw_custom_dialog(surface)
         self._draw_time_controls(surface)
         self._draw_active_tool_indicator(surface)
         self._draw_selected_info_bar(surface)
@@ -547,49 +507,144 @@ class HUDManager:
             hint_surf = self._font_small.render(hint, True, TEXT_HIGHLIGHT)
             surface.blit(hint_surf, (5, 55))
 
-    def _draw_custom_param_panel(self, surface: pygame.Surface) -> None:
-        """绘制自定义粒子参数调节面板。
+    def create_dialog_buttons(self) -> None:
+        """创建参数配置弹窗的按钮。
+
+        在弹窗显示前调用，创建 +/- 调节按钮和 OK/Cancel 按钮。
+        """
+        self.custom_dialog_buttons.clear()
+
+        cx = self.width // 2
+        cy = self.height // 2
+        pw = 320  # 面板宽度
+        col2_x = cx + 85   # 数值第二列
+        btn_x = cx + 135   # +/- 按钮列 X 起始
+        row_start = cy - 50
+        row_spacing = 30
+
+        # Mass +/- (row 0)
+        self.custom_dialog_buttons.append(
+            Button(btn_x, row_start, 24, 22, "-", "CUSTOM_DIALOG_MASS_DOWN", font_size=12)
+        )
+        self.custom_dialog_buttons.append(
+            Button(btn_x + 28, row_start, 24, 22, "+", "CUSTOM_DIALOG_MASS_UP", font_size=12)
+        )
+
+        # Charge +/- (row 1)
+        self.custom_dialog_buttons.append(
+            Button(btn_x, row_start + row_spacing, 24, 22, "-", "CUSTOM_DIALOG_CHARGE_DOWN", font_size=12)
+        )
+        self.custom_dialog_buttons.append(
+            Button(btn_x + 28, row_start + row_spacing, 24, 22, "+", "CUSTOM_DIALOG_CHARGE_UP", font_size=12)
+        )
+
+        # Speed +/- (row 2)
+        self.custom_dialog_buttons.append(
+            Button(btn_x, row_start + row_spacing * 2, 24, 22, "-", "CUSTOM_DIALOG_SPEED_DOWN", font_size=12)
+        )
+        self.custom_dialog_buttons.append(
+            Button(btn_x + 28, row_start + row_spacing * 2, 24, 22, "+", "CUSTOM_DIALOG_SPEED_UP", font_size=12)
+        )
+
+        # OK / Cancel 按钮
+        ok_x = cx - 75
+        cancel_x = cx + 15
+        btn_y = row_start + row_spacing * 3 + 10
+
+        self.custom_dialog_buttons.append(
+            Button(ok_x, btn_y, 60, 28, "OK", "CUSTOM_DIALOG_OK", font_size=14,
+                   color=(40, 80, 40), hover_color=(60, 140, 60))
+        )
+        self.custom_dialog_buttons.append(
+            Button(cancel_x, btn_y, 60, 28, "Cancel", "CUSTOM_DIALOG_CANCEL", font_size=14,
+                   color=(80, 40, 40), hover_color=(140, 60, 60))
+        )
+
+    def destroy_dialog_buttons(self) -> None:
+        """销毁参数配置弹窗的按钮。"""
+        self.custom_dialog_buttons.clear()
+
+    def _compute_custom_radius(self) -> float:
+        """计算自定义粒子的像素半径。
+
+        Returns:
+            像素半径，范围 [2, 30]
+        """
+        pixel_radius = CUSTOM_RADIUS_FACTOR * (self.custom_mass / CUSTOM_MASS_DEFAULT) ** 0.5
+        return max(2.0, min(pixel_radius, 30.0))
+
+    def _draw_custom_dialog(self, surface: pygame.Surface) -> None:
+        """绘制居中参数配置弹窗。
 
         Args:
             surface: 目标 Surface
         """
-        px, py = 55, 95
-        pw, ph = 220, 90
+        cx = self.width // 2
+        cy = self.height // 2
+        pw = 300  # 面板宽度
+        ph = 195  # 面板高度
+        px = cx - pw // 2
+        py = cy - ph // 2
 
-        # 背景
+        # 半透明背景遮罩
+        mask = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        mask.fill((0, 0, 0, 100))
+        surface.blit(mask, (0, 0))
+
+        # 面板背景
         panel_surf = pygame.Surface((pw, ph), pygame.SRCALPHA)
         panel_surf.fill(PANEL_BG)
         surface.blit(panel_surf, (px, py))
-        pygame.draw.rect(surface, PANEL_BORDER, (px, py, pw, ph), 1, border_radius=4)
+        pygame.draw.rect(surface, PANEL_BORDER, (px, py, pw, ph), 2, border_radius=8)
 
-        line_h = 24
-        # Mass
-        mass_label = self._font_small.render("Mass", True, LABEL_COLOR)
-        surface.blit(mass_label, (px + 8, py + 4))
+        # 标题
+        title = "Custom Particle Config"
+        title_surf = self._font_title.render(title, True, TEXT_HIGHLIGHT)
+        tr = title_surf.get_rect(center=(cx, py + 18))
+        surface.blit(title_surf, tr)
+
+        row_start = py + 40
+        row_spacing = 30
+        label_x = px + 15
+        value_x = px + 110
+        btn_area_x = px + 195
+
+        # 计算当前半径
+        pixel_radius = self._compute_custom_radius()
+
+        # Row 0: Mass
+        mass_lbl = self._font_small.render("Mass", True, LABEL_COLOR)
+        surface.blit(mass_lbl, (label_x, row_start + 2))
         mass_val = self._font_small.render(f"{self.custom_mass:.1e} kg", True, TEXT_COLOR)
-        surface.blit(mass_val, (px + 60, py + 4))
+        surface.blit(mass_val, (value_x, row_start + 2))
 
-        # Charge
-        chg_label = self._font_small.render("Charge", True, LABEL_COLOR)
-        surface.blit(chg_label, (px + 8, py + 4 + line_h))
+        # Row 1: Charge
+        chg_lbl = self._font_small.render("Charge", True, LABEL_COLOR)
+        surface.blit(chg_lbl, (label_x, row_start + row_spacing + 2))
         chg_val = self._font_small.render(f"{self.custom_charge:+.1e} C", True, TEXT_COLOR)
-        surface.blit(chg_val, (px + 60, py + 4 + line_h))
+        surface.blit(chg_val, (value_x, row_start + row_spacing + 2))
 
-        # Speed
-        spd_label = self._font_small.render("Speed", True, LABEL_COLOR)
-        surface.blit(spd_label, (px + 8, py + 4 + line_h * 2))
+        # Row 2: Speed
+        spd_lbl = self._font_small.render("Speed", True, LABEL_COLOR)
+        surface.blit(spd_lbl, (label_x, row_start + row_spacing * 2 + 2))
         spd_val = self._font_small.render(f"{self.custom_speed:.1e} m/s", True, TEXT_COLOR)
-        surface.blit(spd_val, (px + 60, py + 4 + line_h * 2))
+        surface.blit(spd_val, (value_x, row_start + row_spacing * 2 + 2))
 
-        # Radius hint
-        pixel_radius = CUSTOM_RADIUS_FACTOR * (self.custom_mass / CUSTOM_MASS_DEFAULT) ** 0.5
-        pixel_radius = max(2.0, min(pixel_radius, 30.0))
-        rad_hint = self._font_small.render(f"R: {pixel_radius:.0f}px", True, (140, 140, 160))
-        surface.blit(rad_hint, (px + 130, py + 4 + line_h * 2))
+        # Row 3: Radius (auto)
+        rad_lbl = self._font_small.render("Radius", True, LABEL_COLOR)
+        surface.blit(rad_lbl, (label_x, row_start + row_spacing * 3 + 2))
+        rad_val = self._font_small.render(f"{pixel_radius:.0f} px (auto)", True, (140, 140, 160))
+        surface.blit(rad_val, (value_x, row_start + row_spacing * 3 + 2))
 
-        # 按钮
-        for btn in self.custom_param_buttons:
+        # 绘制按钮
+        for btn in self.custom_dialog_buttons:
             btn.draw(surface)
+
+        # 提示信息
+        hint = "Esc to cancel"
+        hint_surf = self._font_small.render(hint, True, (120, 120, 140))
+        hr = hint_surf.get_rect(center=(cx, py + ph - 12))
+        surface.blit(hint_surf, hr)
 
     def _draw_time_controls(self, surface: pygame.Surface) -> None:
         """绘制时间控制按钮。

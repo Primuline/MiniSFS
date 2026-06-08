@@ -66,8 +66,8 @@ class TrailBuffer(ITrailBuffer):
             dq = self._trails[body_id]
             if dq:
                 lx, ly = dq[-1]
-                # 1e12m ≈ 10 个轨道半径，远超一帧内的正常位移
-                if (x - lx) ** 2 + (y - ly) ** 2 > 1e24:
+                # 检测 body_id 复用：正常位移 < 1e10m，数组压缩导致的跳跃 > 1e11m
+                if (x - lx) ** 2 + (y - ly) ** 2 > 1e20:
                     dq.clear()
         self._trails[body_id].append((float(x), float(y)))
 

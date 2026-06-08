@@ -19,6 +19,12 @@ from src.config import (
     BODY_TYPE_PLANET,
     BODY_TYPE_PROBE,
     BODY_TYPE_STAR,
+    CUSTOM_ARROW_MAX_LENGTH,
+    CUSTOM_CHARGE_STEP,
+    CUSTOM_MASS_MAX,
+    CUSTOM_MASS_MIN,
+    CUSTOM_MASS_STEP,
+    CUSTOM_SPEED_STEP,
     DEFAULT_CHARGE_CHARGED,
     DEFAULT_MASS_CHARGED,
     DEFAULT_MASS_PLANET,
@@ -275,6 +281,7 @@ def main() -> None:
     # 抓取拖拽状态
     is_grabbing = False
     grabbed_body_id: Optional[int] = None
+    _grab_actually_dragged = False  # 是否真的拖拽了（区分点击选择 vs 抓取）
 
     # 当前选中天体
     selected_body_id: Optional[int] = None
@@ -283,6 +290,31 @@ def main() -> None:
     predicted_trajectory: Optional[np.ndarray] = None
     _prediction_frame_counter: int = 0  # 仅每 N 帧重新计算预测轨迹
     _last_predicted_body_id: Optional[int] = None  # 跟踪上次选中的探测器 ID
+
+    # 自定义粒子放置流程状态
+    # 0=未激活, 1=弹窗配置, 2=选择位置, 3=设定速度
+    custom_placement_stage: int = 0
+    custom_preview_pos: Optional[Tuple[float, float]] = None  # 预览圆世界坐标
+    custom_arrow_start: Optional[Tuple[float, float]] = None   # 箭头起点（=预览圆位置）
+
+    # ==================================================================
+    # 辅助函数
+    # ==================================================================
+
+    def _cancel_custom_placement() -> None:
+        """取消自定义粒子放置流程，恢复时间和工具状态。"""
+        nonlocal custom_placement_stage, custom_preview_pos, custom_arrow_start
+        nonlocal active_tool, is_paused
+        custom_placement_stage = 0
+        custom_preview_pos = None
+        custom_arrow_start = None
+        hud.custom_dialog_visible = False
+        hud.destroy_dialog_buttons()
+        if active_tool == "TOOL_CUSTOM":
+            active_tool = None
+            hud.set_tool_active(None)
+        is_paused = False
+        hud.set_play_pause_state(False)
 
     # ==================================================================
     # 主循环
@@ -307,6 +339,9 @@ def main() -> None:
                     continue
                 # 时间控制的事件也跳过 InputHandler
                 if hud_cmd in ("PLAY_PAUSE", "FAST_2X", "FAST_4X", "REWIND"):
+                    continue
+                # 自定义粒子弹窗命令跳过 InputHandler
+                if hud_cmd.startswith("CUSTOM_DIALOG_"):
                     continue
 
             # InputHandler 处理（传入 bodies 和 camera 用于抓取检测）
@@ -400,20 +435,97 @@ def main() -> None:
             # --- 工具选择 ---
             elif cmd.startswith("TOOL_"):
                 if active_tool == cmd:
-                    active_tool = None  # 取消选择
+                    # 取消选择工具
+                    if custom_placement_stage > 0:
+                        _cancel_custom_placement()
+                    active_tool = None
                 else:
+                    # 如果之前有工具处于放置中，先取消
+                    if custom_placement_stage > 0:
+                        _cancel_custom_placement()
                     active_tool = cmd
+                    # 自定义粒子工具：冻结时间 + 打开参数弹窗
+                    if cmd == "TOOL_CUSTOM":
+                        is_paused = True
+                        hud.set_play_pause_state(True)
+                        custom_placement_stage = 1
+                        hud.custom_dialog_visible = True
+                        hud.create_dialog_buttons()
                 hud.set_tool_active(active_tool)
 
-            # --- 自定义粒子参数调节 ---
-            elif cmd.startswith("CUSTOM_"):
-                hud.handle_custom_param(cmd)
+            # --- 自定义粒子弹窗命令 ---
+            elif cmd.startswith("CUSTOM_DIALOG_"):
+                if cmd == "CUSTOM_DIALOG_OK":
+                    # 关闭弹窗，进入放置预览阶段
+                    hud.custom_dialog_visible = False
+                    hud.destroy_dialog_buttons()
+                    custom_placement_stage = 2
+                elif cmd == "CUSTOM_DIALOG_CANCEL":
+                    # 取消整个操作
+                    _cancel_custom_placement()
+                elif cmd == "CUSTOM_DIALOG_MASS_UP":
+                    hud.custom_mass = min(hud.custom_mass * CUSTOM_MASS_STEP, CUSTOM_MASS_MAX)
+                elif cmd == "CUSTOM_DIALOG_MASS_DOWN":
+                    hud.custom_mass = max(hud.custom_mass / CUSTOM_MASS_STEP, CUSTOM_MASS_MIN)
+                elif cmd == "CUSTOM_DIALOG_CHARGE_UP":
+                    hud.custom_charge += CUSTOM_CHARGE_STEP
+                elif cmd == "CUSTOM_DIALOG_CHARGE_DOWN":
+                    hud.custom_charge -= CUSTOM_CHARGE_STEP
+                elif cmd == "CUSTOM_DIALOG_SPEED_UP":
+                    hud.custom_speed *= CUSTOM_SPEED_STEP
+                elif cmd == "CUSTOM_DIALOG_SPEED_DOWN":
+                    hud.custom_speed = max(hud.custom_speed / CUSTOM_SPEED_STEP, 0.0)
 
             # --- 鼠标点击 ---
             elif cmd.startswith("CLICK:"):
                 parts = cmd.split(":")
                 sx_str = parts[1].split(",")
                 sx, sy = int(sx_str[0]), int(sx_str[1])
+
+                # 自定义粒子放置流程的点击处理
+                if custom_placement_stage >= 2:
+                    world_x, world_y = camera.screen_to_world(sx, sy)
+
+                    if custom_placement_stage == 2:
+                        # 阶段 2：固定预览位置，进入速度设定阶段
+                        custom_preview_pos = (world_x, world_y)
+                        custom_arrow_start = (world_x, world_y)
+                        custom_placement_stage = 3
+                    elif custom_placement_stage == 3:
+                        # 阶段 3：放置天体
+                        if custom_preview_pos is not None and custom_arrow_start is not None:
+                            px, py = custom_preview_pos
+                            radius_pixels = hud._compute_custom_radius()
+                            new_body = make_body(
+                                x=px, y=py,
+                                vx=0.0, vy=0.0,
+                                mass=hud.custom_mass,
+                                radius=radius_pixels * WORLD_SCALE,
+                                charge=hud.custom_charge,
+                                body_type=BODY_TYPE_PLANET,
+                            )
+                            bodies = add_body_to_array(bodies, new_body)
+
+                            # 计算速度
+                            sx0, sy0 = camera.world_to_screen(px, py)
+                            dx_screen = float(sx) - sx0
+                            dy_screen = float(sy) - sy0
+                            arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
+                            if arrow_dist > 0:
+                                clamped_dist = min(arrow_dist, CUSTOM_ARROW_MAX_LENGTH)
+                                actual_speed = hud.custom_speed * (clamped_dist / CUSTOM_ARROW_MAX_LENGTH)
+                                ux = dx_screen / arrow_dist
+                                uy = dy_screen / arrow_dist
+                                bodies[-1, VX] = ux * actual_speed
+                                bodies[-1, VY] = uy * actual_speed
+
+                        # 清理放置状态
+                        _cancel_custom_placement()
+                    continue
+
+                # 弹窗阶段（stage 1）忽略所有点击
+                if custom_placement_stage == 1:
+                    continue
 
                 # 检查是否在 UI 区域
                 if sx < 50 or sy > WINDOW_HEIGHT - 50:  # 工具栏或控制栏区域
@@ -433,10 +545,6 @@ def main() -> None:
                         body_type=int(body_type),
                     )
                     bodies = add_body_to_array(bodies, new_body)
-
-                    # 自定义粒子：使用面板配置的速度（方向向上）
-                    if active_tool == "TOOL_CUSTOM":
-                        bodies[-1, VY] = -hud.custom_speed  # 向上发射
 
                     # 如果放置的是探测器，选择它并允许瞄准
                     if int(body_type) == BODY_TYPE_PROBE:
@@ -464,6 +572,49 @@ def main() -> None:
                 sx_str = parts[1].split(",")
                 body_id = int(sx_str[0])
                 sx, sy = int(sx_str[1]), int(sx_str[2])
+
+                # 自定义粒子放置流程的点击处理（与 CLICK 相同的阶段逻辑）
+                if custom_placement_stage >= 2:
+                    input_handler.reset_grab()
+                    world_x, world_y = camera.screen_to_world(sx, sy)
+
+                    if custom_placement_stage == 2:
+                        custom_preview_pos = (world_x, world_y)
+                        custom_arrow_start = (world_x, world_y)
+                        custom_placement_stage = 3
+                    elif custom_placement_stage == 3:
+                        if custom_preview_pos is not None and custom_arrow_start is not None:
+                            px, py = custom_preview_pos
+                            radius_pixels = hud._compute_custom_radius()
+                            new_body = make_body(
+                                x=px, y=py,
+                                vx=0.0, vy=0.0,
+                                mass=hud.custom_mass,
+                                radius=radius_pixels * WORLD_SCALE,
+                                charge=hud.custom_charge,
+                                body_type=BODY_TYPE_PLANET,
+                            )
+                            bodies = add_body_to_array(bodies, new_body)
+
+                            sx0, sy0 = camera.world_to_screen(px, py)
+                            dx_screen = float(sx) - sx0
+                            dy_screen = float(sy) - sy0
+                            arrow_dist = math.sqrt(dx_screen ** 2 + dy_screen ** 2)
+                            if arrow_dist > 0:
+                                clamped_dist = min(arrow_dist, CUSTOM_ARROW_MAX_LENGTH)
+                                actual_speed = hud.custom_speed * (clamped_dist / CUSTOM_ARROW_MAX_LENGTH)
+                                ux = dx_screen / arrow_dist
+                                uy = dy_screen / arrow_dist
+                                bodies[-1, VX] = ux * actual_speed
+                                bodies[-1, VY] = uy * actual_speed
+
+                        _cancel_custom_placement()
+                    continue
+
+                # 弹窗阶段（stage 1）忽略所有点击
+                if custom_placement_stage == 1:
+                    input_handler.reset_grab()
+                    continue
 
                 if active_tool:
                     # 有工具激活时不进入抓取模式，重置 handler 状态
@@ -505,14 +656,18 @@ def main() -> None:
                     wx, wy = camera.screen_to_world(sx, sy)
                     bodies[grabbed_body_id, X] = wx
                     bodies[grabbed_body_id, Y] = wy
+                _grab_actually_dragged = True
 
             elif cmd == "GRAB_END":
                 if grabbed_body_id is not None:
-                    trail_buffer.clear(grabbed_body_id)  # 清除拖拽产生的跳跃尾迹
-                    bodies[grabbed_body_id, VX] = 0.0
-                    bodies[grabbed_body_id, VY] = 0.0
+                    trail_buffer.clear(grabbed_body_id)
+                    if _grab_actually_dragged:
+                        # 只有真正拖拽了才清零速度，点击选择不归零
+                        bodies[grabbed_body_id, VX] = 0.0
+                        bodies[grabbed_body_id, VY] = 0.0
                 is_grabbing = False
                 grabbed_body_id = None
+                _grab_actually_dragged = False
                 is_paused = False
                 hud.set_play_pause_state(False)
 
@@ -521,6 +676,18 @@ def main() -> None:
                 parts = cmd.split(":")
                 sx_str = parts[1].split(",")
                 sx, sy = int(sx_str[0]), int(sx_str[1])
+
+                # 自定义粒子放置流程的右键处理
+                if custom_placement_stage > 0:
+                    if custom_placement_stage == 3:
+                        # 阶段 3：回到阶段 2（重新选择位置）
+                        custom_placement_stage = 2
+                        custom_preview_pos = None
+                        custom_arrow_start = None
+                    else:
+                        # 阶段 1 或 2：取消整个操作
+                        _cancel_custom_placement()
+                    continue
 
                 # 如果工具激活，取消工具
                 if active_tool:
@@ -604,7 +771,10 @@ def main() -> None:
                     hud.set_selected_body(None, -1)
 
             elif cmd == "MENU":
-                running = False
+                if custom_placement_stage > 0:
+                    _cancel_custom_placement()
+                else:
+                    running = False
 
         # ================================================================
         # 3. 物理更新（固定时间步）
@@ -715,6 +885,31 @@ def main() -> None:
 
         # 渲染
         renderer.render(bodies, trails, camera)
+
+        # 自定义粒子放置预览
+        if custom_placement_stage == 2:
+            # 阶段 2：预览圆跟随鼠标
+            mouse_wx, mouse_wy = input_handler.get_mouse_world_pos(camera)
+            radius_pixels = hud._compute_custom_radius()
+            radius_world = radius_pixels * WORLD_SCALE
+            renderer.draw_placement_preview(
+                mouse_wx, mouse_wy, radius_world, camera, renderer.screen
+            )
+        elif custom_placement_stage == 3 and custom_preview_pos is not None:
+            # 阶段 3：固定预览圆 + 速度方向箭头
+            px, py = custom_preview_pos
+            radius_pixels = hud._compute_custom_radius()
+            radius_world = radius_pixels * WORLD_SCALE
+            renderer.draw_placement_preview(
+                px, py, radius_world, camera, renderer.screen
+            )
+            renderer.draw_velocity_arrow(
+                (px, py),
+                (input_handler.mouse_screen_x, input_handler.mouse_screen_y),
+                CUSTOM_ARROW_MAX_LENGTH,
+                camera,
+                renderer.screen,
+            )
 
         # 绘制瞄准线
         if is_aiming:
