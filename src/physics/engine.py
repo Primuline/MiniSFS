@@ -188,7 +188,8 @@ class PhysicsEngine(IPhysicsEngine):
         # 保存 IS_STATIC==1 的天体的初始位置和索引
         static_mask = bodies[:, IS_STATIC] == 1.0
         static_indices = np.where(static_mask)[0]
-        saved_positions = bodies[static_indices, [X, Y]].copy()
+        if len(static_indices) > 0:
+            saved_positions = bodies[np.ix_(static_indices, [X, Y])].copy()  # (N_static, 2)
 
         for _ in range(self.substeps):
             # 提取活跃天体的位置和速度
