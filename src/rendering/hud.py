@@ -30,7 +30,7 @@ from src.config import (
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
 )
-from src.rendering.input_dialog import ScientificInputDialog
+from src.rendering.input_dialog import EditBodyDialog, ScientificInputDialog
 from src.core.types import (
     BODY_TYPE,
     CHARGE,
@@ -229,6 +229,11 @@ class HUDManager:
         self.custom_dialog_visible: bool = False
         self._input_dialog: ScientificInputDialog = ScientificInputDialog()
 
+        # 编辑天体参数弹窗
+        self.edit_mass: float = 0.0
+        self.edit_charge: float = 0.0
+        self._edit_dialog: EditBodyDialog = EditBodyDialog()
+
         # ============ 信息面板 ============
         self.info_panel_visible: bool = False
         self._info_body_data: Optional[Dict[str, float]] = None
@@ -352,7 +357,21 @@ class HUDManager:
         Returns:
             动作字符串（如 "TOOL_STAR", "PLAY_PAUSE"）
         """
-        # 弹窗优先处理（当弹窗可见时）
+        # 编辑弹窗优先处理（当弹窗可见时）
+        if self._edit_dialog.visible:
+            dlg_result = self._edit_dialog.handle_event(event)
+            if dlg_result is not None:
+                if isinstance(dlg_result, dict):
+                    # OK: 读取结果并存储编辑值
+                    self.edit_mass = dlg_result["mass"]
+                    self.edit_charge = dlg_result["charge"]
+                    return "EDIT_DIALOG_OK"
+                elif dlg_result == "CANCEL":
+                    return "EDIT_DIALOG_CANCEL"
+            # 弹窗消费了事件，不继续传递
+            return None
+
+        # 自定义粒子弹窗优先处理（当弹窗可见时）
         if self.custom_dialog_visible:
             dlg_result = self._input_dialog.handle_event(event)
             if dlg_result is not None:
@@ -417,6 +436,27 @@ class HUDManager:
             self.time_buttons[2].active = True
 
     # ------------------------------------------------------------------
+    # 编辑弹窗控制
+    # ------------------------------------------------------------------
+
+    def show_edit_dialog(self, mass: float, charge: float) -> None:
+        """打开编辑天体参数弹窗并预填当前值。
+
+        Args:
+            mass: 当前质量 (kg)
+            charge: 当前电荷 (C)
+        """
+        self._edit_dialog.prefill(mass, charge)
+        self._edit_dialog.visible = True
+
+    def hide_edit_dialog(self) -> None:
+        """关闭编辑天体参数弹窗并重置输入状态。"""
+        self._edit_dialog.visible = False
+        self._edit_dialog.active_field_index = -1
+        for field in self._edit_dialog.fields:
+            field["text"] = ""
+
+    # ------------------------------------------------------------------
     # 绘制
     # ------------------------------------------------------------------
 
@@ -428,6 +468,8 @@ class HUDManager:
         """
         self._draw_info_panel(surface)
         self._draw_toolbar(surface)
+        if self._edit_dialog.visible:
+            self._edit_dialog.draw(surface)
         if self.custom_dialog_visible:
             self._draw_custom_dialog(surface)
         self._draw_time_controls(surface)

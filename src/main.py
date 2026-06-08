@@ -22,6 +22,7 @@ from src.config import (
     CUSTOM_ARROW_MAX_LENGTH,
     CUSTOM_CHARGE_DEFAULT,
     CUSTOM_MASS_DEFAULT,
+    CUSTOM_RADIUS_FACTOR,
     CUSTOM_SPEED_DEFAULT,
     DEFAULT_CHARGE_CHARGED,
     DEFAULT_MASS_CHARGED,
@@ -375,6 +376,13 @@ def main() -> None:
                 # 自定义粒子弹窗命令跳过 InputHandler
                 if hud_cmd.startswith("CUSTOM_DIALOG_"):
                     continue
+                # 编辑弹窗命令跳过 InputHandler
+                if hud_cmd.startswith("EDIT_DIALOG_"):
+                    continue
+
+            # 编辑弹窗可见时，不向 InputHandler 传递事件
+            if hud._edit_dialog.visible:
+                continue
 
             # InputHandler 处理（传入 bodies 和 camera 用于抓取检测）
             inp_cmd = input_handler.handle_event(event, bodies, camera)
@@ -510,6 +518,30 @@ def main() -> None:
                 elif cmd == "CUSTOM_DIALOG_CANCEL":
                     # 取消整个操作
                     _cancel_custom_placement()
+
+            # --- 编辑天体弹窗命令 ---
+            elif cmd.startswith("EDIT_DIALOG_"):
+                if cmd == "EDIT_DIALOG_OK":
+                    if selected_body_id is not None and selected_body_id < bodies.shape[0]:
+                        idx = selected_body_id
+                        new_mass = hud.edit_mass
+                        new_charge = hud.edit_charge
+                        # 更新质量、电荷
+                        bodies[idx, MASS] = new_mass
+                        bodies[idx, CHARGE] = new_charge
+                        # 自动重算半径：pixel_radius = CUSTOM_RADIUS_FACTOR * sqrt(mass / CUSTOM_MASS_DEFAULT)
+                        pixel_radius = CUSTOM_RADIUS_FACTOR * math.sqrt(new_mass / CUSTOM_MASS_DEFAULT)
+                        pixel_radius = max(2.0, min(pixel_radius, 30.0))
+                        bodies[idx, RADIUS] = pixel_radius * WORLD_SCALE
+                        # 刷新信息面板
+                        hud.set_selected_body(bodies[idx], idx)
+                    hud.hide_edit_dialog()
+                    is_paused = False
+                    hud.set_play_pause_state(False)
+                elif cmd == "EDIT_DIALOG_CANCEL":
+                    hud.hide_edit_dialog()
+                    is_paused = False
+                    hud.set_play_pause_state(False)
 
             # --- 鼠标点击 ---
             elif cmd.startswith("CLICK:"):
@@ -881,12 +913,27 @@ def main() -> None:
                     renderer.selected_body_id = found_id
                     hud.set_selected_body(bodies[found_id], found_id)
                 else:
-                    # 取消选择
-                    selected_body_id = None
-                    renderer.selected_body_id = None
-                    hud.set_selected_body(None, -1)
-                    active_tool = None
-                    hud.set_tool_active(None)
+                    # 兜底：编辑天体参数（如果有选中的天体）
+                    if selected_body_id is not None:
+                        # 如果右键点在了天体上（非探测器），选中该天体
+                        if found_id is not None:
+                            selected_body_id = found_id
+                            renderer.selected_body_id = found_id
+                            hud.set_selected_body(bodies[found_id], found_id)
+                        # 弹出编辑弹窗
+                        body_idx = selected_body_id
+                        body_mass = float(bodies[body_idx, MASS])
+                        body_charge = float(bodies[body_idx, CHARGE])
+                        is_paused = True
+                        hud.set_play_pause_state(True)
+                        hud.show_edit_dialog(body_mass, body_charge)
+                    else:
+                        # 取消选择
+                        selected_body_id = None
+                        renderer.selected_body_id = None
+                        hud.set_selected_body(None, -1)
+                        active_tool = None
+                        hud.set_tool_active(None)
 
             # --- 双击：跟随天体 ---
             elif cmd.startswith("DOUBLE_CLICK:"):
