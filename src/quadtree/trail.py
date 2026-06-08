@@ -1,7 +1,7 @@
 """尾迹缓冲区实现。
 
 使用 collections.deque 为每个天体维护固定长度的历史轨迹。
-提供时间倒退 (rewind)、尾迹获取 (get_trail) 等功能。
+提供时间倒退 (rewind)、尾迹获取 (get_trail)、淡出 (fade-out) 等功能。
 
 Typical usage::
 
@@ -23,25 +23,39 @@ from src.config import MAX_TRAIL_LENGTH
 from src.core.interfaces import ITrailBuffer
 from src.core.types import X, Y, IS_ACTIVE
 
+# 淡出帧数：天体消失后尾迹持续显示的帧数
+FADE_FRAMES: int = 60
+
 
 class TrailBuffer(ITrailBuffer):
     """尾迹缓冲区，维护每个天体的历史坐标轨迹。
 
     使用 ``collections.deque`` 作为底层存储，固定最大长度。
-    支持每帧追加、时间倒退和尾迹序列获取。
+    支持每帧追加、时间倒退、尾迹序列获取和淡出效果。
+
+    当天体消失（碰撞合并或被删除）时，尾迹不会立刻消失，
+    而是通过 ``_fade_counters`` 计数，在 FADE_FRAMES 帧内逐渐淡出。
 
     Attributes:
         maxlen: 每个天体最大轨迹点数
+        fade_frames: 淡出持续帧数
     """
 
-    def __init__(self, maxlen: int = MAX_TRAIL_LENGTH) -> None:
+    def __init__(
+        self,
+        maxlen: int = MAX_TRAIL_LENGTH,
+        fade_frames: int = FADE_FRAMES,
+    ) -> None:
         """初始化尾迹缓冲区。
 
         Args:
             maxlen: 每个天体最大轨迹点数 (默认 MAX_TRAIL_LENGTH)
+            fade_frames: 淡出持续帧数 (默认 FADE_FRAMES)
         """
         self._maxlen = maxlen
+        self._fade_frames: int = fade_frames
         self._trails: Dict[int, deque] = {}
+        self._fade_counters: Dict[int, int] = {}
 
     # ------------------------------------------------------------------
     # ITrailBuffer 接口方法
@@ -74,8 +88,8 @@ class TrailBuffer(ITrailBuffer):
     def push_all(self, bodies: np.ndarray, exclude: Optional[set] = None) -> None:
         """为所有活跃天体的当前位置追加尾迹帧。
 
-        追加完成后，清理已不存在的天体的残留尾迹，避免
-        天体被移除后旧尾迹出现在新放置的天体上。
+        追加完成后，对已消失天体的尾迹启动淡出计数器。
+        计数器达到 FADE_FRAMES 时才删除尾迹数据。
 
         Args:
             bodies: shape (N, NUM_FIELDS) 的天体状态数组
@@ -88,10 +102,13 @@ class TrailBuffer(ITrailBuffer):
             if body_id in exclude:
                 continue
             self.push_frame(body_id, float(bodies[body_id, X]), float(bodies[body_id, Y]))
-        # 清理残留尾迹（已被移除的天体）
+        # 残留尾迹处理：已消失的天体不删除，启动淡出计数器
         stale = [bid for bid in self._trails if bid not in active_set]
         for bid in stale:
-            del self._trails[bid]
+            self._fade_counters[bid] = self._fade_counters.get(bid, 0) + 1
+            if self._fade_counters[bid] >= self._fade_frames:
+                del self._trails[bid]
+                del self._fade_counters[bid]
 
     def get_trail(self, body_id: int) -> List[Tuple[float, float]]:
         """获取指定天体的尾迹坐标列表 (从旧到新)。
@@ -130,7 +147,7 @@ class TrailBuffer(ITrailBuffer):
         return dq[-(frames + 1)]
 
     def clear(self, body_id: int) -> None:
-        """清除指定天体的尾迹。
+        """清除指定天体的尾迹和淡出计数器。
 
         如果天体不存在，什么也不做。
 
@@ -138,10 +155,12 @@ class TrailBuffer(ITrailBuffer):
             body_id: 天体 ID
         """
         self._trails.pop(body_id, None)
+        self._fade_counters.pop(body_id, None)
 
     def clear_all(self) -> None:
-        """清除所有天体的尾迹。"""
+        """清除所有天体的尾迹和淡出计数器。"""
         self._trails.clear()
+        self._fade_counters.clear()
 
     # ------------------------------------------------------------------
     # 扩展方法
@@ -169,3 +188,32 @@ class TrailBuffer(ITrailBuffer):
             存在尾迹返回 True
         """
         return body_id in self._trails and len(self._trails[body_id]) > 0
+
+    def get_fade_factor(self, body_id: int) -> float:
+        """获取指定天体的尾迹淡出系数。
+
+        存活的天体返回 1.0（不淡出）。
+        正在淡出的天体返回 (FADE_FRAMES - counter) / FADE_FRAMES。
+        无尾迹的天体返回 1.0。
+
+        Args:
+            body_id: 天体 ID
+
+        Returns:
+            淡出系数 (0.0 ~ 1.0)，1.0 = 完全可见，0.0 = 完全透明
+        """
+        if body_id not in self._fade_counters or body_id not in self._trails:
+            return 1.0
+        counter = self._fade_counters[body_id]
+        return max(0.0, 1.0 - counter / self._fade_frames)
+
+    def get_fade_factors(self) -> Dict[int, float]:
+        """获取所有天体的尾迹淡出系数。
+
+        Returns:
+            {body_id: fade_factor} 字典，存活天体的系数为 1.0
+        """
+        result: Dict[int, float] = {}
+        for bid in self._trails:
+            result[bid] = self.get_fade_factor(bid)
+        return result

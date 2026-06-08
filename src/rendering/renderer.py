@@ -111,6 +111,7 @@ class Renderer(IRenderer):
         bodies: np.ndarray,
         trails: Dict[int, List[Tuple[float, float]]],
         camera: ICamera,
+        fade_factors: Optional[Dict[int, float]] = None,
     ) -> None:
         """渲染一帧画面。
 
@@ -120,6 +121,7 @@ class Renderer(IRenderer):
             bodies: shape (N, NUM_FIELDS) 的天体状态数组
             trails: 尾迹数据 {body_id: [(x1,y1), ...]}
             camera: 相机对象
+            fade_factors: 尾迹淡出系数 {body_id: fade_factor (0~1)}，可选
         """
         self._time += 1.0 / 60.0  # 近似帧时间
 
@@ -140,7 +142,7 @@ class Renderer(IRenderer):
             body_speeds[i] = math.sqrt(vx * vx + vy * vy)
 
         # 绘制尾迹（在星体下方）
-        draw_trails(self.screen, trails, body_speeds, camera)
+        draw_trails(self.screen, trails, body_speeds, camera, fade_factors)
 
         # 绘制天体
         self._draw_bodies(bodies, camera)

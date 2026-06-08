@@ -6,7 +6,7 @@
 
 import math
 import random
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pygame
@@ -159,17 +159,20 @@ def draw_trails(
     trails: Dict[int, List[Tuple[float, float]]],
     body_speeds: Dict[int, float],
     camera: "ICamera",  # type: ignore
+    fade_factors: Optional[Dict[int, float]] = None,
 ) -> None:
     """绘制所有天体的尾迹。
 
     每条尾迹使用线段绘制，颜色从旧到新渐变（透明度 + 色调）。
     速度快的天体尾迹偏暖色，速度慢的偏冷色。
+    支持淡出系数：已消失天体的尾迹透明度乘上 fade_factor 逐渐消失。
 
     Args:
         surface: 目标 Pygame Surface
         trails: 尾迹数据 {body_id: [(x1,y1), (x2,y2), ...]}（从旧到新）
         body_speeds: 天体当前速度 {body_id: speed_magnitude}
         camera: 相机对象
+        fade_factors: 淡出系数 {body_id: fade_factor (0~1)}，默认 None（全部 1.0）
     """
     # 获取速度范围用于颜色归一化
     if body_speeds:
@@ -192,6 +195,11 @@ def draw_trails(
         base_g = int(g_slow + (g_fast - g_slow) * speed_ratio)
         base_b = int(b_slow + (b_fast - b_slow) * speed_ratio)
 
+        # 获取该天体的淡出系数
+        body_fade = 1.0
+        if fade_factors is not None and body_id in fade_factors:
+            body_fade = fade_factors[body_id]
+
         n_points = len(trail_points)
 
         # 从旧到新逐段绘制
@@ -203,9 +211,9 @@ def draw_trails(
             sx1, sy1 = camera.world_to_screen(x1, y1)
             sx2, sy2 = camera.world_to_screen(x2, y2)
 
-            # 计算该段的透明度（从旧到新渐变）
+            # 计算该段的透明度（从旧到新渐变，再乘淡出系数）
             t = i / (n_points - 1)  # 0 = 最旧, 1 = 最新
-            alpha = int(TRAIL_ALPHA_OLD + (TRAIL_ALPHA_NEW - TRAIL_ALPHA_OLD) * t)
+            alpha = int((TRAIL_ALPHA_OLD + (TRAIL_ALPHA_NEW - TRAIL_ALPHA_OLD) * t) * body_fade)
             alpha = max(0, min(255, alpha))
 
             # 宽度渐变（旧段细，新段粗）

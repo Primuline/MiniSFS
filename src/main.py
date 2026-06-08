@@ -954,8 +954,10 @@ def main() -> None:
 
         # 获取尾迹数据
         trails: Dict[int, List[Tuple[float, float]]] = {}
+        fade_factors: Dict[int, float] = {}
         if show_trails:
             trails = trail_buffer.get_all_trails()
+            fade_factors = trail_buffer.get_fade_factors()
 
         # 跟随选中天体
         if selected_body_id is not None and not is_aiming:
@@ -1025,7 +1027,7 @@ def main() -> None:
             aim_current_world = (world_x, world_y)
 
         # 渲染
-        renderer.render(bodies, trails, camera)
+        renderer.render(bodies, trails, camera, fade_factors)
 
         # 自定义粒子放置预览
         if custom_placement_stage == 2:
