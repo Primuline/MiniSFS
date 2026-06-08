@@ -13,6 +13,9 @@ import pygame
 
 from src.config import (
     BACKGROUND_COLOR,
+    DASH_GAP,
+    DASH_OFF,
+    DASH_ON,
     TRAIL_ALPHA_NEW,
     TRAIL_ALPHA_OLD,
     TRAIL_COLOR_FAST,
@@ -320,9 +323,8 @@ def draw_placement_trajectory(
 ) -> None:
     """绘制放置速度设定时的轨迹预览。
 
-    轨迹线为淡蓝色半透明虚线，线宽 2px。
-    碰撞时末端显示红点，逃逸时末端淡出。
-    无引力源时绘制沿速度方向的直线虚线。
+    将世界坐标轨迹重采样为等屏幕像素间距的点，再绘制虚线。
+    碰撞末端显示红点，逃逸末端淡出，绕圈完成显示绿点。
 
     Args:
         surface: 目标 Pygame Surface
@@ -330,7 +332,7 @@ def draw_placement_trajectory(
             - "trajectory": shape (N, 2) 的轨迹坐标
             - "collided": bool
             - "escaped": bool
-            - 可选 "collision_pos": shape (2,)
+            - "orbited": bool
         camera: 相机对象
     """
     trajectory = result["trajectory"]
@@ -339,52 +341,82 @@ def draw_placement_trajectory(
 
     collided: bool = bool(result.get("collided", False))
     escaped: bool = bool(result.get("escaped", False))
+    orbited: bool = bool(result.get("orbited", False))
 
-    points_screen: List[Tuple[int, int]] = []
+    # Step 1: 将世界坐标转为屏幕坐标
+    pts: List[Tuple[float, float]] = []
     for i in range(trajectory.shape[0]):
         sx, sy = camera.world_to_screen(
             float(trajectory[i, 0]), float(trajectory[i, 1])
         )
-        # 跳过屏幕外的点但保留最后一个可见点
-        points_screen.append((sx, sy))
+        pts.append((sx, sy))
 
-    if len(points_screen) < 2:
+    if len(pts) < 2:
         return
 
-    total_segments = len(points_screen) - 1
+    # Step 2: 重采样为等屏幕像素间距
+    resampled: List[Tuple[float, float]] = [pts[0]]
+    accumulated: float = 0.0
+    for i in range(1, len(pts)):
+        dx = pts[i][0] - pts[i - 1][0]
+        dy = pts[i][1] - pts[i - 1][1]
+        seg_len = math.sqrt(dx * dx + dy * dy)
+        if seg_len < 0.5:
+            continue
+        accumulated += seg_len
+        if accumulated >= DASH_GAP:
+            # 线性插值到 DASH_GAP 处
+            t = (accumulated - DASH_GAP) / seg_len
+            ix = pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t
+            iy = pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t
+            resampled.append((ix, iy))
+            accumulated = 0.0
+    # 确保最后一个点被包含
+    if len(resampled) >= 1 and resampled[-1] != pts[-1]:
+        resampled.append(pts[-1])
 
-    # 绘制淡蓝色半透明虚线
-    for i in range(total_segments):
-        # 每隔 2 段画一段（虚线效果）
-        if (i // 2) % 2 == 0:
-            # 透明度渐变：从头到尾稍微淡出
-            t = i / max(total_segments, 1)
-            alpha = int(150 - 50 * t)
-            alpha = max(40, alpha)
-            color = (100, 180, 255, alpha)
+    if len(resampled) < 2:
+        return
+
+    # Step 3: 绘制虚线（画 DASH_ON px → 跳 DASH_OFF px）
+    draw_state: str = "on"
+    draw_len: float = 0.0
+    for i in range(1, len(resampled)):
+        dx = resampled[i][0] - resampled[i - 1][0]
+        dy = resampled[i][1] - resampled[i - 1][1]
+        seg_len = math.sqrt(dx * dx + dy * dy)
+        if seg_len < 0.5:
+            continue
+
+        if draw_state == "on":
             _draw_alpha_line(
-                surface, color,
-                points_screen[i], points_screen[i + 1],
+                surface, (100, 180, 255, 150),
+                (int(resampled[i - 1][0]), int(resampled[i - 1][1])),
+                (int(resampled[i][0]), int(resampled[i][1])),
                 2.0,
             )
+            draw_len += seg_len
+            if draw_len >= DASH_ON:
+                draw_state = "off"
+                draw_len = 0.0
+        else:
+            draw_len += seg_len
+            if draw_len >= DASH_OFF:
+                draw_state = "on"
+                draw_len = 0.0
 
-    # 碰撞标记：末端绘制红色闪烁圆点
-    if collided:
-        last = points_screen[-1]
-        # 红色实心圆
-        pygame.draw.circle(surface, (255, 50, 50), last, 5)
-        # 外圈
-        pygame.draw.circle(surface, (255, 50, 50, 100), last, 8, 1)
-
-    # 逃逸标记：末端小圆淡出
-    elif escaped and len(points_screen) > 0:
-        last = points_screen[-1]
-        pygame.draw.circle(surface, (100, 180, 255, 60), last, 3, 1)
-
-    # 正常轨迹末端
-    elif len(points_screen) > 0:
-        last = points_screen[-1]
-        pygame.draw.circle(surface, (100, 180, 255, 80), last, 3, 1)
+    # Step 4: 末端标记
+    if len(resampled) > 0:
+        last = (int(resampled[-1][0]), int(resampled[-1][1]))
+        if collided:
+            pygame.draw.circle(surface, (255, 50, 50), last, 5)
+            pygame.draw.circle(surface, (255, 50, 50), last, 8, 1)
+        elif orbited:
+            pygame.draw.circle(surface, (50, 255, 50), last, 4)
+        elif escaped:
+            pygame.draw.circle(surface, (100, 180, 255, 80), last, 3, 1)
+        else:
+            pygame.draw.circle(surface, (100, 180, 255, 80), last, 3, 1)
 
 
 # ============================================================================
