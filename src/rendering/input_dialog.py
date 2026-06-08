@@ -41,7 +41,7 @@ HINT_COLOR = (120, 120, 140)
 #       4=speed_coeff, 5=speed_exp
 FIELD_DEFS: List[Tuple[str, str, bool, bool]] = [
     ("Mass coeff",  "1.0", True,  True),
-    ("Mass exp",    "0",   False, True),
+    ("Mass exp",    "26",  False, True),
     ("Charge coeff","0.0", True,  True),
     ("Charge exp",  "0",   False, True),
     ("Speed coeff", "5.0", True,  True),

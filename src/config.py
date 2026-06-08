@@ -104,7 +104,7 @@ DEFAULT_CHARGE_CHARGED: float = 1.0e6
 # ============================================================================
 
 # 自定义粒子的默认质量 (kg)
-CUSTOM_MASS_DEFAULT: float = 1.0e25
+CUSTOM_MASS_DEFAULT: float = 1.0e26
 # 自定义粒子的默认电荷 (C)
 CUSTOM_CHARGE_DEFAULT: float = 0.0
 # 自定义粒子的默认速度 (m/s)
