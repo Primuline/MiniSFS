@@ -1,0 +1,16 @@
+# Environment
+.env
+
+# Logs
+*.log
+
+# Python cache
+*.pyc
+*.pyo
+__pycache__/
+
+# Claude
+.claude/
+
+# IDE
+.vscode/
