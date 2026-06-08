@@ -180,7 +180,7 @@ class HUDManager:
             ("S", "TOOL_STAR", "恒星"),
             ("P", "TOOL_PLANET", "行星"),
             ("D", "TOOL_PROBE", "探测器"),
-            ("+/−", "TOOL_CHARGED", "带电粒子"),
+            ("+/-", "TOOL_CHARGED", "带电粒子"),
         ]
         for i, (label, action, _) in enumerate(tools):
             btn = Button(

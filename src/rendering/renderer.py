@@ -352,7 +352,7 @@ class Renderer(IRenderer):
             pygame.draw.line(self.screen, (100, 200, 255), (sx, sy), (end_x, end_y), 1)
 
     def _draw_charged(self, sx: int, sy: int, radius: float, charge: float) -> None:
-        """绘制带电粒子：带 +/− 标识。
+        """绘制带电粒子：带 +/- 标识。
 
         Args:
             sx, sy: 屏幕中心坐标
