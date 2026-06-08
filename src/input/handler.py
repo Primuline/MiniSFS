@@ -345,10 +345,12 @@ class InputHandler(IInputHandler):
 
             elif cmd.startswith("PAN:"):
                 parts = cmd.split(":")
-                if len(parts) == 3:
-                    dx = float(parts[1])
-                    dy = float(parts[2])
-                    camera.pan(-dx, -dy)
+                if len(parts) >= 2:
+                    coords = parts[1].split(",")
+                    if len(coords) == 2:
+                        dx = float(coords[0])
+                        dy = float(coords[1])
+                        camera.pan(-dx, -dy)
 
             elif cmd == "PAN_LEFT":
                 camera.pan(-CAMERA_PAN_SPEED * dt, 0)

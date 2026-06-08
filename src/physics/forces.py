@@ -69,10 +69,11 @@ def compute_gravitational_forces(
     # 注意这里 F_ij = G * m_i * m_j / r^2, 作用方向从 j 指向 i
     force_magnitude = g * effective_masses[np.newaxis, :] * effective_masses[:, np.newaxis] / r_squared  # (N, N)
 
-    # 力向量: (F_mag / r) * delta  (标准化方向)
-    # shape (N, N, 2): delta 每个分量乘上 force_magnitude / r
+    # 力向量: -(F_mag / r) * delta  (负号使方向从 i 指向 j，即引力)
+    # delta[i,j] = pos_i - pos_j 指向从 j 到 i，但引力需要从 i 指向 j
+    # shape (N, N, 2): delta 每个分量乘上 -force_magnitude / r
     inv_r = np.where(r > 0, 1.0 / r, 0.0)
-    force_vectors = delta * (force_magnitude * inv_r)[:, :, np.newaxis]  # (N, N, 2)
+    force_vectors = -delta * (force_magnitude * inv_r)[:, :, np.newaxis]  # (N, N, 2)
 
     # 对 j 求和得到每个天体 i 的合力
     forces[:, :] = np.sum(force_vectors, axis=1)  # (N, 2)

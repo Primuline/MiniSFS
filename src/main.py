@@ -331,10 +331,12 @@ def main() -> None:
 
             elif cmd.startswith("PAN:"):
                 parts = cmd.split(":")
-                if len(parts) == 3:
-                    dx = float(parts[1])
-                    dy = float(parts[2])
-                    camera.pan(-dx, -dy)
+                if len(parts) >= 2:
+                    coords = parts[1].split(",")
+                    if len(coords) == 2:
+                        dx = float(coords[0])
+                        dy = float(coords[1])
+                        camera.pan(-dx, -dy)
 
             elif cmd == "PAN_LEFT":
                 camera.pan(-500.0 * frame_dt, 0)
@@ -347,12 +349,14 @@ def main() -> None:
 
             elif cmd.startswith("ZOOM_IN"):
                 parts = cmd.split(":")
-                sx, sy = int(parts[1]), int(parts[2])
+                sx_str = parts[1].split(",")
+                sx, sy = int(sx_str[0]), int(sx_str[1])
                 camera.zoom_at(1.1, sx, sy)
 
             elif cmd.startswith("ZOOM_OUT"):
                 parts = cmd.split(":")
-                sx, sy = int(parts[1]), int(parts[2])
+                sx_str = parts[1].split(",")
+                sx, sy = int(sx_str[0]), int(sx_str[1])
                 camera.zoom_at(1.0 / 1.1, sx, sy)
 
             # --- 时间控制 ---
