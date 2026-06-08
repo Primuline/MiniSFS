@@ -20,11 +20,9 @@ from src.config import (
     BODY_TYPE_PROBE,
     BODY_TYPE_STAR,
     CUSTOM_ARROW_MAX_LENGTH,
-    CUSTOM_CHARGE_STEP,
-    CUSTOM_MASS_MAX,
-    CUSTOM_MASS_MIN,
-    CUSTOM_MASS_STEP,
-    CUSTOM_SPEED_STEP,
+    CUSTOM_CHARGE_DEFAULT,
+    CUSTOM_MASS_DEFAULT,
+    CUSTOM_SPEED_DEFAULT,
     DEFAULT_CHARGE_CHARGED,
     DEFAULT_MASS_CHARGED,
     DEFAULT_MASS_PLANET,
@@ -309,7 +307,11 @@ def main() -> None:
         custom_preview_pos = None
         custom_arrow_start = None
         hud.custom_dialog_visible = False
-        hud.destroy_dialog_buttons()
+        hud._input_dialog.visible = False
+        hud._input_dialog.active_field_index = -1
+        # 重置输入框内容
+        for field in hud._input_dialog.fields:
+            field["text"] = ""
         if active_tool == "TOOL_CUSTOM":
             active_tool = None
             hud.set_tool_active(None)
@@ -330,6 +332,13 @@ def main() -> None:
         commands: List[str] = []
 
         for event in pygame.event.get():
+            # 弹窗阶段：只有弹窗能获取事件，跳过 InputHandler
+            if custom_placement_stage == 1:
+                hud_cmd = hud.handle_event(event)
+                if hud_cmd is not None:
+                    commands.append(hud_cmd)
+                continue
+
             # HUD 优先处理事件
             hud_cmd = hud.handle_event(event)
             if hud_cmd is not None:
@@ -444,37 +453,30 @@ def main() -> None:
                     if custom_placement_stage > 0:
                         _cancel_custom_placement()
                     active_tool = cmd
-                    # 自定义粒子工具：冻结时间 + 打开参数弹窗
+                    # 自定义粒子工具：冻结时间 + 打开科学计数法输入弹窗
                     if cmd == "TOOL_CUSTOM":
                         is_paused = True
                         hud.set_play_pause_state(True)
                         custom_placement_stage = 1
                         hud.custom_dialog_visible = True
-                        hud.create_dialog_buttons()
+                        hud._input_dialog.visible = True
+                        hud._input_dialog.active_field_index = -1
                 hud.set_tool_active(active_tool)
 
             # --- 自定义粒子弹窗命令 ---
             elif cmd.startswith("CUSTOM_DIALOG_"):
                 if cmd == "CUSTOM_DIALOG_OK":
                     # 关闭弹窗，进入放置预览阶段
+                    # 数值已由 HUD.handle_event 存入 hud.custom_mass/charge/speed
                     hud.custom_dialog_visible = False
-                    hud.destroy_dialog_buttons()
+                    hud._input_dialog.visible = False
+                    hud._input_dialog.active_field_index = -1
+                    for field in hud._input_dialog.fields:
+                        field["text"] = ""
                     custom_placement_stage = 2
                 elif cmd == "CUSTOM_DIALOG_CANCEL":
                     # 取消整个操作
                     _cancel_custom_placement()
-                elif cmd == "CUSTOM_DIALOG_MASS_UP":
-                    hud.custom_mass = min(hud.custom_mass * CUSTOM_MASS_STEP, CUSTOM_MASS_MAX)
-                elif cmd == "CUSTOM_DIALOG_MASS_DOWN":
-                    hud.custom_mass = max(hud.custom_mass / CUSTOM_MASS_STEP, CUSTOM_MASS_MIN)
-                elif cmd == "CUSTOM_DIALOG_CHARGE_UP":
-                    hud.custom_charge += CUSTOM_CHARGE_STEP
-                elif cmd == "CUSTOM_DIALOG_CHARGE_DOWN":
-                    hud.custom_charge -= CUSTOM_CHARGE_STEP
-                elif cmd == "CUSTOM_DIALOG_SPEED_UP":
-                    hud.custom_speed *= CUSTOM_SPEED_STEP
-                elif cmd == "CUSTOM_DIALOG_SPEED_DOWN":
-                    hud.custom_speed = max(hud.custom_speed / CUSTOM_SPEED_STEP, 0.0)
 
             # --- 鼠标点击 ---
             elif cmd.startswith("CLICK:"):
