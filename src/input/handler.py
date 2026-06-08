@@ -147,6 +147,15 @@ class InputHandler(IInputHandler):
 
             return None
 
+        # 鼠标滚轮 (SDL 2.28+ on Windows 使用 MOUSEWHEEL 代替 MOUSEBUTTONDOWN button 4/5)
+        if event.type == pygame.MOUSEWHEEL:
+            x, y = self.mouse_screen_x, self.mouse_screen_y
+            if event.y > 0:
+                return f"ZOOM_IN:{x},{y}"
+            elif event.y < 0:
+                return f"ZOOM_OUT:{x},{y}"
+            return None
+
         # 鼠标按下
         if event.type == pygame.MOUSEBUTTONDOWN:
             return self._handle_mouse_down(event)
