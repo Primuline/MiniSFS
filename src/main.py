@@ -229,10 +229,10 @@ def main() -> None:
     # 物理时间步
     physics_dt = TIME_STEP  # 固定 1/60 秒
     accumulator = 0.0
-    # 基准时间速度：世界尺度 1e9 m/px，需要 ~3e6 倍加速轨道才肉眼可见
-    BASE_TIME_SPEED = 50000.0
+    # 基准时间速度
+    BASE_TIME_SPEED = 3125.0
     time_speed = BASE_TIME_SPEED
-    time_multiplier = 1.0  # 相对于基准速度的倍率（1x, 2x, 4x）
+    time_multiplier = 1.0  # 相对于基准速度的倍率（1x, 2x, 4x, 8x）
     is_paused = False
 
     # 工具状态
@@ -610,14 +610,17 @@ def main() -> None:
                 hud.set_play_pause_state(is_paused)
 
             elif cmd == "FAST_2X":
-                # 切换 1x ↔ 2x（相对于基础速度）
-                time_multiplier = 2.0 if time_multiplier == 1.0 else 1.0
+                time_multiplier = 2.0 if time_multiplier != 2.0 else 1.0
                 time_speed = BASE_TIME_SPEED * time_multiplier
                 hud.set_time_speed(time_multiplier)
 
             elif cmd == "FAST_4X":
-                # 切换 1x ↔ 4x（相对于基础速度）
-                time_multiplier = 4.0 if time_multiplier == 1.0 else 1.0
+                time_multiplier = 4.0 if time_multiplier != 4.0 else 1.0
+                time_speed = BASE_TIME_SPEED * time_multiplier
+                hud.set_time_speed(time_multiplier)
+
+            elif cmd == "FAST_8X":
+                time_multiplier = 8.0 if time_multiplier != 8.0 else 1.0
                 time_speed = BASE_TIME_SPEED * time_multiplier
                 hud.set_time_speed(time_multiplier)
 

@@ -402,9 +402,9 @@ class TestInputIntegration:
         cmd = handler.inject_key_press("K_t")
         assert cmd == "TOGGLE_TRAILS", f"K_t 应为 TOGGLE_TRAILS，实际: {cmd}"
 
-        # H -> None（未绑定）
+        # H -> FAST_8X
         cmd = handler.inject_key_press("K_h")
-        assert cmd == "", f"K_h 应为空字符串，实际: {cmd}"
+        assert cmd == "FAST_8X", f"K_h 应为 FAST_8X，实际: {cmd}"
 
     def test_get_mouse_pos(self, pygame_dummy) -> None:
         """验证 get_mouse_pos 和 inject 的鼠标位置一致。"""

@@ -199,20 +199,21 @@ class HUDManager:
 
         # ============ 时间控制 ============
         ctrl_y = self.height - CONTROL_BAR_HEIGHT - 5
-        ctrl_x = self.width // 2 - 80
+        ctrl_x = self.width // 2 - 96  # 5 个按钮居中
         self.time_buttons: List[Button] = []
         time_actions = [
             ("|<", "REWIND"),
             (">", "PLAY_PAUSE"),
             (">>", "FAST_2X"),
             (">>>", "FAST_4X"),
+            (">>>>", "FAST_8X"),
         ]
         for i, (label, action) in enumerate(time_actions):
             btn = Button(
-                ctrl_x + i * 45, ctrl_y,
-                40, CONTROL_BAR_HEIGHT - 4,
+                ctrl_x + i * 40, ctrl_y,
+                36, CONTROL_BAR_HEIGHT - 4,
                 label, action,
-                font_size=14,
+                font_size=13,
             )
             self.time_buttons.append(btn)
 
@@ -460,7 +461,9 @@ class HUDManager:
         for i, btn in enumerate(self.time_buttons):
             if i >= 2:  # 快进按钮
                 btn.active = False
-        if speed >= 4.0:
+        if speed >= 8.0:
+            self.time_buttons[4].active = True
+        elif speed >= 4.0:
             self.time_buttons[3].active = True
         elif speed >= 2.0:
             self.time_buttons[2].active = True
@@ -621,7 +624,7 @@ class HUDManager:
             surface: 目标 Surface
         """
         bar_y = self.height - CONTROL_BAR_HEIGHT - 5
-        bar_w = 200
+        bar_w = 240
         bar_x = self.width // 2 - bar_w // 2
 
         # 背景

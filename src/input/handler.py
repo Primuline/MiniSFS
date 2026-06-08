@@ -337,6 +337,8 @@ class InputHandler(IInputHandler):
             return "FAST_2X"
         elif event.key == pygame.K_g:
             return "FAST_4X"
+        elif event.key == pygame.K_h:
+            return "FAST_8X"
         elif event.key == pygame.K_t:
             return "TOGGLE_TRAILS"
 
