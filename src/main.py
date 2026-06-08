@@ -376,16 +376,16 @@ def main() -> None:
 
         if star_info is not None:
             star_pos, star_mass, star_radius = star_info
-            # 根据速度调整步数和 dt
+            # 根据速度自适应调整步数和 dt，使轨迹展示约 0.25-1 圈
             if speed > 1e5:
-                traj_steps = 600
-                traj_dt = 20000.0
+                traj_steps = 300
+                traj_dt = min(5e8 / speed, 10000.0)
             elif speed > 1e4:
-                traj_steps = 400
-                traj_dt = 10000.0
+                traj_steps = 300
+                traj_dt = min(8e8 / speed, 8000.0)
             else:
                 traj_steps = 300
-                traj_dt = 5000.0
+                traj_dt = min(1e9 / speed, 5000.0)
 
             return predict_single_star_trajectory(
                 pos=pos,
