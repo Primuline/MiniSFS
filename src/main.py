@@ -509,6 +509,8 @@ def main() -> None:
             elif cmd == "GRAB_END":
                 if grabbed_body_id is not None:
                     trail_buffer.clear(grabbed_body_id)  # 清除拖拽产生的跳跃尾迹
+                    bodies[grabbed_body_id, VX] = 0.0
+                    bodies[grabbed_body_id, VY] = 0.0
                 is_grabbing = False
                 grabbed_body_id = None
                 is_paused = False
