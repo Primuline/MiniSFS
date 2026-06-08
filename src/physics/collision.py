@@ -16,6 +16,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 
 from src.core.types import (
+    BODY_TYPE,
     IS_ACTIVE,
     IS_STATIC,
     MASS,
@@ -78,8 +79,15 @@ def detect_collisions(bodies: np.ndarray) -> List[Tuple[int, int]]:
 
 
 def _is_star(body: np.ndarray) -> bool:
-    """判断天体是否为恒星（大质量，通常不可被合并）。"""
-    return body[7] == 0.0  # BODY_TYPE 列
+    """判断天体是否为恒星（大质量，通常不可被合并）。
+
+    Args:
+        body: 1D array of shape (NUM_FIELDS,) representing a single body.
+
+    Returns:
+        True if the body type is BODY_TYPE_STAR (0), False otherwise.
+    """
+    return body[BODY_TYPE] == 0.0
 
 
 def resolve_elastic(
@@ -189,8 +197,8 @@ def resolve_merge(
         m2 = bodies[j, MASS]
 
         # 恒星不能被合并（除非撞上另一个恒星）
-        is_star_i = _is_star(bodies[i:i+1])
-        is_star_j = _is_star(bodies[j:j+1])
+        is_star_i = _is_star(bodies[i])
+        is_star_j = _is_star(bodies[j])
 
         if is_star_i and is_star_j:
             # 两个恒星相撞: 采用弹性碰撞
