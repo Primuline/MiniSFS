@@ -1,7 +1,7 @@
-"""输入处理器：将 Pygame 事件转换为游戏操作命令。
+"""Input handler: Translates Pygame events into game operation commands.
 
-实现 ``IInputHandler`` 接口（定义在 ``src.core.interfaces``）。
-与渲染逻辑分离，只负责事件解析和命令生成。
+Implements the ``IInputHandler`` interface (defined in ``src.core.interfaces``).
+Separated from rendering logic, only responsible for event parsing and command generation.
 """
 
 import math
@@ -15,72 +15,72 @@ from src.core.types import IS_ACTIVE, WorldPoint
 
 
 class InputHandler(IInputHandler):
-    """Pygame 输入处理器。
+    """Pygame input handler.
 
-    将原始 Pygame 事件转换为语义化的命令字符串列表。
-    维护鼠标状态（按下、拖拽、位置）供其他模块查询。
+    Converts raw Pygame events into a list of semantic command strings.
+    Maintains mouse state (press, drag, position) for other modules to query.
 
     Attributes:
-        mouse_screen_x: 鼠标当前 X 位置（像素）
-        mouse_screen_y: 鼠标当前 Y 位置（像素）
-        mouse_world_x: 鼠标当前世界 X 坐标（m）
-        mouse_world_y: 鼠标当前世界 Y 坐标（m）
-        is_dragging: 是否正在拖拽
-        drag_start_x: 拖拽起始屏幕 X
-        drag_start_y: 拖拽起始屏幕 Y
-        is_panning: 是否正在平移相机
+        mouse_screen_x: Current mouse X position (pixels)
+        mouse_screen_y: Current mouse Y position (pixels)
+        mouse_world_x: Current mouse world X coordinate (m)
+        mouse_world_y: Current mouse world Y coordinate (m)
+        is_dragging: Whether currently dragging
+        drag_start_x: Drag start screen X
+        drag_start_y: Drag start screen Y
+        is_panning: Whether currently panning the camera
     """
 
     def __init__(self) -> None:
-        """初始化输入处理器。"""
-        # 鼠标状态
+        """Initialize the input handler."""
+        # Mouse state
         self.mouse_screen_x: int = 0
         self.mouse_screen_y: int = 0
         self.mouse_world_x: float = 0.0
         self.mouse_world_y: float = 0.0
 
-        # 拖拽状态
+        # Drag state
         self.is_dragging: bool = False
         self.drag_start_x: int = 0
         self.drag_start_y: int = 0
 
-        # 平移状态
+        # Pan state
         self.is_panning: bool = False
         self.pan_last_x: int = 0
         self.pan_last_y: int = 0
         self.pan_camera_center_x: float = 0.0
         self.pan_camera_center_y: float = 0.0
 
-        # 抓取拖拽状态
+        # Grab-drag state
         self.is_grabbing: bool = False
         self.grabbed_body_id: Optional[int] = None
 
-        # 发射探测器拖拽状态
+        # Probe-launch drag state
         self.is_aiming: bool = False
         self.aim_start_x: int = 0
         self.aim_start_y: int = 0
 
-        # 按键状态
+        # Key state
         self._keys_down: set = set()
         self._keys_held: set = set()
 
-        # 双击检测
+        # Double-click detection
         self._last_click_time: float = 0.0
         self._last_click_pos: Tuple[int, int] = (0, 0)
-        self._double_click_threshold: float = 0.3  # 秒
+        self._double_click_threshold: float = 0.3  # seconds
 
-        # 双击事件标记
+        # Double-click event flag
         self._double_click_happened: bool = False
 
     # ------------------------------------------------------------------
-    # IInputHandler 接口方法
+    # IInputHandler interface methods
     # ------------------------------------------------------------------
 
     def process_events(self) -> List[str]:
-        """处理所有待处理的 Pygame 事件。
+        """Process all pending Pygame events.
 
         Returns:
-            操作命令字符串列表
+            List of operation command strings
         """
         commands: List[str] = []
         self._double_click_happened = False
@@ -90,7 +90,7 @@ class InputHandler(IInputHandler):
             if cmd is not None:
                 commands.append(cmd)
 
-        # 键盘持续按下检测
+        # Held key detection
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT]:
             commands.append("PAN_LEFT")
@@ -104,68 +104,69 @@ class InputHandler(IInputHandler):
         return commands
 
     def get_mouse_world_pos(self, camera: ICamera) -> WorldPoint:
-        """获取鼠标当前所在的世界坐标。
+        """Get the current world position of the mouse.
 
         Args:
-            camera: 相机对象
+            camera: Camera object
 
         Returns:
-            (x, y) 世界坐标
+            (x, y) world coordinates
         """
         return camera.screen_to_world(self.mouse_screen_x, self.mouse_screen_y)
 
     # ------------------------------------------------------------------
-    # 事件处理
+    # Event handling
     # ------------------------------------------------------------------
 
     def handle_event(self, event: pygame.event.Event,
                      bodies: Optional["np.ndarray"] = None,
                      camera: Optional[ICamera] = None) -> Optional[str]:
-        """处理单个 Pygame 事件（公开方法，供主循环分发事件时调用）。
+        """Handle a single Pygame event (public method, called by the main loop to dispatch events).
 
-        与 ``process_events()`` 的区别是此方法只处理传入的单个事件，不自动
-        从事件队列中拉取。用于主循环需要将事件分发给 HUD 和 InputHandler 的场景。
+        Unlike ``process_events()``, this method only processes a single passed-in event and does not
+        automatically pull events from the event queue. Used when the main loop needs to dispatch
+        events to both the HUD and InputHandler.
 
         Args:
-            event: Pygame 事件
-            bodies: 可选天体状态数组，用于检测左键抓取
-            camera: 可选相机对象，用于抓取检测的坐标转换
+            event: Pygame event
+            bodies: Optional body state array, used for left-click grab detection
+            camera: Optional camera object, used for coordinate transformation in grab detection
 
         Returns:
-            命令字符串，或 None
+            Command string, or None
         """
-        # 窗口关闭
+        # Window close
         if event.type == pygame.QUIT:
             return "QUIT"
 
-        # 鼠标移动
+        # Mouse motion
         if event.type == pygame.MOUSEMOTION:
             self.mouse_screen_x, self.mouse_screen_y = event.pos
 
-            # 更新鼠标世界坐标（用于 HUD 显示）
+            # Update mouse world coordinates (for HUD display)
             if camera is not None:
                 self.mouse_world_x, self.mouse_world_y = camera.screen_to_world(
                     self.mouse_screen_x, self.mouse_screen_y
                 )
 
-            # 拖拽平移（中键）
+            # Drag pan (middle button)
             if self.is_panning:
                 dx = event.pos[0] - self.pan_last_x
                 dy = event.pos[1] - self.pan_last_y
                 self.pan_last_x, self.pan_last_y = event.pos
                 return f"PAN:{dx},{dy}"
 
-            # 抓取拖拽
+            # Grab-drag
             if self.is_grabbing and self.grabbed_body_id is not None:
                 return f"GRAB_DRAG:{self.grabbed_body_id},{self.mouse_screen_x},{self.mouse_screen_y}"
 
-            # 探测器瞄准拖拽
+            # Probe aim-drag
             if self.is_aiming:
-                pass  # 由外部模块读取拖拽向量
+                pass  # Drag vector read by external modules
 
             return None
 
-        # 鼠标滚轮 (SDL 2.28+ on Windows 使用 MOUSEWHEEL 代替 MOUSEBUTTONDOWN button 4/5)
+        # Mouse wheel (SDL 2.28+ on Windows uses MOUSEWHEEL instead of MOUSEBUTTONDOWN button 4/5)
         if event.type == pygame.MOUSEWHEEL:
             x, y = self.mouse_screen_x, self.mouse_screen_y
             if event.y > 0:
@@ -174,19 +175,19 @@ class InputHandler(IInputHandler):
                 return f"ZOOM_OUT:{x},{y}"
             return None
 
-        # 鼠标按下
+        # Mouse down
         if event.type == pygame.MOUSEBUTTONDOWN:
             return self._handle_mouse_down(event, bodies, camera)
 
-        # 鼠标释放
+        # Mouse up
         if event.type == pygame.MOUSEBUTTONUP:
             return self._handle_mouse_up(event)
 
-        # 键盘按下
+        # Key down
         if event.type == pygame.KEYDOWN:
             return self._handle_key_down(event)
 
-        # 键盘释放
+        # Key up
         if event.type == pygame.KEYUP:
             if event.key in self._keys_down:
                 self._keys_down.remove(event.key)
@@ -197,21 +198,21 @@ class InputHandler(IInputHandler):
     def _handle_mouse_down(self, event: pygame.event.Event,
                            bodies: Optional["np.ndarray"] = None,
                            camera: Optional[ICamera] = None) -> Optional[str]:
-        """处理鼠标按下事件。
+        """Handle mouse down event.
 
         Args:
-            event: Pygame 事件
-            bodies: 可选天体状态数组，用于检测左键抓取
-            camera: 可选相机对象，用于抓取检测的坐标转换
+            event: Pygame event
+            bodies: Optional body state array, used for left-click grab detection
+            camera: Optional camera object, used for coordinate transformation in grab detection
 
         Returns:
-            命令字符串
+            Command string
         """
         x, y = event.pos
         self.mouse_screen_x, self.mouse_screen_y = x, y
 
-        if event.button == 1:  # 左键 — 选择
-            # 双击检测
+        if event.button == 1:  # Left button — select
+            # Double-click detection
             now = pygame.time.get_ticks() / 1000.0
             time_since_last = now - self._last_click_time
             dist_since_last = math.sqrt(
@@ -229,7 +230,7 @@ class InputHandler(IInputHandler):
             self._last_click_time = now
             self._last_click_pos = (x, y)
 
-            # 检查是否点击在天体上（抓取拖拽）
+            # Check if clicked on a celestial body (grab-drag)
             if bodies is not None and camera is not None:
                 found_id = self.find_body_at_screen_pos(x, y, bodies, camera)
                 if found_id is not None:
@@ -237,37 +238,37 @@ class InputHandler(IInputHandler):
                     self.grabbed_body_id = found_id
                     return f"GRAB_START:{found_id},{x},{y}"
 
-            # 开始拖拽检测
+            # Start drag detection
             self.is_dragging = True
             self.drag_start_x = x
             self.drag_start_y = y
 
             return f"CLICK:{x},{y}"
 
-        elif event.button == 2:  # 中键 - 平移
+        elif event.button == 2:  # Middle button - pan
             self.is_panning = True
             self.pan_last_x, self.pan_last_y = event.pos
             return None
 
-        elif event.button == 3:  # 右键 - 发射探测器或取消选择
+        elif event.button == 3:  # Right button - launch probe or deselect
             return f"RIGHT_CLICK:{x},{y}"
 
-        elif event.button == 4:  # 滚轮上 - 放大
+        elif event.button == 4:  # Wheel up - zoom in
             return f"ZOOM_IN:{x},{y}"
 
-        elif event.button == 5:  # 滚轮下 - 缩小
+        elif event.button == 5:  # Wheel down - zoom out
             return f"ZOOM_OUT:{x},{y}"
 
         return None
 
     def _handle_mouse_up(self, event: pygame.event.Event) -> Optional[str]:
-        """处理鼠标释放事件。
+        """Handle mouse up event.
 
         Args:
-            event: Pygame 事件
+            event: Pygame event
 
         Returns:
-            命令字符串
+            Command string
         """
         if event.button == 1:
             if self.is_grabbing:
@@ -277,7 +278,7 @@ class InputHandler(IInputHandler):
 
             if self.is_dragging:
                 self.is_dragging = False
-                # 检测框选结束（拖拽距离 > 10px）
+                # Detect box selection end (drag distance > 10px)
                 sx, sy = event.pos
                 dx = sx - self.drag_start_x
                 dy = sy - self.drag_start_y
@@ -290,7 +291,7 @@ class InputHandler(IInputHandler):
                 return None
 
             self.is_dragging = False
-            # 如果拖拽距离大，视为发射探测器
+            # If drag distance is large, treat as probe launch
             if self.is_aiming:
                 self.is_aiming = False
                 dx = event.pos[0] - self.aim_start_x
@@ -299,11 +300,11 @@ class InputHandler(IInputHandler):
                     return f"LAUNCH_PROBE:{self.aim_start_x},{self.aim_start_y},{dx},{dy}"
             return None
 
-        elif event.button == 2:  # 释放中键
+        elif event.button == 2:  # Release middle button
             self.is_panning = False
             return None
 
-        elif event.button == 3:  # 释放右键 — 探测器瞄准发射
+        elif event.button == 3:  # Release right button — probe aim-launch
             if self.is_aiming:
                 self.is_aiming = False
                 dx = event.pos[0] - self.aim_start_x
@@ -315,13 +316,13 @@ class InputHandler(IInputHandler):
         return None
 
     def _handle_key_down(self, event: pygame.event.Event) -> Optional[str]:
-        """处理键盘按下事件。
+        """Handle key down event.
 
         Args:
-            event: Pygame 事件
+            event: Pygame event
 
         Returns:
-            命令字符串
+            Command string
         """
         if event.key == pygame.K_SPACE:
             return "TOGGLE_PAUSE"
@@ -355,24 +356,24 @@ class InputHandler(IInputHandler):
         return None
 
     # ------------------------------------------------------------------
-    # 查询方法
+    # Query methods
     # ------------------------------------------------------------------
 
     def is_double_click(self) -> bool:
-        """检测当前帧是否发生了双击事件。
+        """Check whether a double-click event occurred in the current frame.
 
         Returns:
-            双击发生返回 True
+            True if a double-click occurred
         """
         return self._double_click_happened
 
     def get_aim_vector(
         self,
     ) -> Tuple[float, float]:
-        """获取探测器瞄准向量（从起始点到鼠标当前位置）。
+        """Get the probe aim vector (from the start point to the current mouse position).
 
         Returns:
-            (dx, dy) 像素偏移量，未瞄准时返回 (0, 0)
+            (dx, dy) pixel offset, or (0, 0) if not aiming
         """
         if not self.is_aiming:
             return 0.0, 0.0
@@ -382,29 +383,29 @@ class InputHandler(IInputHandler):
         return float(dx), float(dy)
 
     def reset_grab(self) -> None:
-        """取消抓取状态（当 main.py 决定不进入抓取模式时调用）。"""
+        """Cancel the grab state (called when main.py decides not to enter grab mode)."""
         self.is_grabbing = False
         self.grabbed_body_id = None
 
     def start_aiming(self) -> None:
-        """开始瞄准（右键在探测器上按下时调用）。"""
+        """Start aiming (called when the right button is pressed on a probe)."""
         self.is_aiming = True
         self.aim_start_x = self.mouse_screen_x
         self.aim_start_y = self.mouse_screen_y
 
     # ------------------------------------------------------------------
-    # 相机控制辅助
+    # Camera control helpers
     # ------------------------------------------------------------------
 
     def handle_camera_commands(
         self, commands: List[str], camera: ICamera, dt: float
     ) -> None:
-        """处理与相机相关的命令。
+        """Handle camera-related commands.
 
         Args:
-            commands: 命令列表
-            camera: 相机对象
-            dt: 时间增量（秒）
+            commands: Command list
+            camera: Camera object
+            dt: Time delta (seconds)
         """
         from src.config import CAMERA_PAN_SPEED
 
@@ -413,7 +414,7 @@ class InputHandler(IInputHandler):
                 camera.reset()
 
             elif cmd.startswith("PAN:"):
-                # cmd = "PAN:dx,dy" 或 "PAN:100,200"
+                # cmd = "PAN:dx,dy" or "PAN:100,200"
                 parts = cmd.split(":")
                 if len(parts) >= 2:
                     coords = parts[1].split(",")
@@ -452,7 +453,7 @@ class InputHandler(IInputHandler):
                     camera.zoom_at(1.0 - CAMERA_ZOOM_SPEED, camera.width // 2, camera.height // 2)
 
     # ------------------------------------------------------------------
-    # 选择检测
+    # Selection detection
     # ------------------------------------------------------------------
 
     def find_body_at_screen_pos(
@@ -462,15 +463,15 @@ class InputHandler(IInputHandler):
         bodies: "np.ndarray",  # type: ignore
         camera: ICamera,
     ) -> Optional[int]:
-        """查找屏幕坐标处最近的天体。
+        """Find the nearest celestial body at the given screen coordinates.
 
         Args:
-            screen_x, screen_y: 屏幕坐标
-            bodies: 天体状态数组
-            camera: 相机对象
+            screen_x, screen_y: Screen coordinates
+            bodies: Body state array
+            camera: Camera object
 
         Returns:
-            天体 ID，或 None
+            Body ID, or None
         """
         import numpy as np
 
@@ -493,22 +494,22 @@ class InputHandler(IInputHandler):
         return best_id
 
     # ------------------------------------------------------------------
-    # 测试用注入 API（模拟输入事件）
+    # Test injection API (simulated input events)
     # ------------------------------------------------------------------
 
     def inject_mouse_click(self, x: int, y: int, button: int = 1) -> str:
-        """模拟鼠标点击事件，返回生成的命令字符串。
+        """Simulate a mouse click event and return the generated command string.
 
-        生成 MOUSEBUTTONDOWN + MOUSEBUTTONUP 事件并处理。
-        左键(button=1)生成"CLICK:x,y"，中键(button=2)启动平移。
+        Generates and processes MOUSEBUTTONDOWN + MOUSEBUTTONUP events.
+        Left button (button=1) generates "CLICK:x,y", middle button (button=2) starts panning.
 
         Args:
-            x: 屏幕 x 坐标 (像素)
-            y: 屏幕 y 坐标 (像素)
-            button: 鼠标按钮 (1=左键, 2=中键, 3=右键)
+            x: Screen x coordinate (pixels)
+            y: Screen y coordinate (pixels)
+            button: Mouse button (1=left, 2=middle, 3=right)
 
         Returns:
-            生成的命令字符串，若无命令则返回空字符串
+            Generated command string, or empty string if no command
         """
         down_event = pygame.event.Event(
             pygame.MOUSEBUTTONDOWN, {'pos': (x, y), 'button': button}
@@ -525,21 +526,21 @@ class InputHandler(IInputHandler):
     def inject_mouse_drag(
         self, x1: int, y1: int, x2: int, y2: int, button: int = 1
     ) -> List[str]:
-        """模拟鼠标拖拽操作（按下->移动->释放），返回命令列表。
+        """Simulate a mouse drag operation (press -> move -> release) and return the command list.
 
-        用于模拟左键拖拽选中、中键平移相机等操作。
+        Used to simulate left-click drag selection, middle-button camera panning, etc.
 
         Args:
-            x1, y1: 起始屏幕坐标 (像素)
-            x2, y2: 结束屏幕坐标 (像素)
-            button: 鼠标按钮 (1=左键, 2=中键, 3=右键)
+            x1, y1: Start screen coordinates (pixels)
+            x2, y2: End screen coordinates (pixels)
+            button: Mouse button (1=left, 2=middle, 3=right)
 
         Returns:
-            生成的命令字符串列表
+            List of generated command strings
         """
         cmds: List[str] = []
 
-        # 鼠标按下
+        # Mouse down
         down_event = pygame.event.Event(
             pygame.MOUSEBUTTONDOWN, {'pos': (x1, y1), 'button': button}
         )
@@ -547,10 +548,10 @@ class InputHandler(IInputHandler):
         if cmd is not None:
             cmds.append(cmd)
 
-        # 更新鼠标位置
+        # Update mouse position
         self.mouse_screen_x, self.mouse_screen_y = x2, y2
 
-        # 如果正在平移，生成移动事件
+        # If panning, generate a motion event
         if self.is_panning:
             move_event = pygame.event.Event(
                 pygame.MOUSEMOTION, {'pos': (x2, y2)}
@@ -559,7 +560,7 @@ class InputHandler(IInputHandler):
             if cmd is not None:
                 cmds.append(cmd)
 
-        # 鼠标释放
+        # Mouse up
         up_event = pygame.event.Event(
             pygame.MOUSEBUTTONUP, {'pos': (x2, y2), 'button': button}
         )
@@ -570,15 +571,15 @@ class InputHandler(IInputHandler):
         return cmds
 
     def inject_key_press(self, key: str) -> str:
-        """模拟键盘按键事件，返回生成的命令字符串。
+        """Simulate a keyboard key press event and return the generated command string.
 
-        通过 pygame 键常量名（如 'K_SPACE', 'K_r'）模拟按键。
+        Simulates a key press using the pygame key constant name (e.g., 'K_SPACE', 'K_r').
 
         Args:
-            key: pygame.K_* 的字符串名，如 'K_SPACE'、'K_r'、'K_ESCAPE'
+            key: String name of pygame.K_* constant, e.g., 'K_SPACE', 'K_r', 'K_ESCAPE'
 
         Returns:
-            生成的命令字符串，若无命令则返回空字符串
+            Generated command string, or empty string if no command
         """
         key_attr = getattr(pygame, key, None)
         if key_attr is None:
@@ -589,9 +590,9 @@ class InputHandler(IInputHandler):
         return cmd if cmd is not None else ""
 
     def get_mouse_pos(self) -> Tuple[int, int]:
-        """返回当前鼠标屏幕位置。
+        """Return the current mouse screen position.
 
         Returns:
-            (x, y) 屏幕坐标 (像素)
+            (x, y) screen coordinates (pixels)
         """
         return (self.mouse_screen_x, self.mouse_screen_y)

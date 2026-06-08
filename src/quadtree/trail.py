@@ -1,17 +1,17 @@
-"""尾迹缓冲区实现。
+"""Trail buffer implementation.
 
-使用 collections.deque 为每个天体维护固定长度的历史轨迹。
-提供时间倒退 (rewind)、尾迹获取 (get_trail)、淡出 (fade-out) 等功能。
+Uses collections.deque to maintain a fixed-length history of positions for each body.
+Provides rewind, trail retrieval, and fade-out functionality.
 
 Typical usage::
 
     buffer = TrailBuffer(maxlen=300)
-    buffer.push_frame(body_id, x, y)      # 每帧追加
-    buffer.push_all(bodies)                # 批量追加
-    trail = buffer.get_trail(body_id)      # 获取尾迹
-    pos = buffer.rewind(body_id, frames=60)  # 倒退 60 帧
-    buffer.clear(body_id)                  # 清除单个
-    buffer.clear_all()                     # 清除所有
+    buffer.push_frame(body_id, x, y)      # Append per frame
+    buffer.push_all(bodies)                # Batch append
+    trail = buffer.get_trail(body_id)      # Get trail
+    pos = buffer.rewind(body_id, frames=60)  # Rewind 60 frames
+    buffer.clear(body_id)                  # Clear single body
+    buffer.clear_all()                     # Clear all
 """
 
 from collections import deque
@@ -23,22 +23,22 @@ from src.config import MAX_TRAIL_LENGTH
 from src.core.interfaces import ITrailBuffer
 from src.core.types import X, Y, IS_ACTIVE
 
-# 淡出帧数：天体消失后尾迹持续显示的帧数
+# Fade frames: number of frames the trail persists after a body disappears
 FADE_FRAMES: int = 60
 
 
 class TrailBuffer(ITrailBuffer):
-    """尾迹缓冲区，维护每个天体的历史坐标轨迹。
+    """Trail buffer, maintains historical coordinate trajectories for each body.
 
-    使用 ``collections.deque`` 作为底层存储，固定最大长度。
-    支持每帧追加、时间倒退、尾迹序列获取和淡出效果。
+    Uses ``collections.deque`` as the underlying storage with a fixed maximum length.
+    Supports per-frame appending, time rewind, trail sequence retrieval, and fade-out effects.
 
-    当天体消失（碰撞合并或被删除）时，尾迹不会立刻消失，
-    而是通过 ``_fade_counters`` 计数，在 FADE_FRAMES 帧内逐渐淡出。
+    When a body disappears (collision, merger, or deletion), the trail does not vanish immediately.
+    Instead, it fades out gradually via ``_fade_counters`` over FADE_FRAMES frames.
 
     Attributes:
-        maxlen: 每个天体最大轨迹点数
-        fade_frames: 淡出持续帧数
+        maxlen: Maximum trail points per body
+        fade_frames: Number of frames for fade-out
     """
 
     def __init__(
@@ -46,11 +46,11 @@ class TrailBuffer(ITrailBuffer):
         maxlen: int = MAX_TRAIL_LENGTH,
         fade_frames: int = FADE_FRAMES,
     ) -> None:
-        """初始化尾迹缓冲区。
+        """Initialize the trail buffer.
 
         Args:
-            maxlen: 每个天体最大轨迹点数 (默认 MAX_TRAIL_LENGTH)
-            fade_frames: 淡出持续帧数 (默认 FADE_FRAMES)
+            maxlen: Maximum trail points per body (default MAX_TRAIL_LENGTH)
+            fade_frames: Number of frames for fade-out (default FADE_FRAMES)
         """
         self._maxlen = maxlen
         self._fade_frames: int = fade_frames
@@ -58,21 +58,21 @@ class TrailBuffer(ITrailBuffer):
         self._fade_counters: Dict[int, int] = {}
 
     # ------------------------------------------------------------------
-    # ITrailBuffer 接口方法
+    # ITrailBuffer interface methods
     # ------------------------------------------------------------------
 
     def push_frame(self, body_id: int, x: float, y: float) -> None:
-        """追加一帧坐标到指定天体的尾迹中。
+        """Append a frame of coordinates to the specified body's trail.
 
-        如果该天体还没有尾迹，自动创建一个新的 deque。
-        如果该 body_id 的前一帧到当前位置出现大幅度跳跃
-        （> 1e12 m，表明数组压缩后 body_id 已对应不同天体），
-        自动清空旧尾迹重新开始记录。
+        If the body has no trail yet, automatically creates a new deque.
+        If the previous frame for this body_id shows a large jump
+        (> 1e12 m, indicating that array compaction mapped a different body to this ID),
+        automatically clears the old trail and starts recording fresh.
 
         Args:
-            body_id: 天体 ID
-            x: 当前帧 x 坐标
-            y: 当前帧 y 坐标
+            body_id: Body ID
+            x: Current frame x-coordinate
+            y: Current frame y-coordinate
         """
         if body_id not in self._trails:
             self._trails[body_id] = deque(maxlen=self._maxlen)
@@ -80,20 +80,20 @@ class TrailBuffer(ITrailBuffer):
             dq = self._trails[body_id]
             if dq:
                 lx, ly = dq[-1]
-                # 检测 body_id 复用：正常位移 < 1e10m，数组压缩导致的跳跃 > 1e11m
+                # Detect body_id reuse: normal displacement < 1e10m, array compaction jump > 1e11m
                 if (x - lx) ** 2 + (y - ly) ** 2 > 1e20:
                     dq.clear()
         self._trails[body_id].append((float(x), float(y)))
 
     def push_all(self, bodies: np.ndarray, exclude: Optional[set] = None) -> None:
-        """为所有活跃天体的当前位置追加尾迹帧。
+        """Append trail frames for the current positions of all active bodies.
 
-        追加完成后，对已消失天体的尾迹启动淡出计数器。
-        计数器达到 FADE_FRAMES 时才删除尾迹数据。
+        After appending, starts fade counters for trails of bodies that have disappeared.
+        Trail data is only deleted when the counter reaches FADE_FRAMES.
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
-            exclude: 可选，要排除的天体 ID 集合（如被抓取拖拽的天体）
+            bodies: Body state array of shape (N, NUM_FIELDS)
+            exclude: Optional set of body IDs to exclude (e.g., bodies being grabbed/dragged)
         """
         if exclude is None:
             exclude = set()
@@ -102,7 +102,7 @@ class TrailBuffer(ITrailBuffer):
             if body_id in exclude:
                 continue
             self.push_frame(body_id, float(bodies[body_id, X]), float(bodies[body_id, Y]))
-        # 残留尾迹处理：已消失的天体不删除，启动淡出计数器
+        # Stale trail handling: don't delete trails of disappeared bodies, start fade counter
         stale = [bid for bid in self._trails if bid not in active_set]
         for bid in stale:
             self._fade_counters[bid] = self._fade_counters.get(bid, 0) + 1
@@ -111,96 +111,96 @@ class TrailBuffer(ITrailBuffer):
                 del self._fade_counters[bid]
 
     def get_trail(self, body_id: int) -> List[Tuple[float, float]]:
-        """获取指定天体的尾迹坐标列表 (从旧到新)。
+        """Get the trail coordinate list for the specified body (oldest to newest).
 
         Args:
-            body_id: 天体 ID
+            body_id: Body ID
 
         Returns:
-            坐标列表 [(x1, y1), (x2, y2), ...]，无尾迹时返回空列表
+            Coordinate list [(x1, y1), (x2, y2), ...], empty list if no trail exists
         """
         if body_id not in self._trails:
             return []
         return list(self._trails[body_id])
 
     def rewind(self, body_id: int, frames: int) -> Optional[Tuple[float, float]]:
-        """返回指定天体 frames 帧前的坐标。
+        """Return the coordinates of the specified body from `frames` frames ago.
 
-        读取 deque 的历史条目，frames=0 返回最新帧。
-        如果历史不足 frames 帧，返回 None。
+        Reads from the deque history; frames=0 returns the most recent frame.
+        Returns None if history is shorter than `frames`.
 
         Args:
-            body_id: 天体 ID
-            frames: 回退帧数 (>= 0)
+            body_id: Body ID
+            frames: Number of frames to rewind (>= 0)
 
         Returns:
-            (x, y) 坐标，若历史不足则返回 None
+            (x, y) coordinates, or None if insufficient history
         """
         if body_id not in self._trails:
             return None
         dq = self._trails[body_id]
         if len(dq) <= frames:
             return None
-        # deque 支持索引访问 (Python 3.5+)
-        # 正向索引 0 = 最旧, -1 = 最新
-        # 要从最新的往后退 frames，需要从尾部算
+        # deque supports indexed access (Python 3.5+)
+        # Forward index 0 = oldest, -1 = newest
+        # To rewind from the newest by `frames`, count from the tail
         return dq[-(frames + 1)]
 
     def clear(self, body_id: int) -> None:
-        """清除指定天体的尾迹和淡出计数器。
+        """Clear the trail and fade counter for the specified body.
 
-        如果天体不存在，什么也不做。
+        If the body does not exist, does nothing.
 
         Args:
-            body_id: 天体 ID
+            body_id: Body ID
         """
         self._trails.pop(body_id, None)
         self._fade_counters.pop(body_id, None)
 
     def clear_all(self) -> None:
-        """清除所有天体的尾迹和淡出计数器。"""
+        """Clear trails and fade counters for all bodies."""
         self._trails.clear()
         self._fade_counters.clear()
 
     # ------------------------------------------------------------------
-    # 扩展方法
+    # Extension methods
     # ------------------------------------------------------------------
 
     def __len__(self) -> int:
-        """返回当前跟踪的天体数量。"""
+        """Return the number of bodies currently tracked."""
         return len(self._trails)
 
     def get_all_trails(self) -> Dict[int, List[Tuple[float, float]]]:
-        """获取所有天体的尾迹数据。
+        """Get trail data for all bodies.
 
         Returns:
-            {body_id: [(x, y), ...]} 字典
+            Dictionary of {body_id: [(x, y), ...]}
         """
         return {bid: list(dq) for bid, dq in self._trails.items()}
 
     def has_trail(self, body_id: int) -> bool:
-        """检查指定天体是否有尾迹数据。
+        """Check whether the specified body has trail data.
 
         Args:
-            body_id: 天体 ID
+            body_id: Body ID
 
         Returns:
-            存在尾迹返回 True
+            True if trail data exists
         """
         return body_id in self._trails and len(self._trails[body_id]) > 0
 
     def get_fade_factor(self, body_id: int) -> float:
-        """获取指定天体的尾迹淡出系数。
+        """Get the trail fade factor for the specified body.
 
-        存活的天体返回 1.0（不淡出）。
-        正在淡出的天体返回 (FADE_FRAMES - counter) / FADE_FRAMES。
-        无尾迹的天体返回 1.0。
+        Active bodies return 1.0 (no fade).
+        Fading bodies return (FADE_FRAMES - counter) / FADE_FRAMES.
+        Bodies with no trail return 1.0.
 
         Args:
-            body_id: 天体 ID
+            body_id: Body ID
 
         Returns:
-            淡出系数 (0.0 ~ 1.0)，1.0 = 完全可见，0.0 = 完全透明
+            Fade factor (0.0 ~ 1.0), 1.0 = fully visible, 0.0 = fully transparent
         """
         if body_id not in self._fade_counters or body_id not in self._trails:
             return 1.0
@@ -208,10 +208,10 @@ class TrailBuffer(ITrailBuffer):
         return max(0.0, 1.0 - counter / self._fade_frames)
 
     def get_fade_factors(self) -> Dict[int, float]:
-        """获取所有天体的尾迹淡出系数。
+        """Get trail fade factors for all bodies.
 
         Returns:
-            {body_id: fade_factor} 字典，存活天体的系数为 1.0
+            Dictionary of {body_id: fade_factor}, active bodies have factor 1.0
         """
         result: Dict[int, float] = {}
         for bid in self._trails:

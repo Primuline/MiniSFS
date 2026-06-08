@@ -1,173 +1,173 @@
 # MiniSFS — Mini Space Flight Simulator 🚀
 
-一个基于真实 N 体物理学引力的 **2D 太空沙盒模拟器**。放置恒星、行星、探测器，观察它们在引力和库仑力下的运动轨迹。
-> 类似 Universe Sandbox 的 2D 版本，但更轻量、更侧重物理实验与交互。
+A **2D space sandbox simulator** based on real N-body physics gravity. Place stars, planets, probes, and watch their trajectories under gravitational and Coulomb forces.
+> Think of it as a 2D version of Universe Sandbox, but lighter and more focused on physics experimentation and interaction.
 
 ---
 
-## ✨ 特性
+## ✨ Features
 
-- **N 体引力 + 库仑力模拟** — 全量 O(n²) 力计算，RK4 积分器，4 子步/帧
-- **四叉树加速**（可选）— Barnes-Hut 近似，O(N log N) 性能
-- **放置天体** — 恒星 (S)、行星 (P)、探测器 (D)、自定义粒子 (C)，支持科学计数法设参
-- **抓取拖拽** — 左键拖拽天体，暂停时间，释放后速度归零
-- **参考系模式** — 双击天体进入参考系视角（平滑跟随 + 自动缩放），Esc 退出
-- **轨迹预览** — 放置速度设定时实时显示预测轨道（RK4 + 全量引力，约 10 秒）
-- **探测器瞄准** — 右键探测器 → 拖拽设定发射方向和速度
-- **编辑天体** — 右键已有天体，修改质量/电荷/半径（科学计数法）
-- **尾迹系统** — 自动记录轨迹，300 帧淡出消失效果
-- **时间控制** — 暂停 / 1× / 2× / 4× / 8× 加速
-- **坐标网格** — G 键切换，自适应间距
-- **天体标签** — L 键切换，远距离自动淡出
-- **快捷键面板** — H 键查看所有快捷键
-- **比例尺 + 状态信息** — 实时 FPS、天体数、鼠标世界坐标
-
----
-
-## 🎮 操作
-
-| 操作 | 按键 |
-|:-----|:-----|
-| 中键拖拽 | 平移视野 |
-| 滚轮 | 缩放（以鼠标为中心） |
-| 左键天体 | 抓取拖拽（暂停时间） |
-| 双击天体 | 进入参考系跟随模式 |
-| 右键天体 | 编辑参数（质量/电荷/半径） |
-| 右键探测器 | 瞄准 → 拖拽发射 |
-| 右键空白 | 取消工具 / 取消选择 |
-| `Esc` | 退出参考系 / 关闭快捷键面板 / 退出菜单 / 退出游戏 |
-| `Space` | 暂停/继续 |
-| `R` | 重置相机 |
-| `G` | 切换坐标网格 |
-| `L` | 切换天体标签 |
-| `H` | 切换快捷键面板 |
-| `T` | 切换尾迹显示 |
-| `F` | 2× 加速 |
-| `6` | 4× 加速 |
-| `7` | 8× 加速 |
-| `0` | 恢复 1× 倍速 |
-| `Del` / `Backspace` | 删除选中天体 |
-
-### 工具栏
-
-| 按钮 | 快捷键 | 功能 |
-|:-----|:-------|:-----|
-| **S** | `1` | 放置恒星（静态，直接放置） |
-| **P** | `2` | 放置行星（点击位置 → 拖拽设定速度） |
-| **D** | `3` | 放置探测器 |
-| **C** | `4` | 自定义粒子（科学计数法弹窗） |
-
-### 时间控制
-
-| 按钮 | 快捷键 | 功能 |
-|:-----|:-------|:-----|
-| `\|<` | — | 恢复 1× 速度 |
-| `>` | `Space` | 播放/暂停 |
-| `>>` | `F` | 2× 加速 |
-| `>>>` | `6` | 4× 加速 |
-| `>>>>` | `7` | 8× 加速 |
+- **N-body gravity + Coulomb force simulation** — Full O(n^2) force calculation, RK4 integrator, 4 sub-steps/frame
+- **Quadtree acceleration** (optional) — Barnes-Hut approximation, O(N log N) performance
+- **Place bodies** — Star (S), Planet (P), Probe (D), Custom particle (C), supports scientific notation parameter input
+- **Grab and drag** — Left-click drag a body, time pauses, velocity resets on release
+- **Reference frame mode** — Double-click a body to enter reference frame view (smooth follow + auto-zoom), Esc to exit
+- **Trajectory preview** — Real-time predicted orbit display when setting placement velocity (RK4 + full gravity, ~10 seconds)
+- **Probe aiming** — Right-click probe, then drag to set launch direction and speed
+- **Edit body** — Right-click an existing body to edit mass/charge/radius (scientific notation)
+- **Trail system** — Auto-record trajectories, 300-frame fade-out effect
+- **Time control** — Pause / 1x / 2x / 4x / 8x speed
+- **Coordinate grid** — Toggle with G key, adaptive spacing
+- **Body labels** — Toggle with L key, automatic fade-out at distance
+- **Shortcut panel** — Press H to view all shortcuts
+- **Scale bar + status info** — Real-time FPS, body count, mouse world coordinates
 
 ---
 
-## 📦 安装
+## 🎮 Controls
+
+| Action | Key |
+|:-------|:----|
+| Middle-click drag | Pan view |
+| Scroll wheel | Zoom (centered on mouse) |
+| Left-click body | Grab and drag (time pauses) |
+| Double-click body | Enter reference frame follow mode |
+| Right-click body | Edit parameters (mass/charge/radius) |
+| Right-click probe | Aim, then drag to launch |
+| Right-click empty | Cancel tool / deselect |
+| `Esc` | Exit reference frame / close shortcut panel / exit menu / quit game |
+| `Space` | Pause/resume |
+| `R` | Reset camera |
+| `G` | Toggle coordinate grid |
+| `L` | Toggle body labels |
+| `H` | Toggle shortcut panel |
+| `T` | Toggle trail display |
+| `F` | 2x speed |
+| `6` | 4x speed |
+| `7` | 8x speed |
+| `0` | Restore 1x speed |
+| `Del` / `Backspace` | Delete selected body |
+
+### Toolbar
+
+| Button | Shortcut | Function |
+|:-------|:---------|:---------|
+| **S** | `1` | Place star (static, place directly) |
+| **P** | `2` | Place planet (click position, then drag to set velocity) |
+| **D** | `3` | Place probe |
+| **C** | `4` | Custom particle (scientific notation dialog) |
+
+### Time Control
+
+| Button | Shortcut | Function |
+|:-------|:---------|:---------|
+| `|<` | — | Restore 1x speed |
+| `>` | `Space` | Play/pause |
+| `>>` | `F` | 2x speed |
+| `>>>` | `6` | 4x speed |
+| `>>>>` | `7` | 8x speed |
+
+---
+
+## 📦 Installation
 
 ```bash
-# 克隆仓库
+# Clone the repository
 git clone https://github.com/Primuline/MiniSFS.git
 cd MiniSFS
 
-# 安装依赖（推荐 conda 或 venv）
+# Install dependencies (conda or venv recommended)
 pip install pygame numpy
 ```
 
-需要 Python 3.10+。
+Requires Python 3.10+.
 
 ---
 
-## 🚀 运行
+## 🚀 Running
 
 ```bash
 python -m src.main
 ```
 
-默认场景：一颗中心恒星（质量 2×10³⁰ kg）+ 一颗绕行行星（1 AU 轨道）。
+Default scene: one central star (mass 2x10^30 kg) + one orbiting planet (1 AU orbit).
 
 ---
 
-## 🗂 项目结构
+## 🗂 Project Structure
 
 ```
 MiniSFS/
 ├── src/
-│   ├── main.py                 # 主入口 & 主循环
-│   ├── config.py               # 全局常量（尺度、默认参数等）
+│   ├── main.py                 # Main entry point and main loop
+│   ├── config.py               # Global constants (scales, default parameters, etc.)
 │   ├── core/
-│   │   ├── types.py            # 天体状态数组定义（10 列 float64）
-│   │   └── interfaces.py       # 模块抽象接口（ABC）
+│   │   ├── types.py            # Body state array definition (10 columns, float64)
+│   │   └── interfaces.py       # Module abstract interfaces (ABC)
 │   ├── physics/
-│   │   ├── engine.py           # PhysicsEngine — 核心物理更新
-│   │   ├── forces.py           # 万有引力 + 库仑力计算
+│   │   ├── engine.py           # PhysicsEngine — core physics update
+│   │   ├── forces.py           # Gravitational + Coulomb force calculations
 │   │   ├── integrators.py      # RK4 / Euler / Velocity Verlet
-│   │   └── collision.py        # 碰撞检测与响应规则
+│   │   └── collision.py        # Collision detection and response rules
 │   ├── rendering/
-│   │   ├── renderer.py         # Renderer — 天体绘制、发光、高亮
-│   │   ├── camera.py           # Camera — 视口变换、缩放、跟随
-│   │   ├── hud.py              # HUD — 工具栏、时间控制、信息面板、比例尺
-│   │   ├── effects.py          # 尾迹、粒子特效、星云背景、轨迹预览、网格、标签
-│   │   └── input_dialog.py     # 科学计数法输入弹窗
+│   │   ├── renderer.py         # Renderer — body drawing, glow, highlight
+│   │   ├── camera.py           # Camera — viewport transformation, zoom, follow
+│   │   ├── hud.py              # HUD — toolbar, time control, info panel, scale bar
+│   │   ├── effects.py          # Trails, particle effects, nebula background, trajectory preview, grid, labels
+│   │   └── input_dialog.py     # Scientific notation input dialog
 │   ├── input/
-│   │   └── handler.py          # 事件 → 命令（输入层与渲染层分离）
+│   │   └── handler.py          # Events to commands (input layer separated from rendering layer)
 │   └── quadtree/
-│       ├── quadtree.py         # 四叉树实现
-│       ├── barnes_hut.py       # Barnes-Hut 近似加速
-│       └── trail.py            # TrailBuffer — 双端队列尾迹 + 淡出
+│       ├── quadtree.py         # Quadtree implementation
+│       ├── barnes_hut.py       # Barnes-Hut approximation acceleration
+│       └── trail.py            # TrailBuffer — deque-based trail with fade-out
 ├── tests/
-│   ├── test_integration.py     # 集成测试（16 个场景）
-│   ├── test_physics.py         # 物理单元测试
-│   └── test_quadtree.py        # 四叉树单元测试（60 个）
-├── docs/                       # 设计文档 / 功能规范
-└── .claude/                    # 子 Agent 配置 & 开发规范
+│   ├── test_integration.py     # Integration tests (16 scenarios)
+│   ├── test_physics.py         # Physics unit tests
+│   └── test_quadtree.py        # Quadtree unit tests (60 tests)
+├── docs/                       # Design documents / feature specs
+└── .claude/                    # Sub-agent configuration and development conventions
 ```
 
 ---
 
-## 🔧 技术细节
+## 🔧 Technical Details
 
-| 概念 | 值 |
-|:-----|:---|
-| 世界尺度 | 800 km/px |
-| 基础时间步 | 1/60 s，4 子步/帧 |
-| 积分器 | RK4（4 阶 Runge-Kutta）|
-| 时间加速 | 基准 3125×，1×/2×/4×/8× |
-| 天体数组 | 10 列 × float64 |
+| Concept | Value |
+|:--------|:------|
+| World scale | 800 km/px |
+| Base time step | 1/60 s, 4 sub-steps/frame |
+| Integrator | RK4 (4th order Runge-Kutta) |
+| Time acceleration | Base 3125x, 1x/2x/4x/8x |
+| Body array | 10 columns x float64 |
 
-### 天体状态数组
+### Body State Array
 
 `numpy.ndarray` with shape `(N, 10)`:
 
-| 索引 | 字段 | 描述 |
-|:-----|:-----|:-----|
-| 0 | X | x 坐标 (m) |
-| 1 | Y | y 坐标 (m) |
-| 2 | VX | x 方向速度 (m/s) |
-| 3 | VY | y 方向速度 (m/s) |
-| 4 | MASS | 质量 (kg) |
-| 5 | CHARGE | 电荷 (C) |
-| 6 | RADIUS | 半径 (m) |
-| 7 | BODY_TYPE | 0=恒星, 1=行星, 2=探测器, 3=带电 |
-| 8 | IS_STATIC | 0=动态, 1=静态 |
-| 9 | IS_ACTIVE | 0=失效, 1=存活 |
+| Index | Field | Description |
+|:------|:------|:------------|
+| 0 | X | x coordinate (m) |
+| 1 | Y | y coordinate (m) |
+| 2 | VX | x velocity (m/s) |
+| 3 | VY | y velocity (m/s) |
+| 4 | MASS | mass (kg) |
+| 5 | CHARGE | charge (C) |
+| 6 | RADIUS | radius (m) |
+| 7 | BODY_TYPE | 0=star, 1=planet, 2=probe, 3=charged |
+| 8 | IS_STATIC | 0=dynamic, 1=static |
+| 9 | IS_ACTIVE | 0=inactive, 1=alive |
 
-### 碰撞规则
+### Collision Rules
 
-- **恒星 vs 行星** → 恒星星吸收行星（质量/电荷相加）
-- **行星 vs 行星** → 质心合并（动量守恒）
-- **探测器 vs 任何** → 探测器销毁
-- **恒星 vs 恒星** → 弹性碰撞
+- **Star vs Planet** → Star absorbs the planet (mass/charge added)
+- **Planet vs Planet** → Centroid merger (momentum conserved)
+- **Probe vs Anything** → Probe is destroyed
+- **Star vs Star** → Elastic collision
 
 ---
 
-## 🧪 测试
+## 🧪 Testing
 
 ```bash
 pytest tests/ -v
@@ -175,6 +175,6 @@ pytest tests/ -v
 
 ---
 
-## 📫 许可
+## 📫 License
 
 MIT

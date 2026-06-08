@@ -1,7 +1,7 @@
-"""特效模块：尾迹绘制、预测轨道、碰撞粒子特效、星云背景。
+"""Effects module: trail rendering, predicted trajectories, collision particles, starfield background.
 
-提供独立的绘制函数，供 Renderer 调用。
-所有函数不修改物理状态，仅读取数据绘制到 Pygame Surface。
+Provides standalone drawing functions for the Renderer.
+All functions read data and draw to a Pygame Surface without modifying physics state.
 """
 
 import math
@@ -32,16 +32,16 @@ from src.config import (
 from src.core.types import BODY_TYPE, IS_ACTIVE, RADIUS, VX, VY, X, Y
 
 # ============================================================================
-# 星云背景
+# Starfield Background
 # ============================================================================
 
 
 class StarField:
-    """星云背景：随机分布的星星，缓慢飘动。
+    """Starfield background: randomly distributed stars with slow drift.
 
-    星星分为两层：
-        - 远景层：小、暗、慢速飘动
-        - 近景层：大、亮、快速飘动
+    Stars are divided into two layers:
+        - Far layer: small, dim, slow drift
+        - Near layer: large, bright, fast drift
     """
 
     def __init__(
@@ -51,18 +51,18 @@ class StarField:
         width: int = WINDOW_WIDTH,
         height: int = WINDOW_HEIGHT,
     ) -> None:
-        """初始化星场。
+        """Initialize the star field.
 
         Args:
-            num_stars_far: 远景星星数量
-            num_stars_near: 近景星星数量
-            width: 视野宽度（像素）
-            height: 视野高度（像素）
+            num_stars_far: Number of far-layer stars
+            num_stars_near: Number of near-layer stars
+            width: Viewport width (pixels)
+            height: Viewport height (pixels)
         """
         self.width: int = width
         self.height: int = height
 
-        # 远景层
+        # Far layer
         self.far_stars: List[dict] = []
         for _ in range(num_stars_far):
             self.far_stars.append({
@@ -74,7 +74,7 @@ class StarField:
                 "drift_y": random.uniform(-0.02, 0.02),
             })
 
-        # 近景层
+        # Near layer
         self.near_stars: List[dict] = []
         for _ in range(num_stars_near):
             self.near_stars.append({
@@ -88,24 +88,24 @@ class StarField:
                 "drift_y": random.uniform(-0.05, 0.05),
             })
 
-        # 用于 twinkle 动画的累计时间
+        # Used for twinkle animation accumulated time
         self._time: float = 0.0
 
-        # 背景表面缓存
+        # Background surface cache
         self._surface: Optional[pygame.Surface] = None
 
     def update(self, dt: float) -> None:
-        """更新星星位置（飘动）。
+        """Update star positions (drift).
 
         Args:
-            dt: 时间增量（秒）
+            dt: Time delta (seconds)
         """
         self._time += dt
 
         for star in self.far_stars:
             star["x"] += star["drift_x"] * dt * 60
             star["y"] += star["drift_y"] * dt * 60
-            # 循环
+            # Wrap around
             if star["x"] < 0:
                 star["x"] += self.width
             if star["x"] > self.width:
@@ -128,12 +128,12 @@ class StarField:
                 star["y"] -= self.height
 
     def render(self, surface: pygame.Surface) -> None:
-        """渲染背景星场。
+        """Render the background star field.
 
         Args:
-            surface: 目标 Pygame Surface
+            surface: Target Pygame Surface
         """
-        # 远景层
+        # Far layer
         for star in self.far_stars:
             b = int(star["brightness"])
             color = (b, b, b + 10)
@@ -143,7 +143,7 @@ class StarField:
                 star["radius"],
             )
 
-        # 近景层（闪烁）
+        # Near layer (twinkling)
         for star in self.near_stars:
             twinkle = 0.5 + 0.5 * math.sin(
                 self._time * star["twinkle_speed"] + star["twinkle_offset"]
@@ -159,7 +159,7 @@ class StarField:
 
 
 # ============================================================================
-# 尾迹绘制
+# Trail Drawing
 # ============================================================================
 
 
@@ -170,25 +170,25 @@ def draw_trails(
     camera: "ICamera",  # type: ignore
     fade_factors: Optional[Dict[int, float]] = None,
 ) -> None:
-    """绘制所有天体的尾迹。
+    """Draw trails for all bodies.
 
-    每条尾迹使用线段绘制，颜色从旧到新渐变（透明度 + 色调）。
-    速度快的天体尾迹偏暖色，速度慢的偏冷色。
-    支持淡出系数：已消失天体的尾迹透明度乘上 fade_factor 逐渐消失。
+    Each trail is drawn with line segments, with color interpolating from old to new (alpha + hue).
+    Faster bodies get warmer trail colors, slower bodies get cooler colors.
+    Supports fade factors: trails of removed bodies fade out via fade_factor.
 
     Args:
-        surface: 目标 Pygame Surface
-        trails: 尾迹数据 {body_id: [(x1,y1), (x2,y2), ...]}（从旧到新）
-        body_speeds: 天体当前速度 {body_id: speed_magnitude}
-        camera: 相机对象
-        fade_factors: 淡出系数 {body_id: fade_factor (0~1)}，默认 None（全部 1.0）
+        surface: Target Pygame Surface
+        trails: Trail data {body_id: [(x1,y1), (x2,y2), ...]} (oldest to newest)
+        body_speeds: Current body speeds {body_id: speed_magnitude}
+        camera: Camera object
+        fade_factors: Fade-out coefficients {body_id: fade_factor (0~1)}, default None (all 1.0)
     """
-    # 获取速度范围用于颜色归一化
+    # Get speed range for color normalization
     if body_speeds:
         max_speed = max(body_speeds.values()) if body_speeds else 1.0
     else:
         max_speed = 1.0
-    max_speed = max(max_speed, 1.0)  # 避免除零
+    max_speed = max(max_speed, 1.0)  # Avoid division by zero
 
     for body_id, trail_points in trails.items():
         if len(trail_points) < 2:
@@ -197,38 +197,38 @@ def draw_trails(
         speed = body_speeds.get(body_id, 0.0)
         speed_ratio = min(speed / max_speed, 1.0)
 
-        # 根据速度确定基础色调
+        # Determine base hue based on speed
         r_slow, g_slow, b_slow = TRAIL_COLOR_SLOW
         r_fast, g_fast, b_fast = TRAIL_COLOR_FAST
         base_r = int(r_slow + (r_fast - r_slow) * speed_ratio)
         base_g = int(g_slow + (g_fast - g_slow) * speed_ratio)
         base_b = int(b_slow + (b_fast - b_slow) * speed_ratio)
 
-        # 获取该天体的淡出系数
+        # Get the fade-out factor for this body
         body_fade = 1.0
         if fade_factors is not None and body_id in fade_factors:
             body_fade = fade_factors[body_id]
 
         n_points = len(trail_points)
 
-        # 从旧到新逐段绘制
+        # Draw line by line from old to new
         for i in range(n_points - 1):
             x1, y1 = trail_points[i]
             x2, y2 = trail_points[i + 1]
 
-            # 转换到屏幕坐标
+            # Convert to screen coordinates
             sx1, sy1 = camera.world_to_screen(x1, y1)
             sx2, sy2 = camera.world_to_screen(x2, y2)
 
-            # 计算该段的透明度（从旧到新渐变，再乘淡出系数）
-            t = i / (n_points - 1)  # 0 = 最旧, 1 = 最新
+            # Calculate segment alpha (interpolate old-to-new, then multiply by fade factor)
+            t = i / (n_points - 1)  # 0 = oldest, 1 = newest
             alpha = int((TRAIL_ALPHA_OLD + (TRAIL_ALPHA_NEW - TRAIL_ALPHA_OLD) * t) * body_fade)
             alpha = max(0, min(255, alpha))
 
-            # 宽度渐变（旧段细，新段粗）
+            # Width gradient (old segments thin, new segments thick)
             width = max(1.0, t * 2.5)
 
-            # 颜色随渐变微调
+            # Slight color adjustment along the gradient
             r = int(base_r * (0.5 + 0.5 * t))
             g = int(base_g * (0.5 + 0.5 * t))
             b = int(base_b * (0.5 + 0.5 * t))
@@ -244,26 +244,26 @@ def _draw_alpha_line(
     end: Tuple[int, int],
     width: float = 1.0,
 ) -> None:
-    """绘制带透明度的线段。
+    """Draw a line with per-segment alpha support.
 
-    Pygame 的 draw.line 不支持每条线独立 alpha，使用临时 surface 实现。
+    Pygame's draw.line does not support per-line alpha, so a temporary surface is used.
 
     Args:
-        surface: 目标 Surface
-        color: (R, G, B, A) 颜色
-        start: 起点 (x, y)
-        end: 终点 (x, y)
-        width: 线宽
+        surface: Target Surface
+        color: (R, G, B, A) color
+        start: Start point (x, y)
+        end: End point (x, y)
+        width: Line width
     """
     r, g, b, a = color
     if a <= 0:
         return
 
-    # 创建临时 surface 用于 alpha 绘制
+    # Create temporary surface for alpha rendering
     line_surf = pygame.Surface((abs(end[0] - start[0]) + 3, abs(end[1] - start[1]) + 3), pygame.SRCALPHA)
     line_surf.fill((0, 0, 0, 0))
 
-    # 在临时 surface 上绘制（相对坐标）
+    # Draw on the temporary surface (relative coordinates)
     ox, oy = min(start[0], end[0]) - 1, min(start[1], end[1]) - 1
     local_start = (start[0] - ox, start[1] - oy)
     local_end = (end[0] - ox, end[1] - oy)
@@ -273,7 +273,7 @@ def _draw_alpha_line(
 
 
 # ============================================================================
-# 预测轨道绘制
+# Predicted Trajectory Drawing
 # ============================================================================
 
 
@@ -282,12 +282,12 @@ def draw_predicted_trajectory(
     trajectory: np.ndarray,
     camera: "ICamera",  # type: ignore
 ) -> None:
-    """绘制预测轨道（虚线/半透明）。
+    """Draw predicted trajectory (dashed / semi-transparent).
 
     Args:
-        surface: 目标 Pygame Surface
-        trajectory: shape (M, 2) 的预测轨迹坐标数组
-        camera: 相机对象
+        surface: Target Pygame Surface
+        trajectory: Predicted trajectory coordinate array of shape (M, 2)
+        camera: Camera object
     """
     if trajectory.shape[0] < 2:
         return
@@ -299,13 +299,13 @@ def draw_predicted_trajectory(
         )
         points_screen.append((sx, sy))
 
-    # 虚线段：绘制时每隔一段画一个线段
+    # Dash segments: draw every few segments
     dash_length = 6
     gap_length = 4
     total_segments = len(points_screen) - 1
 
     for i in range(total_segments):
-        # 奇偶段交替显示/隐藏
+        # Alternate segments visible/hidden
         if (i // 3) % 2 == 0:
             alpha = 120 - int(80 * (i / total_segments))
             alpha = max(30, alpha)
@@ -316,7 +316,7 @@ def draw_predicted_trajectory(
                 1.5,
             )
 
-    # 终点标记（小圆圈）
+    # Endpoint marker (small circle)
     if len(points_screen) > 0:
         last = points_screen[-1]
         pygame.draw.circle(surface, (100, 200, 255, 100), last, 3, 1)
@@ -327,19 +327,19 @@ def draw_placement_trajectory(
     result: Dict[str, object],
     camera: "ICamera",  # type: ignore
 ) -> None:
-    """绘制放置速度设定时的轨迹预览。
+    """Draw trajectory preview when setting placement velocity.
 
-    将世界坐标轨迹重采样为等屏幕像素间距的点，再绘制虚线。
-    碰撞末端显示红点，逃逸末端淡出，绕圈完成显示绿点。
+    Resamples the world-space trajectory into equal screen-pixel-spaced points, then draws a dashed line.
+    Collision end shows a red dot, escape end fades out, orbited end shows a green dot.
 
     Args:
-        surface: 目标 Pygame Surface
-        result: predict_single_star_trajectory 返回的字典，必须包含:
-            - "trajectory": shape (N, 2) 的轨迹坐标
+        surface: Target Pygame Surface
+        result: Dictionary returned by predict_single_star_trajectory, must contain:
+            - "trajectory": trajectory coordinates of shape (N, 2)
             - "collided": bool
             - "escaped": bool
             - "orbited": bool
-        camera: 相机对象
+        camera: Camera object
     """
     trajectory = result["trajectory"]
     if not isinstance(trajectory, np.ndarray) or trajectory.shape[0] < 2:
@@ -349,7 +349,7 @@ def draw_placement_trajectory(
     escaped: bool = bool(result.get("escaped", False))
     orbited: bool = bool(result.get("orbited", False))
 
-    # Step 1: 将世界坐标转为屏幕坐标
+    # Step 1: Convert world coordinates to screen coordinates
     pts: List[Tuple[float, float]] = []
     for i in range(trajectory.shape[0]):
         sx, sy = camera.world_to_screen(
@@ -360,7 +360,7 @@ def draw_placement_trajectory(
     if len(pts) < 2:
         return
 
-    # Step 2: 重采样为等屏幕像素间距
+    # Step 2: Resample to equal screen pixel spacing
     resampled: List[Tuple[float, float]] = [pts[0]]
     accumulated: float = 0.0
     for i in range(1, len(pts)):
@@ -371,20 +371,20 @@ def draw_placement_trajectory(
             continue
         accumulated += seg_len
         if accumulated >= DASH_GAP:
-            # 线性插值到 DASH_GAP 处
+            # Linear interpolation to DASH_GAP position
             t = (accumulated - DASH_GAP) / seg_len
             ix = pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t
             iy = pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t
             resampled.append((ix, iy))
             accumulated = 0.0
-    # 确保最后一个点被包含
+    # Ensure the last point is included
     if len(resampled) >= 1 and resampled[-1] != pts[-1]:
         resampled.append(pts[-1])
 
     if len(resampled) < 2:
         return
 
-    # Step 3: 绘制虚线（画 DASH_ON px → 跳 DASH_OFF px）
+    # Step 3: Draw dashed line (DASH_ON px drawn -> DASH_OFF px skipped)
     draw_state: str = "on"
     draw_len: float = 0.0
     for i in range(1, len(resampled)):
@@ -411,7 +411,7 @@ def draw_placement_trajectory(
                 draw_state = "on"
                 draw_len = 0.0
 
-    # Step 4: 末端标记
+    # Step 4: Endpoint marker
     if len(resampled) > 0:
         last = (int(resampled[-1][0]), int(resampled[-1][1]))
         if collided:
@@ -426,12 +426,12 @@ def draw_placement_trajectory(
 
 
 # ============================================================================
-# 碰撞粒子特效
+# Collision Particle Effects
 # ============================================================================
 
 
 class Particle:
-    """单个粒子，用于碰撞特效、发射特效等。"""
+    """Single particle for collision effects, exhaust effects, etc."""
 
     def __init__(
         self,
@@ -443,14 +443,14 @@ class Particle:
         lifetime: float = 1.0,
         radius: float = 2.0,
     ) -> None:
-        """初始化粒子。
+        """Initialize a particle.
 
         Args:
-            x, y: 初始位置（像素）
-            vx, vy: 初始速度（像素/秒）
-            color: RGB 颜色
-            lifetime: 存活时间（秒）
-            radius: 粒子半径（像素）
+            x, y: Initial position (pixels)
+            vx, vy: Initial velocity (pixels/second)
+            color: RGB color
+            lifetime: Lifetime (seconds)
+            radius: Particle radius (pixels)
         """
         self.x: float = x
         self.y: float = y
@@ -463,29 +463,29 @@ class Particle:
         self.alive: bool = True
 
     def update(self, dt: float) -> None:
-        """更新粒子状态。
+        """Update particle state.
 
         Args:
-            dt: 时间增量（秒）
+            dt: Time delta (seconds)
         """
         self.lifetime -= dt
         if self.lifetime <= 0:
             self.alive = False
             return
 
-        # 简单运动（无重力）
+        # Simple motion (no gravity)
         self.x += self.vx * dt
         self.y += self.vy * dt
 
-        # 阻力减速
+        # Drag deceleration
         self.vx *= 0.98
         self.vy *= 0.98
 
     def render(self, surface: pygame.Surface) -> None:
-        """渲染粒子。
+        """Render the particle.
 
         Args:
-            surface: 目标 Surface
+            surface: Target Surface
         """
         if not self.alive:
             return
@@ -493,13 +493,13 @@ class Particle:
         alpha = int(255 * (self.lifetime / self.max_lifetime))
         alpha = max(0, min(255, alpha))
         r, g, b = self.color
-        # 变暗
+        # Dim over time
         fade = self.lifetime / self.max_lifetime
         cr = int(r * fade)
         cg = int(g * fade)
         cb = int(b * fade)
 
-        # 使用临时 surface 支持透明度
+        # Use temporary surface for alpha support
         size = int(self.radius * 2) + 2
         particle_surf = pygame.Surface((size, size), pygame.SRCALPHA)
         particle_surf.fill((0, 0, 0, 0))
@@ -511,10 +511,10 @@ class Particle:
 
 
 class ParticleSystem:
-    """粒子系统管理器，管理一组粒子的生命周期。"""
+    """Particle system manager: manages the lifecycle of a group of particles."""
 
     def __init__(self) -> None:
-        """初始化粒子系统。"""
+        """Initialize the particle system."""
         self.particles: List[Particle] = []
         self._next_id: int = 0
 
@@ -526,20 +526,20 @@ class ParticleSystem:
         count: int = 20,
         speed: float = 200.0,
     ) -> None:
-        """在指定位置发射爆炸粒子。
+        """Emit explosion particles at a given position.
 
         Args:
-            x, y: 爆炸中心（像素）
-            color: 主颜色
-            count: 粒子数量
-            speed: 粒子初始速度（像素/秒）
+            x, y: Explosion center (pixels)
+            color: Main color
+            count: Number of particles
+            speed: Initial particle speed (pixels/second)
         """
         for _ in range(count):
             angle = random.uniform(0, 2 * math.pi)
             spd = random.uniform(speed * 0.3, speed)
             lifetime = random.uniform(0.3, 1.0)
             radius = random.uniform(1.0, 3.0)
-            # 颜色微调
+            # Slight color variation
             r_offset = random.randint(-30, 30)
             g_offset = random.randint(-30, 30)
             b_offset = random.randint(-30, 30)
@@ -564,21 +564,21 @@ class ParticleSystem:
         angle: float,
         count: int = 3,
     ) -> None:
-        """在探测器尾部发射尾焰粒子。
+        """Emit exhaust particles from the probe's tail.
 
         Args:
-            x, y: 发射位置（像素）
-            angle: 发射方向（弧度），尾部方向相反
-            count: 每帧粒子数量
+            x, y: Emission position (pixels)
+            angle: Emission direction (radians), tail direction is opposite
+            count: Particles per frame
         """
         for _ in range(count):
-            # 尾部方向
+            # Tail direction
             spread = random.uniform(-0.3, 0.3)
             dir_angle = angle + math.pi + spread
             spd = random.uniform(50, 150)
             lifetime = random.uniform(0.1, 0.4)
             radius = random.uniform(1.0, 2.5)
-            # 橙色火焰
+            # Orange flame color
             r = random.randint(200, 255)
             g = random.randint(100, 200)
             b = random.randint(0, 50)
@@ -592,32 +592,32 @@ class ParticleSystem:
             ))
 
     def update(self, dt: float) -> None:
-        """更新所有粒子。
+        """Update all particles.
 
         Args:
-            dt: 时间增量（秒）
+            dt: Time delta (seconds)
         """
         for p in self.particles:
             p.update(dt)
-        # 移除死亡粒子
+        # Remove dead particles
         self.particles = [p for p in self.particles if p.alive]
 
     def render(self, surface: pygame.Surface) -> None:
-        """渲染所有粒子。
+        """Render all particles.
 
         Args:
-            surface: 目标 Surface
+            surface: Target Surface
         """
         for p in self.particles:
             p.render(surface)
 
     def clear(self) -> None:
-        """清除所有粒子。"""
+        """Clear all particles."""
         self.particles.clear()
 
 
 # ============================================================================
-# 目标区域脉冲动画
+# Target Zone Pulse Animation
 # ============================================================================
 
 
@@ -629,32 +629,32 @@ def draw_target_zone(
     camera: "ICamera",  # type: ignore
     time: float = 0.0,
 ) -> None:
-    """渲染目标区域（脉冲动画）。
+    """Render a target zone (pulse animation).
 
-    绘制一个不断脉动的光环，表示探测器需要到达的目标区域。
+    Draws a pulsating halo indicating the target area the probe needs to reach.
 
     Args:
-        surface: 目标 Surface
-        world_x, world_y: 目标中心世界坐标
-        radius: 目标区域半径（世界单位）
-        camera: 相机对象
-        time: 累计时间（秒），用于脉冲动画
+        surface: Target Surface
+        world_x, world_y: Target center world coordinates
+        radius: Target zone radius (world units)
+        camera: Camera object
+        time: Accumulated time (seconds) for pulse animation
     """
     sx, sy = camera.world_to_screen(world_x, world_y)
     screen_radius = camera.world_distance_to_screen(radius)
 
-    # 三个脉冲环
+    # Three pulsing rings
     for i in range(3):
-        phase = time * 1.5 + i * 2.094  # 2pi/3 相位差
+        phase = time * 1.5 + i * 2.094  # 2pi/3 phase offset
         pulse = 0.3 + 0.3 * math.sin(phase)
         r = screen_radius * (1.0 + pulse * 0.5)
         alpha = int(80 + 60 * (0.5 + 0.5 * math.sin(phase)))
         alpha = max(20, min(200, alpha))
 
-        # 颜色：绿色脉冲
+        # Color: green pulse
         color = (0, 200 + int(55 * (0.5 + 0.5 * math.sin(phase))), 100, alpha)
 
-        # 绘制圆环（使用临时 surface）
+        # Draw ring (using a temporary surface)
         ring_size = int(r * 2) + 10
         ring_surf = pygame.Surface((ring_size, ring_size), pygame.SRCALPHA)
         ring_surf.fill((0, 0, 0, 0))
@@ -667,7 +667,7 @@ def draw_target_zone(
 
 
 # ============================================================================
-# 坐标网格
+# Coordinate Grid
 # ============================================================================
 
 
@@ -675,14 +675,14 @@ def draw_grid(
     surface: pygame.Surface,
     camera: "ICamera",  # type: ignore
 ) -> None:
-    """绘制半透明坐标网格。
+    """Draw a semi-transparent coordinate grid.
 
-    根据相机缩放级别自适应网格间距。
-    只绘制当前视野可见范围内的网格线。
+    Grid spacing adapts to the camera zoom level.
+    Only grid lines within the current viewport are drawn.
 
     Args:
-        surface: 目标 Pygame Surface
-        camera: 相机对象
+        surface: Target Pygame Surface
+        camera: Camera object
     """
     color = (*GRID_COLOR, GRID_ALPHA)
     left, top, right, bottom = camera.get_screen_rect_world()
@@ -718,7 +718,7 @@ def draw_grid(
 
 
 # ============================================================================
-# 天体标签
+# Body Labels
 # ============================================================================
 
 
@@ -727,15 +727,15 @@ def draw_body_labels(
     bodies: np.ndarray,
     camera: "ICamera",  # type: ignore
 ) -> None:
-    """绘制天体标签（在天体上方显示名称和编号）。
+    """Draw body labels (name and number above each body).
 
-    为活跃天体中屏幕半径足够大的天体绘制标签。
-    标签包含半透明黑色背景和根据类型区分的文字颜色。
+    Labels are drawn for active bodies with a sufficiently large screen radius.
+    Each label has a semi-transparent black background and type-specific text color.
 
     Args:
-        surface: 目标 Pygame Surface
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
-        camera: 相机对象
+        surface: Target Pygame Surface
+        bodies: Body state array of shape (N, NUM_FIELDS)
+        camera: Camera object
     """
     type_names = {0: "Star", 1: "Planet", 2: "Probe", 3: "Charged"}
     type_colors = {
@@ -770,20 +770,20 @@ def draw_body_labels(
 
 
 # ============================================================================
-# 快捷键覆盖层
+# Shortcuts Overlay
 # ============================================================================
 
 
 def draw_shortcuts_overlay(surface: pygame.Surface) -> None:
-    """绘制快捷键面板覆盖层。
+    """Draw the keyboard shortcuts overlay panel.
 
-    半透明黑色背景覆盖屏幕，居中显示所有快捷键的键位和功能说明。
-    两列布局，键位用黄色，描述用淡紫色。
+    A semi-transparent black background covers the screen, with all shortcuts centered.
+    Two-column layout: keys in yellow, descriptions in light purple.
 
     Args:
-        surface: 目标 Pygame Surface
+        surface: Target Pygame Surface
     """
-    # 半透明背景
+    # Semi-transparent background
     overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 180))
     surface.blit(overlay, (0, 0))

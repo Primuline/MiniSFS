@@ -1,7 +1,7 @@
-"""渲染管线：将物理状态绘制到 Pygame 窗口。
+"""Rendering pipeline: draws physics state to the Pygame window.
 
-实现 ``IRenderer`` 接口（定义在 ``src.core.interfaces``）。
-渲染器**不修改**物理状态，仅读取 BodyState 数组和 TrailBuffer。
+Implements the ``IRenderer`` interface (defined in ``src.core.interfaces``).
+The renderer does **not** modify physics state — it only reads BodyState arrays and TrailBuffer.
 """
 
 import math
@@ -50,15 +50,15 @@ from src.rendering.effects import (
 
 
 class Renderer(IRenderer):
-    """Pygame 渲染器。
+    """Pygame renderer.
 
-    负责将天体状态数组绘制到窗口。
-    每帧调用 render() 进行完整绘制。
+    Responsible for drawing the body state array to the window.
+    render() is called each frame for a full draw.
 
     Attributes:
-        width: 窗口宽度（像素）
-        height: 窗口高度（像素）
-        star_field: 星云背景
+        width: Window width (pixels)
+        height: Window height (pixels)
+        star_field: Starfield background
     """
 
     def __init__(
@@ -66,22 +66,22 @@ class Renderer(IRenderer):
         width: int = WINDOW_WIDTH,
         height: int = WINDOW_HEIGHT,
     ) -> None:
-        """初始化渲染器。
+        """Initialize the renderer.
 
         Args:
-            width: 窗口宽度（像素）
-            height: 窗口高度（像素）
+            width: Window width (pixels)
+            height: Window height (pixels)
         """
         self.width: int = width
         self.height: int = height
 
-        # 创建主窗口
+        # Create main window
         self.screen: pygame.Surface = pygame.display.set_mode(
             (width, height), pygame.HWSURFACE | pygame.DOUBLEBUF
         )
         pygame.display.set_caption("MiniSFS")
 
-        # 星云背景
+        # Star field background
         self.star_field: StarField = StarField(
             num_stars_far=200,
             num_stars_near=100,
@@ -89,36 +89,36 @@ class Renderer(IRenderer):
             height=height,
         )
 
-        # 缓存 surface 用于星空背景
+        # Cached surface for starfield background
         self._background_surface: Optional[pygame.Surface] = None
         self._background_dirty: bool = True
 
-        # 选中天体 ID
+        # Selected body ID
         self.selected_body_id: Optional[int] = None
 
-        # 框选状态
+        # Box selection state
         self.box_select_start: Optional[Tuple[int, int]] = None
         self.box_select_end: Optional[Tuple[int, int]] = None
         self.selected_body_ids: set = set()
 
-        # 覆盖层开关状态（由 handler/main 控制）
+        # Overlay toggle state (controlled by handler/main)
         self.show_grid: bool = False
         self.show_labels: bool = False
         self.show_shortcuts: bool = False
 
-        # 累计时间
+        # Accumulated time
         self._time: float = 0.0
 
-        # 发光效果缓存
+        # Glow effect cache
         self._glow_cache: Dict[float, pygame.Surface] = {}
 
-        # 字体
+        # Fonts
         self._font_small: pygame.font.Font = pygame.font.Font(None, 18)
         self._font_medium: pygame.font.Font = pygame.font.Font(None, 24)
         self._font_large: pygame.font.Font = pygame.font.Font(None, 36)
 
     # ------------------------------------------------------------------
-    # IRenderer 接口方法
+    # IRenderer interface methods
     # ------------------------------------------------------------------
 
     def render(
@@ -128,52 +128,52 @@ class Renderer(IRenderer):
         camera: ICamera,
         fade_factors: Optional[Dict[int, float]] = None,
     ) -> None:
-        """渲染一帧画面。
+        """Render a single frame.
 
-        绘制顺序：背景 -> 尾迹 -> 天体 -> 选中高亮 -> HUD
+        Draw order: background -> trails -> bodies -> selection highlight -> HUD
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
-            trails: 尾迹数据 {body_id: [(x1,y1), ...]}
-            camera: 相机对象
-            fade_factors: 尾迹淡出系数 {body_id: fade_factor (0~1)}，可选
+            bodies: Body state array of shape (N, NUM_FIELDS)
+            trails: Trail data {body_id: [(x1,y1), ...]}
+            camera: Camera object
+            fade_factors: Trail fade-out coefficients {body_id: fade_factor (0~1)}, optional
         """
-        self._time += 1.0 / 60.0  # 近似帧时间
+        self._time += 1.0 / 60.0  # Approximate frame time
 
-        # 更新背景
+        # Update background
         self.star_field.update(1.0 / 60.0)
 
-        # 清屏
+        # Clear screen
         self.screen.fill(BACKGROUND_COLOR)
 
-        # 渲染背景
+        # Render background
         self.render_background()
 
-        # 计算每个天体的速度（用于尾迹颜色）
+        # Calculate speed for each body (used for trail color)
         body_speeds: Dict[int, float] = {}
         for i in range(bodies.shape[0]):
             vx = float(bodies[i, VX])
             vy = float(bodies[i, VY])
             body_speeds[i] = math.sqrt(vx * vx + vy * vy)
 
-        # 绘制尾迹（在星体下方）
+        # Draw trails (behind bodies)
         draw_trails(self.screen, trails, body_speeds, camera, fade_factors)
 
-        # 绘制天体
+        # Draw bodies
         self._draw_bodies(bodies, camera)
 
-        # 选中天体高亮（单天体 + 多选）
+        # Selection highlight (single + multi)
         if self.selected_body_id is not None or len(self.selected_body_ids) > 0:
             self._draw_selection_highlight(bodies, camera)
 
-        # 覆盖层（在天体之后、HUD 之前渲染）
+        # Overlays (rendered after bodies, before HUD)
         if self.show_grid:
             draw_grid(self.screen, camera)
         if self.show_labels:
             draw_body_labels(self.screen, bodies, camera)
 
     def render_background(self) -> None:
-        """渲染静态背景（星云、网格等）。"""
+        """Render static background (starfield, grid, etc.)."""
         self.star_field.render(self.screen)
 
     def render_hud(
@@ -181,23 +181,23 @@ class Renderer(IRenderer):
         game_state: str,
         score: Optional[Dict[str, float]] = None,
     ) -> None:
-        """渲染 HUD 信息。
+        """Render HUD information.
 
         Args:
-            game_state: 当前游戏状态
-            score: 评分数据（可选）
+            game_state: Current game state
+            score: Score data (optional)
         """
-        # 帧率显示在窗口标题，不在这里绘制
+        # FPS is displayed in the window title, not drawn here
         if game_state == "PAUSED":
             pause_text = self._font_large.render("PAUSED", True, (255, 255, 100))
             text_rect = pause_text.get_rect(center=(self.width // 2, 50))
-            # 半透明背景
+            # Semi-transparent background
             bg_surf = pygame.Surface((text_rect.width + 20, text_rect.height + 10), pygame.SRCALPHA)
             bg_surf.fill((0, 0, 0, 128))
             self.screen.blit(bg_surf, (text_rect.x - 10, text_rect.y - 5))
             self.screen.blit(pause_text, text_rect)
 
-        # 底部状态栏
+        # Bottom status bar
         state_colors = {
             "PLAYING": (100, 220, 100),
             "PAUSED": (255, 255, 100),
@@ -209,24 +209,24 @@ class Renderer(IRenderer):
         state_text = self._font_small.render(f"State: {game_state}", True, color)
         self.screen.blit(state_text, (10, self.height - 25))
 
-        # 快捷键提示
+        # Shortcut hints
         hint = "Space:Pause  R:Reset  Esc:Menu"
         hint_text = self._font_small.render(hint, True, (150, 150, 150))
         hr = hint_text.get_rect(right=self.width - 10, bottom=self.height - 5)
         self.screen.blit(hint_text, hr)
 
-        # 快捷键覆盖层（最顶层）
+        # Shortcuts overlay (topmost layer)
         if self.show_shortcuts:
             draw_shortcuts_overlay(self.screen)
 
     def render_predicted_trajectory(
         self, trajectory: np.ndarray, camera: ICamera
     ) -> None:
-        """渲染预测轨迹（虚线/半透明）。
+        """Render a predicted trajectory (dashed / semi-transparent).
 
         Args:
-            trajectory: shape (M, 2) 的预测轨迹坐标
-            camera: 相机对象
+            trajectory: Predicted trajectory coordinates of shape (M, 2)
+            camera: Camera object
         """
         draw_predicted_trajectory(self.screen, trajectory, camera)
 
@@ -235,36 +235,36 @@ class Renderer(IRenderer):
         result: Dict[str, object],
         camera: ICamera,
     ) -> None:
-        """渲染放置速度设定时的轨迹预览。
+        """Render trajectory preview for placement velocity setup.
 
         Args:
-            result: predict_single_star_trajectory 返回的字典
-            camera: 相机对象
+            result: Dictionary returned by predict_single_star_trajectory
+            camera: Camera object
         """
         draw_placement_trajectory(self.screen, result, camera)
 
     def render_target_zone(
         self, x: float, y: float, radius: float, camera: ICamera
     ) -> None:
-        """渲染目标区域（脉冲动画）。
+        """Render a target zone (pulse animation).
 
         Args:
-            x, y: 目标中心世界坐标
-            radius: 目标区域半径（米）
-            camera: 相机对象
+            x, y: Target center world coordinates
+            radius: Target zone radius (meters)
+            camera: Camera object
         """
         draw_target_zone(self.screen, x, y, radius, camera, self._time)
 
     # ------------------------------------------------------------------
-    # 内部绘制方法
+    # Internal drawing methods
     # ------------------------------------------------------------------
 
     def _draw_bodies(self, bodies: np.ndarray, camera: ICamera) -> None:
-        """绘制所有活跃天体。
+        """Draw all active bodies.
 
         Args:
-            bodies: 天体状态数组
-            camera: 相机对象
+            bodies: Body state array
+            camera: Camera object
         """
         for i in range(bodies.shape[0]):
             if bodies[i, IS_ACTIVE] == 0.0:
@@ -274,7 +274,7 @@ class Renderer(IRenderer):
             wx = float(bodies[i, X])
             wy = float(bodies[i, Y])
             if np.isnan(wx) or np.isnan(wy):
-                continue  # 跳过位置无效的天体
+                continue  # Skip bodies with invalid positions
             radius = float(bodies[i, RADIUS])
             mass = float(bodies[i, MASS])
             vx = float(bodies[i, VX])
@@ -295,44 +295,44 @@ class Renderer(IRenderer):
                 self._draw_charged(sx, sy, screen_radius, charge)
 
     def _draw_star(self, sx: int, sy: int, radius: float, mass: float) -> None:
-        """绘制恒星：径向渐变发光效果。
+        """Draw a star: radial gradient glow effect.
 
         Args:
-            sx, sy: 屏幕中心坐标
-            radius: 屏幕半径（像素）
-            mass: 质量（用于颜色）
+            sx, sy: Screen center coordinates
+            radius: Screen radius (pixels)
+            mass: Mass (used for color)
         """
-        # 亮度随质量变化
+        # Brightness varies with mass
         intensity = min(1.0, mass / 1e31)
         r = min(255, int(200 + 55 * intensity))
         g = min(255, int(150 + 50 * intensity))
         b = min(220, int(100 + 40 * intensity))
 
-        # 外发光层（大半径半透明，最大 200px 防止 OOM）
+        # Outer glow layer (large radius semi-transparent, max 200px to prevent OOM)
         glow_radius = min(radius * 3.0, 200.0)
         glow_surf = self._get_glow_surface(glow_radius, (r, g, b, 40))
         self.screen.blit(glow_surf, (sx - glow_radius, sy - glow_radius))
 
-        # 中发光层（最大 150px）
+        # Mid glow layer (max 150px)
         mid_radius = min(radius * 2.0, 150.0)
         mid_surf = self._get_glow_surface(mid_radius, (r, g, b, 80))
         self.screen.blit(mid_surf, (sx - mid_radius, sy - mid_radius))
 
-        # 核心（最亮）
+        # Core (brightest)
         core_radius = radius
         pygame.draw.circle(self.screen, (r, g, b), (sx, sy), int(core_radius))
         pygame.draw.circle(self.screen, (255, 255, 255), (sx, sy), max(1, int(core_radius * 0.4)))
 
     def _draw_planet(self, sx: int, sy: int, radius: float, mass: float, is_static: bool) -> None:
-        """绘制行星：纯色圆 + 阴影。
+        """Draw a planet: solid circle + shadow.
 
         Args:
-            sx, sy: 屏幕中心坐标
-            radius: 屏幕半径（像素）
-            mass: 质量（用于颜色）
-            is_static: 是否静态天体
+            sx, sy: Screen center coordinates
+            radius: Screen radius (pixels)
+            mass: Mass (used for color)
+            is_static: Whether the body is static
         """
-        # 质量决定颜色
+        # Mass determines color
         intensity = min(1.0, mass / 1e29)
         base_color = (
             int(100 + 100 * intensity),
@@ -341,13 +341,13 @@ class Renderer(IRenderer):
         )
 
         if is_static:
-            # 静态天体更暗
+            # Static bodies are darker
             base_color = tuple(c // 2 for c in base_color)
 
-        # 主体
+        # Main body
         pygame.draw.circle(self.screen, base_color, (sx, sy), int(radius))
 
-        # 阴影（右下角半圆）
+        # Shadow (bottom-right semicircle)
         shadow_radius = int(radius)
         if shadow_radius > 2:
             shadow_surf = pygame.Surface((shadow_radius * 2, shadow_radius * 2), pygame.SRCALPHA)
@@ -356,13 +356,13 @@ class Renderer(IRenderer):
                 shadow_surf, (0, 0, 0, 60),
                 (shadow_radius, shadow_radius), shadow_radius,
             )
-            # 只保留右下部分
+            # Keep only the bottom-right part
             clip_surf = pygame.Surface((shadow_radius, shadow_radius), pygame.SRCALPHA)
             clip_surf.fill((0, 0, 0, 0))
             clip_surf.blit(shadow_surf, (0, 0), (shadow_radius, shadow_radius, shadow_radius, shadow_radius))
             self.screen.blit(clip_surf, (sx, sy))
 
-        # 高光（左上角小亮圆）
+        # Highlight (small bright circle in top-left)
         if radius > 4:
             highlight_radius = max(1, int(radius * 0.3))
             pygame.draw.circle(
@@ -372,18 +372,18 @@ class Renderer(IRenderer):
             )
 
     def _draw_probe(self, sx: int, sy: int, radius: float, vx: float, vy: float) -> None:
-        """绘制探测器：小圆 + 速度方向指示。
+        """Draw a probe: small circle + velocity direction indicator.
 
         Args:
-            sx, sy: 屏幕中心坐标
-            radius: 屏幕半径（像素）
-            vx, vy: 速度分量
+            sx, sy: Screen center coordinates
+            radius: Screen radius (pixels)
+            vx, vy: Velocity components
         """
-        # 主体
+        # Main body
         probe_color = (200, 220, 255)
         pygame.draw.circle(self.screen, probe_color, (sx, sy), max(1, int(radius)))
 
-        # 速度方向指示线
+        # Velocity direction indicator line
         speed = math.sqrt(vx * vx + vy * vy)
         if speed > 0.1:
             dir_len = radius * 2.5
@@ -394,14 +394,14 @@ class Renderer(IRenderer):
             pygame.draw.line(self.screen, (100, 200, 255), (sx, sy), (end_x, end_y), 1)
 
     def _draw_charged(self, sx: int, sy: int, radius: float, charge: float) -> None:
-        """绘制带电粒子：带 +/- 标识。
+        """Draw a charged particle with +/- sign.
 
         Args:
-            sx, sy: 屏幕中心坐标
-            radius: 屏幕半径（像素）
-            charge: 电荷量
+            sx, sy: Screen center coordinates
+            radius: Screen radius (pixels)
+            charge: Charge amount
         """
-        # 颜色：正电荷红色，负电荷蓝色
+        # Color: positive charge red, negative charge blue
         if charge > 0:
             color = (255, 80, 80)
             sign = "+"
@@ -412,21 +412,21 @@ class Renderer(IRenderer):
         pygame.draw.circle(self.screen, color, (sx, sy), max(1, int(radius)))
         pygame.draw.circle(self.screen, (255, 255, 255), (sx, sy), max(1, int(radius)), 1)
 
-        # 标识字符
+        # Sign character
         sign_text = self._font_small.render(sign, True, (255, 255, 255))
         tr = sign_text.get_rect(center=(sx, sy))
         self.screen.blit(sign_text, tr)
 
     def _draw_selection_highlight(self, bodies: np.ndarray, camera: ICamera) -> None:
-        """绘制选中天体的高亮圈。
+        """Draw a highlight ring around selected bodies.
 
-        同时绘制单天体选择（selected_body_id）和多选（selected_body_ids）的高亮。
+        Draws highlights for both single-body selection (selected_body_id) and multi-selection (selected_body_ids).
 
         Args:
-            bodies: 天体状态数组
-            camera: 相机对象
+            bodies: Body state array
+            camera: Camera object
         """
-        # 收集需要高亮的天体 ID
+        # Collect body IDs that need highlighting
         highlight_ids: set = set()
         if self.selected_body_id is not None:
             highlight_ids.add(self.selected_body_id)
@@ -444,12 +444,12 @@ class Renderer(IRenderer):
             sx, sy = camera.world_to_screen(wx, wy)
             screen_radius = camera.world_distance_to_screen(radius)
 
-            # 脉动高亮
+            # Pulsing highlight
             pulse = 0.8 + 0.2 * math.sin(self._time * 4)
             highlight_r = screen_radius * 1.5 * pulse
             alpha = int(100 + 80 * (0.5 + 0.5 * math.sin(self._time * 4)))
 
-            # 使用临时 surface 支持透明度
+            # Use temporary surface for alpha support
             size = int(highlight_r * 2) + 10
             hl_surf = pygame.Surface((size, size), pygame.SRCALPHA)
             hl_surf.fill((0, 0, 0, 0))
@@ -461,21 +461,21 @@ class Renderer(IRenderer):
             self.screen.blit(hl_surf, (sx - size // 2, sy - size // 2))
 
     def _get_glow_surface(self, radius: float, color: Tuple[int, int, int, int]) -> pygame.Surface:
-        """获取发光 surface（带缓存）。
+        """Get a cached glow surface.
 
-        使用缓存的径向渐变圆，避免每帧重复创建。
+        Uses cached radial gradient circles to avoid recreating every frame.
 
         Args:
-            radius: 发光半径（像素）
-            color: RGBA 颜色
+            radius: Glow radius (pixels)
+            color: RGBA color
 
         Returns:
-            半透明发光 Surface
+            Semi-transparent glow Surface
         """
-        # 使用半径作为缓存键（取整到 1px 精度）
+        # Use radius as cache key (rounded to 1px precision)
         cache_key = round(radius, 0)
         if cache_key not in self._glow_cache:
-            safe_radius = min(radius, 200.0)  # 安全上限
+            safe_radius = min(radius, 200.0)  # Safety limit
             size = int(safe_radius * 2)
             surf = pygame.Surface((size, size), pygame.SRCALPHA)
             surf.fill((0, 0, 0, 0))
@@ -483,7 +483,7 @@ class Renderer(IRenderer):
             r, g, b, a = color
             cx, cy = size // 2, size // 2
 
-            # 绘制多层半透明圆实现渐变
+            # Draw multiple semi-transparent circles for gradient effect
             layers = 8
             for i in range(layers):
                 t = i / layers
@@ -501,15 +501,15 @@ class Renderer(IRenderer):
         return self._glow_cache[cache_key]
 
     # ------------------------------------------------------------------
-    # 框选框绘制
+    # Box selection drawing
     # ------------------------------------------------------------------
 
     def draw_box_selection(self) -> None:
-        """绘制蓝色半透明框选框。
+        """Draw a blue semi-transparent selection box.
 
-        使用 box_select_start 和 box_select_end 确定选框范围。
-        两个坐标的 min/max 确保选框能朝任意方向拖拽。
-        只有选框尺寸 > 10px 时才绘制。
+        Uses box_select_start and box_select_end to determine the selection range.
+        Uses min/max of both coordinates so the box can be dragged in any direction.
+        Only drawn when the box is larger than 10px.
         """
         start = self.box_select_start
         end = self.box_select_end
@@ -519,23 +519,23 @@ class Renderer(IRenderer):
         x1, y1 = min(start[0], end[0]), min(start[1], end[1])
         x2, y2 = max(start[0], end[0]), max(start[1], end[1])
 
-        # 小于 10px 的选框不绘制（避免微小点击产生的闪烁）
+        # Do not draw boxes smaller than 10px (avoid flicker from tiny clicks)
         if (x2 - x1) < 10 and (y2 - y1) < 10:
             return
 
-        # 半透明填充
+        # Semi-transparent fill
         s = pygame.Surface((x2 - x1, y2 - y1), pygame.SRCALPHA)
         s.fill((0, 100, 255, 60))
         self.screen.blit(s, (x1, y1))
 
-        # 边框
+        # Border
         pygame.draw.rect(
             self.screen, (0, 150, 255),
             (x1, y1, x2 - x1, y2 - y1), 1,
         )
 
     # ------------------------------------------------------------------
-    # 自定义粒子放置预览方法
+    # Custom particle placement preview methods
     # ------------------------------------------------------------------
 
     def draw_placement_preview(
@@ -543,14 +543,14 @@ class Renderer(IRenderer):
         radius_world: float, camera: ICamera,
         surface: pygame.Surface,
     ) -> None:
-        """绘制虚线放置预览圆 + 十字准星。
+        """Draw a dashed placement preview circle + crosshair.
 
         Args:
-            world_x: 预览中心世界 x 坐标 (m)
-            world_y: 预览中心世界 y 坐标 (m)
-            radius_world: 预览半径世界坐标 (m)
-            camera: 相机对象
-            surface: 目标绘制 Surface
+            world_x: Preview center world x coordinate (m)
+            world_y: Preview center world y coordinate (m)
+            radius_world: Preview radius in world coordinates (m)
+            camera: Camera object
+            surface: Target draw Surface
         """
         sx, sy = camera.world_to_screen(world_x, world_y)
         screen_radius = max(2.0, camera.world_distance_to_screen(radius_world))
@@ -559,7 +559,7 @@ class Renderer(IRenderer):
 
         color = (200, 200, 255)
 
-        # 虚线圆：32 段，每隔一段绘制
+        # Dashed circle: 32 segments, draw every other segment
         num_segments = 32
         for i in range(0, num_segments, 2):
             angle1 = 2.0 * math.pi * i / num_segments
@@ -570,12 +570,12 @@ class Renderer(IRenderer):
             y2 = isy + int_sr * math.sin(angle2)
             pygame.draw.line(surface, color, (x1, y1), (x2, y2), 2)
 
-        # 十字准星
+        # Crosshair
         cross_len = max(5, int_sr // 3)
         pygame.draw.line(surface, color, (isx - cross_len, isy), (isx + cross_len, isy), 1)
         pygame.draw.line(surface, color, (isx, isy - cross_len), (isx, isy + cross_len), 1)
 
-        # 中心点
+        # Center point
         pygame.draw.circle(surface, color, (isx, isy), 2)
 
     def draw_velocity_arrow(
@@ -585,17 +585,17 @@ class Renderer(IRenderer):
         camera: ICamera,
         surface: pygame.Surface,
     ) -> None:
-        """绘制速度方向箭头（橙色）。
+        """Draw a velocity direction arrow (orange).
 
-        箭头的方向从 start_world 指向鼠标屏幕位置，长度限制为 max_length 像素。
-        超过最大长度时截断但方向不变。
+        The arrow points from start_world toward the mouse screen position, capped at max_length pixels.
+        If longer than max_length, it is truncated but maintains direction.
 
         Args:
-            start_world: 箭头起点的世界坐标 (x, y)
-            end_screen: 箭头终点的屏幕坐标 (sx, sy)
-            max_length: 箭头最大长度（像素）
-            camera: 相机对象
-            surface: 目标绘制 Surface
+            start_world: Arrow start world coordinates (x, y)
+            end_screen: Arrow end screen coordinates (sx, sy)
+            max_length: Maximum arrow length (pixels)
+            camera: Camera object
+            surface: Target draw Surface
         """
         sx0, sy0 = camera.world_to_screen(start_world[0], start_world[1])
         ex, ey = end_screen
@@ -607,7 +607,7 @@ class Renderer(IRenderer):
         if dist < 1.0:
             return
 
-        # 截断超过最大长度的箭头
+        # Truncate arrows exceeding max length
         if dist > max_length:
             dx = dx / dist * max_length
             dy = dy / dist * max_length
@@ -617,15 +617,15 @@ class Renderer(IRenderer):
         isx0, isy0 = int(sx0), int(sy0)
         iex, iey = int(ex), int(ey)
 
-        # 主线条（橙色，宽度 3）
+        # Main line (orange, width 3)
         arrow_color = (255, 180, 50)
         pygame.draw.line(surface, arrow_color, (isx0, isy0), (iex, iey), 3)
 
-        # 箭头三角形
+        # Arrowhead triangle
         arrow_size = 12
-        angle = math.atan2(dy, dx)  # 从起点到终点的方向
-        wing_angle = math.atan2(1.0, 1.0)  # 约 45 度（实际是 math.pi/4）
-        wing_offset = math.pi * 5.0 / 6.0  # 150 度，箭头翼向后张开
+        angle = math.atan2(dy, dx)  # Direction from start to end
+        wing_angle = math.atan2(1.0, 1.0)  # ~45 degrees (actually math.pi/4)
+        wing_offset = math.pi * 5.0 / 6.0  # 150 degrees, arrow wings spread backward
 
         wing1_x = iex + arrow_size * math.cos(angle + wing_offset)
         wing1_y = iey + arrow_size * math.sin(angle + wing_offset)
@@ -637,9 +637,9 @@ class Renderer(IRenderer):
         ])
 
     def set_title_fps(self, fps: float) -> None:
-        """在窗口标题显示帧率。
+        """Display FPS in the window title.
 
         Args:
-            fps: 当前帧率
+            fps: Current FPS
         """
         pygame.display.set_caption(f"MiniSFS - {fps:.0f} FPS")

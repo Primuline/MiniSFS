@@ -1,17 +1,17 @@
-"""PhysicsEngine 主类。
+"""PhysicsEngine main class.
 
-实现 ``IPhysicsEngine`` 接口（定义在 ``src.core.interfaces``）。
-组合 forces、integrators 和 collision 模块提供完整的多体物理模拟。
+Implements the ``IPhysicsEngine`` interface (defined in ``src.core.interfaces``).
+Combines forces, integrators, and collision modules to provide a complete N-body physics simulation.
 
-核心流程:
-    1. ``update(bodies, dt)``: 多子步物理更新
-       - 每子步: 计算合力 -> 积分（默认 RK4） -> 下一子步
-       - 所有子步完成后: 检测并处理碰撞
-    2. ``predict_trajectory(probe, bodies, steps, dt)``: RK4 推演
-    3. ``compute_forces(bodies)``: 引力 + 库仑力
-    4. ``handle_collisions(bodies)``: 碰撞检测与响应
+Core workflow:
+    1. ``update(bodies, dt)``: Multi-substep physics update
+       - Each substep: compute total force -> integrate (default RK4) -> next substep
+       - After all substeps: detect and resolve collisions
+    2. ``predict_trajectory(probe, bodies, steps, dt)``: RK4 prediction
+    3. ``compute_forces(bodies)``: gravity + Coulomb force
+    4. ``handle_collisions(bodies)``: collision detection and response
 
-用法::
+Usage::
 
     from src.physics.engine import PhysicsEngine
 
@@ -51,17 +51,17 @@ from src.physics.integrators import rk4_step
 
 
 class PhysicsEngine(IPhysicsEngine):
-    """多体物理引擎。
+    """N-body physics engine.
 
-    管理引力/库仑力计算、数值积分和碰撞响应。
-    支持子步（SUBSTEPS）提高稳定性，默认使用 RK4 积分器。
+    Manages gravitational/Coulomb force calculations, numerical integration, and collision response.
+    Supports substeps (SUBSTEPS) for improved stability, defaults to RK4 integrator.
 
     Attributes:
-        g: 万有引力常数
-        k: 库仑常数
-        softening: 软化参数，防止距离过近时受力发散
-        substeps: 每帧物理子步数
-        use_quadtree: 是否使用四叉树加速（预留，后续启用）
+        g: gravitational constant
+        k: Coulomb constant
+        softening: softening parameter to prevent force divergence at close distances
+        substeps: number of physics substeps per frame
+        use_quadtree: whether to use quadtree acceleration (reserved for future use)
     """
 
     def __init__(
@@ -73,15 +73,15 @@ class PhysicsEngine(IPhysicsEngine):
         use_quadtree: bool = False,
         quadtree_threshold: int = QUADTREE_COLLISION_THRESHOLD,
     ) -> None:
-        """初始化物理引擎。
+        """Initialize the physics engine.
 
         Args:
-            g: 万有引力常数，默认 6.67430e-11
-            k: 库仑常数，默认 8.98755e9
-            softening: 软化参数 (m)，默认 1.0
-            substeps: 每帧子步数，默认 4
-            use_quadtree: 是否启用四叉树加速，默认否
-            quadtree_threshold: 启用四叉树宽阶段的活跃天体数阈值
+            g: gravitational constant, default 6.67430e-11
+            k: Coulomb constant, default 8.98755e9
+            softening: softening parameter (m), default 1.0
+            substeps: number of substeps per frame, default 4
+            use_quadtree: whether to enable quadtree acceleration, default no
+            quadtree_threshold: active body count threshold for enabling quadtree broadphase
         """
         self.g: float = g
         self.k: float = k
@@ -91,7 +91,7 @@ class PhysicsEngine(IPhysicsEngine):
         self.quadtree_threshold: int = quadtree_threshold
         self._quadtree: Optional[object] = None
 
-        # 用于 Velocity Verlet 缓存上一子步的加速度
+        # Cache acceleration from the previous substep for Velocity Verlet
         self._last_acc: Optional[np.ndarray] = None
 
     def _acceleration_fn(
@@ -99,19 +99,19 @@ class PhysicsEngine(IPhysicsEngine):
         pos: np.ndarray,
         bodies: np.ndarray,
     ) -> np.ndarray:
-        """计算加速度（用于完整系统更新）。
+        """Compute acceleration (for full system update).
 
-        根据 pos 计算每个天体的加速度 a = F / m。
-        静态天体加速度置为零。
+        Compute acceleration a = F / m for each body based on pos.
+        Static bodies have their acceleration set to zero.
 
         Args:
-            pos: shape (N, 2) 的位置数组，与 bodies 行数相同
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            pos: shape (N, 2) position array, same number of rows as bodies
+            bodies: shape (N, NUM_FIELDS) body state array
 
         Returns:
-            shape (N, 2) 的加速度数组 (m/s^2)
+            shape (N, 2) acceleration array (m/s^2)
         """
-        # 用 pos 更新所有天体的位置后计算受力
+        # Update all body positions with pos before computing forces
         bodies_snapshot = bodies.copy()
         bodies_snapshot[:, X] = pos[:, 0]
         bodies_snapshot[:, Y] = pos[:, 1]
@@ -121,11 +121,11 @@ class PhysicsEngine(IPhysicsEngine):
         )
 
         masses = bodies_snapshot[:, MASS]
-        # 避免除零
+        # Avoid division by zero
         inv_mass = np.where(masses > 0, 1.0 / masses, 0.0)
         acc = forces * inv_mass[:, np.newaxis]  # (N, 2)
 
-        # 静态天体加速度置零
+        # Zero out acceleration for static bodies
         static_mask = bodies_snapshot[:, IS_STATIC] == 1.0
         acc[static_mask] = 0.0
 
@@ -136,20 +136,20 @@ class PhysicsEngine(IPhysicsEngine):
         pos: np.ndarray,
         sim_bodies: np.ndarray,
     ) -> np.ndarray:
-        """计算探测器加速度（用于轨迹预测）。
+        """Compute probe acceleration (for trajectory prediction).
 
-        只更新探测器的位置，其他天体的位置不变。
-        返回 shape (1, 2) 的探测器加速度。
+        Only update the probe's position; other body positions remain unchanged.
+        Returns probe acceleration with shape (1, 2).
 
         Args:
-            pos: shape (1, 2) 的探测器位置
-            sim_bodies: shape (N, NUM_FIELDS) 的组合数组（idx 0 为探测器）
+            pos: shape (1, 2) probe position
+            sim_bodies: shape (N, NUM_FIELDS) combined array (idx 0 is the probe)
 
         Returns:
-            shape (1, 2) 的探测器加速度数组 (m/s^2)
+            shape (1, 2) probe acceleration array (m/s^2)
         """
         bodies_snapshot = sim_bodies.copy()
-        # 只更新探测器的位置
+        # Only update the probe's position
         bodies_snapshot[0, X] = pos[0, 0]
         bodies_snapshot[0, Y] = pos[0, 1]
 
@@ -157,7 +157,7 @@ class PhysicsEngine(IPhysicsEngine):
             bodies_snapshot, self.g, self.k, self.softening
         )
 
-        # 只返回探测器的加速度
+        # Only return the probe's acceleration
         probe_mass = bodies_snapshot[0, MASS]
         if probe_mass > 0:
             probe_acc = forces[0:1] / probe_mass  # (1, 2)
@@ -167,64 +167,64 @@ class PhysicsEngine(IPhysicsEngine):
         return probe_acc
 
     def compute_forces(self, bodies: np.ndarray) -> np.ndarray:
-        """计算所有天体受到的合力。
+        """Compute the total force on all bodies.
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            bodies: shape (N, NUM_FIELDS) body state array
 
         Returns:
-            shape (N, 2) 的合力数组 (N)
+            shape (N, 2) total force array (N)
         """
         return compute_total_forces(bodies, self.g, self.k, self.softening)
 
     def update(self, bodies: np.ndarray, dt: float) -> np.ndarray:
-        """更新所有天体状态一个时间步。
+        """Update all body states by one time step.
 
-        将 dt 拆分为 self.substeps 个子步，每子步执行:
-            1. 计算合力
-            2. RK4 积分更新位置和速度
-        所有子步完成后，检测并处理碰撞，移除失效天体。
+        Split dt into self.substeps substeps, each substep executes:
+            1. Compute total forces
+            2. RK4 integration to update position and velocity
+        After all substeps, detect and resolve collisions, remove inactive bodies.
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
-            dt: 时间步长 (秒)
+            bodies: shape (N, NUM_FIELDS) body state array
+            dt: time step (seconds)
 
         Returns:
-            更新后的天体状态数组（行数可能因碰撞合并而减少）
+            Updated body state array (row count may decrease due to collision merging)
         """
         bodies = bodies.copy()
         dt_sub = dt / self.substeps
 
-        # 保存 IS_STATIC==1 的天体的初始位置和索引
+        # Save initial positions and indices of bodies with IS_STATIC==1
         static_mask = bodies[:, IS_STATIC] == 1.0
         static_indices = np.where(static_mask)[0]
         if len(static_indices) > 0:
             saved_positions = bodies[np.ix_(static_indices, [X, Y])].copy()  # (N_static, 2)
 
         for _ in range(self.substeps):
-            # 提取活跃天体的位置和速度
+            # Extract positions and velocities of all bodies
             pos = bodies[:, [X, Y]].copy()      # (N, 2)
             vel = bodies[:, [VX, VY]].copy()    # (N, 2)
 
-            # RK4 积分一步
+            # RK4 integration step
             pos_new, vel_new, _ = rk4_step(
                 pos, vel, self._acceleration_fn, bodies, dt_sub
             )
 
-            # 更新位置和速度
+            # Update positions and velocities
             bodies[:, X] = pos_new[:, 0]
             bodies[:, Y] = pos_new[:, 1]
             bodies[:, VX] = vel_new[:, 0]
             bodies[:, VY] = vel_new[:, 1]
 
-        # 恢复静态天体的位置并将速度置零（保证恒星纹丝不动）
+        # Restore static bodies' positions and zero out velocities (keep stars perfectly still)
         if len(static_indices) > 0:
             bodies[static_indices, X] = saved_positions[:, 0]
             bodies[static_indices, Y] = saved_positions[:, 1]
             bodies[static_indices, VX] = 0.0
             bodies[static_indices, VY] = 0.0
 
-        # 碰撞检测宽阶段（四叉树加速）
+        # Collision broadphase (quadtree acceleration)
         collision_candidates = None
         if self.use_quadtree:
             n_active = int(np.sum(bodies[:, IS_ACTIVE] == 1.0))
@@ -237,10 +237,10 @@ class PhysicsEngine(IPhysicsEngine):
                 self._quadtree.rebuild(bodies)
                 collision_candidates = self._quadtree.query_collision_candidates()
 
-        # 处理碰撞
+        # Resolve collisions
         bodies, _ = resolve_collisions(bodies, collision_pairs=collision_candidates)
 
-        # 移除不活跃的天体
+        # Remove inactive bodies
         bodies = self._remove_inactive(bodies)
 
         return bodies
@@ -252,27 +252,27 @@ class PhysicsEngine(IPhysicsEngine):
         steps: int,
         dt: float,
     ) -> np.ndarray:
-        """预测探测器未来轨迹。
+        """Predict the future trajectory of a probe.
 
-        使用 RK4 进行推演，不修改真实状态。
-        当探测器与天体碰撞或超出边界时停止预测。
+        Use RK4 for prediction without modifying the real state.
+        Stop prediction when the probe collides with a body or goes out of bounds.
 
         Args:
-            probe: shape (1, NUM_FIELDS) 的探测器状态
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
-            steps: 预测步数
-            dt: 每步时间间隔 (秒)
+            probe: shape (1, NUM_FIELDS) probe state
+            bodies: shape (N, NUM_FIELDS) body state array
+            steps: number of prediction steps
+            dt: time interval per step (seconds)
 
         Returns:
-            shape (M, 2) 的预测轨迹坐标数组 (M <= steps)
+            shape (M, 2) predicted trajectory coordinate array (M <= steps)
         """
         trajectory: List[np.ndarray] = []
         probe_state = probe.copy()
         pos = probe_state[:, [X, Y]].copy()      # (1, 2)
         vel = probe_state[:, [VX, VY]].copy()    # (1, 2)
 
-        # 预测时不修改原始天体，但需要与天体交互受力
-        # 将探测器添加到天体数组中作为第 0 个活跃天体
+        # Do not modify original bodies during prediction, but the probe needs to interact with them
+        # Add the probe to the body array as the 0th active body
         sim_bodies = np.vstack([probe_state, bodies])
 
         for _ in range(steps):
@@ -280,7 +280,7 @@ class PhysicsEngine(IPhysicsEngine):
                 pos, vel, self._probe_acceleration_fn, sim_bodies, dt
             )
 
-            # 更新 sim_bodies 中的探测器位置（方便下一次 force 计算）
+            # Update the probe's position in sim_bodies (for the next force calculation)
             sim_bodies[0, X] = pos[0, 0]
             sim_bodies[0, Y] = pos[0, 1]
             sim_bodies[0, VX] = vel[0, 0]
@@ -288,7 +288,7 @@ class PhysicsEngine(IPhysicsEngine):
 
             trajectory.append(pos[0].copy())
 
-            # 碰撞检测: 探测器与任何天体相撞则停止
+            # Collision detection: stop if the probe collides with any body
             probe_radius = probe_state[0, 6]  # RADIUS
             probe_pos = pos[0]
             for b_idx in range(1, sim_bodies.shape[0]):
@@ -298,80 +298,80 @@ class PhysicsEngine(IPhysicsEngine):
                 dist = np.sqrt(np.dot(delta, delta))
                 body_radius = sim_bodies[b_idx, 6]  # RADIUS
                 if dist < probe_radius + body_radius:
-                    # 停止预测
+                    # Stop prediction
                     return np.array(trajectory)
 
         return np.array(trajectory)
 
     def handle_collisions(self, bodies: np.ndarray) -> np.ndarray:
-        """检测并处理碰撞。
+        """Detect and resolve collisions.
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            bodies: shape (N, NUM_FIELDS) body state array
 
         Returns:
-            处理碰撞后的天体状态数组
+            Body state array after collision resolution
         """
         bodies, _ = resolve_collisions(bodies)
         return bodies
 
     def _remove_inactive(self, bodies: np.ndarray) -> np.ndarray:
-        """移除 IS_ACTIVE == 0 的天体。
+        """Remove bodies with IS_ACTIVE == 0.
 
-        使用布尔索引筛选出活跃天体。
+        Use boolean indexing to filter out active bodies.
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            bodies: shape (N, NUM_FIELDS) body state array
 
         Returns:
-            仅包含活跃天体的数组
+            Array containing only active bodies
         """
         active_mask = bodies[:, IS_ACTIVE] == 1.0
         return bodies[active_mask]
 
     def set_integrator(self, integrator: str) -> None:
-        """切换积分器（预留接口）。
+        """Switch integrator (reserved interface).
 
-        目前只支持 'rk4'。未来可扩展为 'euler' 和 'velocity_verlet'。
+        Currently only supports 'rk4'. Future support for 'euler' and 'velocity_verlet'.
 
         Args:
-            integrator: 积分器名称 ('rk4', 'euler', 'velocity_verlet')
+            integrator: integrator name ('rk4', 'euler', 'velocity_verlet')
 
         Raises:
-            ValueError: 不支持的积分器名称
+            ValueError: unsupported integrator name
         """
         valid = {"rk4", "euler", "velocity_verlet"}
         if integrator not in valid:
             raise ValueError(
-                f"不支持的积分器 '{integrator}'，可选: {valid}"
+                f"Unsupported integrator '{integrator}', options: {valid}"
             )
         self._integrator = integrator
 
     # ------------------------------------------------------------------
-    # 测试用查询 API（只读，不修改状态）
+    # Test query API (read-only, does not modify state)
     # ------------------------------------------------------------------
 
     def get_body_count(self, bodies: np.ndarray) -> int:
-        """返回活跃天体数量。
+        """Return the number of active bodies.
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            bodies: shape (N, NUM_FIELDS) body state array
 
         Returns:
-            活跃天体数量
+            Number of active bodies
         """
         active = bodies[bodies[:, IS_ACTIVE] == 1.0]
         return int(active.shape[0])
 
     def get_body_state(self, bodies: np.ndarray, body_id: int) -> Dict[str, object]:
-        """返回指定天体的完整状态字典。
+        """Return the full state dictionary of the specified body.
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
-            body_id: 天体的行索引
+            bodies: shape (N, NUM_FIELDS) body state array
+            body_id: row index of the body
 
         Returns:
-            包含 x, y, vx, vy, mass, charge, radius, body_type, is_static, is_active 的字典
+            Dictionary containing x, y, vx, vy, mass, charge, radius, body_type, is_static, is_active
         """
         body = bodies[body_id]
         return {
@@ -388,24 +388,24 @@ class PhysicsEngine(IPhysicsEngine):
         }
 
     def get_total_energy(self, bodies: np.ndarray) -> float:
-        """计算系统总机械能（动能 + 引力势能），用于验证能量守恒。
+        """Compute total mechanical energy of the system (kinetic + gravitational potential), for verifying energy conservation.
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            bodies: shape (N, NUM_FIELDS) body state array
 
         Returns:
-            总机械能 (J)
+            Total mechanical energy (J)
         """
         active = bodies[bodies[:, IS_ACTIVE] == 1.0]
         n = active.shape[0]
         if n == 0:
             return 0.0
 
-        # 动能
+        # Kinetic energy
         v_sq = active[:, VX] ** 2 + active[:, VY] ** 2
         ke = 0.5 * float(np.sum(active[:, MASS] * v_sq))
 
-        # 引力势能
+        # Gravitational potential energy
         pe = 0.0
         positions = active[:, [X, Y]]
         masses = active[:, MASS]
@@ -419,13 +419,13 @@ class PhysicsEngine(IPhysicsEngine):
         return ke + pe
 
     def get_total_momentum(self, bodies: np.ndarray) -> Tuple[float, float]:
-        """计算系统总动量 (px, py)，用于验证动量守恒。
+        """Compute total momentum of the system (px, py), for verifying momentum conservation.
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            bodies: shape (N, NUM_FIELDS) body state array
 
         Returns:
-            (px, py) 总动量 (kg m/s)
+            (px, py) total momentum (kg m/s)
         """
         active = bodies[bodies[:, IS_ACTIVE] == 1.0]
         if active.shape[0] == 0:

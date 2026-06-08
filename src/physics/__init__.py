@@ -1,12 +1,12 @@
-"""MiniSFS 物理引擎模块。
+"""MiniSFS physics engine package.
 
-提供多体模拟的核心组件:
-    - ``forces``: 万有引力和库仑力的向量化计算
-    - ``integrators``: 数值积分器（RK4, Euler, Velocity Verlet）
-    - ``collision``: 碰撞检测与响应
-    - ``engine``: PhysicsEngine 主类（实现 IPhysicsEngine 接口）
+Provides core components for multi-body simulation:
+    - ``forces``: Vectorized gravitational and Coulomb force computation.
+    - ``integrators``: Numerical integrators (RK4, Euler, Velocity Verlet).
+    - ``collision``: Collision detection and response.
+    - ``engine``: PhysicsEngine main class (implements IPhysicsEngine interface).
 
-用法::
+Usage::
 
     from src.physics.engine import PhysicsEngine
     engine = PhysicsEngine()

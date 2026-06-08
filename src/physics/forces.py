@@ -1,19 +1,19 @@
-"""天体受力计算模块。
+"""Celestial force calculation module.
 
-提供牛顿万有引力和库仑力的向量化（O(n^2)）计算。
-未来可搭配四叉树的 Barnes-Hut 加速实现 O(n log n) 近似计算。
+Provides vectorized (O(n^2)) computation of Newtonian gravitational and Coulomb forces.
+Can be combined with Barnes-Hut acceleration using a quadtree for O(n log n) approximate computation in the future.
 
-还提供单星轨迹预测函数用于放置速度设定时的轨迹预览。
+Also provides a single-star trajectory prediction function for trajectory preview when setting placement velocity.
 
-用法::
+Usage::
 
     from src.physics.forces import compute_gravitational_forces, compute_coulomb_forces
 
-    # 计算所有活跃天体的引力合力
+    # Compute the net gravitational force on all active bodies
     grav_forces = compute_gravitational_forces(bodies, G, softening)
-    # 计算库仑力合力
+    # Compute the net Coulomb force
     coul_forces = compute_coulomb_forces(bodies, K, softening)
-    # 合并
+    # Combine
     total_forces = grav_forces + coul_forces
 """
 
@@ -40,19 +40,19 @@ def compute_gravitational_forces(
     g: float,
     softening: float,
 ) -> np.ndarray:
-    """计算所有天体受到的总万有引力。
+    """Compute the total gravitational force on all bodies.
 
-    使用向量化 O(n^2) 全量计算。返回 shape (N, 2) 的力数组。
-    静态天体不受力（不计算其加速度），但会对其他天体产生引力。
-    不活跃天体既不产生引力也不受力。
+    Uses vectorized O(n^2) full computation. Returns a force array of shape (N, 2).
+    Static bodies experience no force (their acceleration is not computed), but do exert gravity on other bodies.
+    Inactive bodies neither exert gravity nor experience force.
 
     Args:
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
-        g: 万有引力常数（如 6.67430e-11）
-        softening: 软化参数 (m)，防止 r -> 0 时受力发散
+        bodies: body state array of shape (N, NUM_FIELDS)
+        g: gravitational constant (e.g., 6.67430e-11)
+        softening: softening parameter (m), prevents force divergence as r -> 0
 
     Returns:
-        shape (N, 2) 的合力数组 (fx, fy)，单位 N
+        net force array (fx, fy) of shape (N, 2), unit N
     """
     n = bodies.shape[0]
     forces = np.zeros((n, 2), dtype=np.float64)
@@ -60,38 +60,38 @@ def compute_gravitational_forces(
     if n < 2:
         return forces
 
-    # 提取位置和质量
+    # Extract positions and masses
     positions = bodies[:, [X, Y]]       # shape (N, 2)
     masses = bodies[:, MASS]            # shape (N,)
     is_active = bodies[:, IS_ACTIVE] == 1.0
     is_static = bodies[:, IS_STATIC] == 1.0
 
-    # 不活跃天体不产生引力（质量视为 0）
+    # Inactive bodies do not produce gravity (mass treated as 0)
     effective_masses = masses.copy()
     effective_masses[~is_active] = 0.0
 
-    # 计算所有 pair 的位移向量: positions[i] - positions[j]
-    # 利用广播: (N,1,2) - (1,N,2) -> (N,N,2)
+    # Compute displacement vectors for all pairs: positions[i] - positions[j]
+    # Using broadcasting: (N,1,2) - (1,N,2) -> (N,N,2)
     delta = positions[:, np.newaxis, :] - positions[np.newaxis, :, :]  # (N, N, 2)
 
-    # 距离平方 +  softening^2 (避免除零)
+    # Squared distance + softening^2 (avoid division by zero)
     r_squared = np.sum(delta ** 2, axis=-1) + softening ** 2          # (N, N)
     r = np.sqrt(r_squared)                                             # (N, N)
 
-    # 引力大小: F = G * m_i * m_j / r^2
-    # 注意这里 F_ij = G * m_i * m_j / r^2, 作用方向从 j 指向 i
+    # Force magnitude: F = G * m_i * m_j / r^2
+    # Note: F_ij = G * m_i * m_j / r^2, direction from j to i
     force_magnitude = g * effective_masses[np.newaxis, :] * effective_masses[:, np.newaxis] / r_squared  # (N, N)
 
-    # 力向量: -(F_mag / r) * delta  (负号使方向从 i 指向 j，即引力)
-    # delta[i,j] = pos_i - pos_j 指向从 j 到 i，但引力需要从 i 指向 j
-    # shape (N, N, 2): delta 每个分量乘上 -force_magnitude / r
+    # Force vector: -(F_mag / r) * delta (negative sign makes direction from i to j, i.e., gravitational attraction)
+    # delta[i,j] = pos_i - pos_j points from j to i, but gravity needs direction from i to j
+    # shape (N, N, 2): each component of delta multiplied by -force_magnitude / r
     inv_r = np.where(r > 0, 1.0 / r, 0.0)
     force_vectors = -delta * (force_magnitude * inv_r)[:, :, np.newaxis]  # (N, N, 2)
 
-    # 对 j 求和得到每个天体 i 的合力
+    # Sum over j to get the net force on each body i
     forces[:, :] = np.sum(force_vectors, axis=1)  # (N, 2)
 
-    # 静态和不活跃天体不受力
+    # Static and inactive bodies experience no force
     no_force_mask = ~is_active | is_static
     forces[no_force_mask] = 0.0
 
@@ -103,20 +103,20 @@ def compute_coulomb_forces(
     k: float,
     softening: float,
 ) -> np.ndarray:
-    """计算所有天体受到的总库仑力。
+    """Compute the total Coulomb force on all bodies.
 
-    使用向量化 O(n^2) 全量计算。返回 shape (N, 2) 的力数组。
-    正负电荷相互吸引，同号电荷相互排斥。
-    静态天体不受力但对其余天体产生库仑力。
-    不活跃天体既不产生库仑力也不受力。
+    Uses vectorized O(n^2) full computation. Returns a force array of shape (N, 2).
+    Opposite charges attract, like charges repel.
+    Static bodies experience no force but exert Coulomb force on other bodies.
+    Inactive bodies neither exert Coulomb force nor experience force.
 
     Args:
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
-        k: 库仑常数（如 8.98755e9）
-        softening: 软化参数 (m)
+        bodies: body state array of shape (N, NUM_FIELDS)
+        k: Coulomb constant (e.g., 8.98755e9)
+        softening: softening parameter (m)
 
     Returns:
-        shape (N, 2) 的合力数组 (fx, fy)，单位 N
+        net force array (fx, fy) of shape (N, 2), unit N
     """
     n = bodies.shape[0]
     forces = np.zeros((n, 2), dtype=np.float64)
@@ -129,7 +129,7 @@ def compute_coulomb_forces(
     is_active = bodies[:, IS_ACTIVE] == 1.0
     is_static = bodies[:, IS_STATIC] == 1.0
 
-    # 不活跃天体的电荷视为 0
+    # Charge of inactive bodies is treated as 0
     effective_charges = charges.copy()
     effective_charges[~is_active] = 0.0
 
@@ -137,7 +137,7 @@ def compute_coulomb_forces(
     r_squared = np.sum(delta ** 2, axis=-1) + softening ** 2          # (N, N)
     r = np.sqrt(r_squared)                                             # (N, N)
 
-    # 库仑力: F = k * q_i * q_j / r^2 (正为排斥，负为吸引)
+    # Coulomb force: F = k * q_i * q_j / r^2 (positive = repulsion, negative = attraction)
     force_magnitude = k * effective_charges[np.newaxis, :] * effective_charges[:, np.newaxis] / r_squared  # (N, N)
 
     inv_r = np.where(r > 0, 1.0 / r, 0.0)
@@ -145,7 +145,7 @@ def compute_coulomb_forces(
 
     forces[:, :] = np.sum(force_vectors, axis=1)  # (N, 2)
 
-    # 静态和不活跃天体不受力
+    # Static and inactive bodies experience no force
     no_force_mask = ~is_active | is_static
     forces[no_force_mask] = 0.0
 
@@ -158,16 +158,16 @@ def compute_total_forces(
     k: float,
     softening: float,
 ) -> np.ndarray:
-    """计算所有天体受到的总合力（引力 + 库仑力）。
+    """Compute the total net force on all bodies (gravity + Coulomb).
 
     Args:
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
-        g: 万有引力常数
-        k: 库仑常数
-        softening: 软化参数 (m)
+        bodies: body state array of shape (N, NUM_FIELDS)
+        g: gravitational constant
+        k: Coulomb constant
+        softening: softening parameter (m)
 
     Returns:
-        shape (N, 2) 的合力数组 (fx, fy)
+        net force array (fx, fy) of shape (N, 2)
     """
     grav = compute_gravitational_forces(bodies, g, softening)
     coul = compute_coulomb_forces(bodies, k, softening)
@@ -175,7 +175,7 @@ def compute_total_forces(
 
 
 # ============================================================================
-# 轨迹预览函数
+# Trajectory preview functions
 # ============================================================================
 
 
@@ -183,20 +183,19 @@ def find_nearest_star(
     pos: np.ndarray,
     bodies: np.ndarray,
 ) -> Optional[Tuple[int, np.ndarray, float, float]]:
-    """在 bodies 中查找距离给定位置最近的活跃恒星。
+    """Find the nearest active star to a given position among bodies.
 
     Args:
-        pos: shape (2,) 的查询坐标 (m)
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
+        pos: query coordinates of shape (2,) (m)
+        bodies: body state array of shape (N, NUM_FIELDS)
 
     Returns:
-        (index, star_pos, star_mass, star_radius) 的元组，
-        若未找到恒星则返回 None。
+        Tuple of (index, star_pos, star_mass, star_radius), returns None if no star is found.
 
-        - index: 恒星在 bodies 中的行索引
-        - star_pos: shape (2,) 的恒星位置数组 (m)
-        - star_mass: 恒星质量 (kg)
-        - star_radius: 恒星半径 (m)
+        - index: row index of the star in bodies
+        - star_pos: star position array of shape (2,) (m)
+        - star_mass: star mass (kg)
+        - star_radius: star radius (m)
     """
     best_idx: Optional[int] = None
     best_dist_sq: float = float("inf")
@@ -235,36 +234,36 @@ def predict_single_star_trajectory(
     steps: int = 2000,
     dt: float = 5000.0,
 ) -> Dict[str, object]:
-    """预测单一天体在单一引力源下的运动轨迹。
+    """Predict the trajectory of a single body under a single gravitational source.
 
-    使用 Euler 数值积分计算二体问题轨迹。
-    引力源视为固定不动，仅计算待放置天体受到的引力。
-    终止条件（按优先级）：碰撞 > 逃逸 > 绕圈完成 > 最大步数。
+    Uses Euler numerical integration to compute the two-body problem trajectory.
+    The gravitational source is treated as fixed; only the force on the body being placed is computed.
+    Termination conditions (priority order): collision > escape > orbit completed > max steps.
 
     Args:
-        pos: shape (2,) 的预览位置世界坐标 (m)
-        vel: shape (2,) 的设定速度向量 (m/s)
-        star_pos: shape (2,) 的引力源位置 (m)
-        star_mass: 引力源质量 (kg)
-        star_radius: 引力源半径 (m)
-        body_radius: 放置天体的半径 (m)
-        g: 万有引力常数
-        softening: 软化参数 (m)
-        steps: 最大积分步数（安全上限）
-        dt: 每步时间间隔 (秒)
+        pos: world coordinates of the preview position of shape (2,) (m)
+        vel: set velocity vector of shape (2,) (m/s)
+        star_pos: source position of shape (2,) (m)
+        star_mass: source mass (kg)
+        star_radius: source radius (m)
+        body_radius: radius of the body being placed (m)
+        g: gravitational constant
+        softening: softening parameter (m)
+        steps: maximum number of integration steps (safety limit)
+        dt: time step interval (seconds)
 
     Returns:
-        包含以下键的字典:
-            - "trajectory": shape (N, 2) 的轨迹世界坐标数组（原始密度）
-            - "collided": 是否与恒星碰撞
-            - "escaped": 是否逃逸
-            - "orbited": 是否绕引力源完成一圈
+        Dictionary containing the following keys:
+            - "trajectory": trajectory world coordinate array of shape (N, 2) (raw density)
+            - "collided": whether collided with the star
+            - "escaped": whether escaped
+            - "orbited": whether completed one orbit around the source
     """
     pos_cur = pos.copy().astype(np.float64)
     vel_cur = vel.copy().astype(np.float64)
     star_pos_f64 = star_pos.astype(np.float64)
 
-    # 初始距离用于逃逸检测
+    # Initial distance for escape detection
     initial_delta = pos_cur - star_pos_f64
     initial_dist = float(np.linalg.norm(initial_delta))
     escape_threshold: float = ESCAPE_RATIO * max(initial_dist, 1.0)
@@ -275,7 +274,7 @@ def predict_single_star_trajectory(
     escaped: bool = False
     orbited: bool = False
 
-    # 角度累计检测
+    # Angle accumulation tracking
     total_angle: float = 0.0
     prev_angle: float = math.atan2(
         pos_cur[1] - star_pos_f64[1],
@@ -288,17 +287,17 @@ def predict_single_star_trajectory(
         r_vec = pos_cur - star_pos_f64
         dist = float(np.linalg.norm(r_vec)) + softening
 
-        # 1. 碰撞检测（最高优先级）
+        # 1. Collision detection (highest priority)
         if dist < collision_radius:
             collided = True
-            # 回退插值到星体表面：从上一已知安全位置沿方向插值到 surface
+            # Fallback interpolation to star surface: interpolate from last known safe position toward surface
             if len(trajectory) >= 2:
                 last_safe = trajectory[-1]
                 r_safe = last_safe - star_pos_f64
                 d_safe = float(np.linalg.norm(r_safe))
-                cur_raw = dist - softening  # 去掉 softening
+                cur_raw = dist - softening  # remove softening
                 if d_safe > cur_raw:
-                    # 在安全位置与穿透位置之间线性插值到碰撞半径
+                    # Linearly interpolate between safe position and penetrated position to collision radius
                     t = (d_safe - collision_radius) / (d_safe - cur_raw)
                     t = max(0.0, min(t, 1.0))
                     hit_pt = last_safe + (pos_cur - last_safe) * t
@@ -308,16 +307,16 @@ def predict_single_star_trajectory(
                 trajectory.append(pos_cur.copy())
             break
 
-        # 2. 逃逸检测
+        # 2. Escape detection
         if dist > escape_threshold:
             escaped = True
             trajectory.append(pos_cur.copy())
             break
 
-        # 3. 角度变化检测
+        # 3. Angle change detection
         current_angle = math.atan2(r_vec[1], r_vec[0])
         delta_angle = current_angle - prev_angle
-        # 归一化到 [-pi, pi]
+        # Normalize to [-pi, pi]
         while delta_angle > math.pi:
             delta_angle -= 2.0 * math.pi
         while delta_angle < -math.pi:
@@ -325,13 +324,13 @@ def predict_single_star_trajectory(
         total_angle += abs(delta_angle)
         prev_angle = current_angle
 
-        # 绕完一圈
+        # Completed one orbit
         if total_angle >= 2.0 * math.pi:
             orbited = True
             trajectory.append(pos_cur.copy())
             break
 
-        # 4. 积分一步（Euler 法）
+        # 4. Integrate one step (Euler method)
         acc = -g * star_mass * r_vec / (dist ** 3)
         vel_cur += acc * dt
         pos_cur += vel_cur * dt

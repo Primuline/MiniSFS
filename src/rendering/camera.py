@@ -1,13 +1,13 @@
-"""相机系统：管理视口变换与世界坐标<->屏幕坐标的转换。
+"""Camera system: manages viewport transformation and world/screen coordinate conversion.
 
-实现 ``ICamera`` 接口（定义在 ``src.core.interfaces``）。
+Implements the ``ICamera`` interface (defined in ``src.core.interfaces``).
 
-支持：
-    - 世界坐标 <-> 屏幕坐标双向转换
-    - 鼠标拖拽平移
-    - 滚轮缩放（以鼠标位置为中心）
-    - 双击天体跟随
-    - R 键重置视角
+Supports:
+    - Bidirectional world/screen coordinate conversion
+    - Mouse drag panning
+    - Scroll wheel zoom (centered on mouse position)
+    - Double-click celestial body follow
+    - R key reset view
 """
 
 from typing import Dict, Tuple
@@ -28,16 +28,16 @@ from src.core.interfaces import ICamera
 
 
 class Camera(ICamera):
-    """2D 相机，管理视口变换。
+    """2D camera that manages viewport transformations.
 
-    将世界坐标（米）映射到屏幕坐标（像素）。
-    缩放以屏幕某点为中心进行，平移不影响缩放。
+    Maps world coordinates (meters) to screen coordinates (pixels).
+    Zoom is centered on a screen point; panning does not affect zoom.
 
     Attributes:
-        center_x: 屏幕中心对应的世界 x 坐标 (m)
-        center_y: 屏幕中心对应的世界 y 坐标 (m)
-        zoom: 缩放倍数 (1.0 = 默认比例)
-        world_scale: 世界单位/像素比 (m/pixel)，来自 config
+        center_x: World x-coordinate corresponding to screen center (m)
+        center_y: World y-coordinate corresponding to screen center (m)
+        zoom: Zoom factor (1.0 = default scale)
+        world_scale: World units per pixel (m/pixel), from config
     """
 
     def __init__(
@@ -46,58 +46,58 @@ class Camera(ICamera):
         height: int = WINDOW_HEIGHT,
         world_scale: float = WORLD_SCALE,
     ) -> None:
-        """初始化相机。
+        """Initialize the camera.
 
         Args:
-            width: 屏幕宽度（像素）
-            height: 屏幕高度（像素）
-            world_scale: 世界单位与像素的换算比例 (m/pixel)
+            width: Screen width (pixels)
+            height: Screen height (pixels)
+            world_scale: World-to-pixel conversion ratio (m/pixel)
         """
         self.width: int = width
         self.height: int = height
         self.world_scale: float = world_scale
 
-        # 屏幕中心对应的世界坐标
+        # World coordinate corresponding to screen center
         self.center_x: float = 0.0
         self.center_y: float = 0.0
 
-        # 缩放倍数
+        # Zoom factor
         self._zoom: float = 1.0
 
-        # 记录初始状态用于 reset
+        # Record initial state for reset
         self._initial_center_x: float = 0.0
         self._initial_center_y: float = 0.0
         self._initial_zoom: float = 1.0
 
     # ------------------------------------------------------------------
-    # 属性
+    # Properties
     # ------------------------------------------------------------------
 
     @property
     def zoom(self) -> float:
-        """获取当前缩放倍数。"""
+        """Get the current zoom factor."""
         return self._zoom
 
     @zoom.setter
     def zoom(self, value: float) -> None:
-        """设置缩放倍数，自动钳制在有效范围内。"""
+        """Set the zoom factor, automatically clamped to valid range."""
         self._zoom = max(CAMERA_ZOOM_MIN, min(CAMERA_ZOOM_MAX, value))
 
     # ------------------------------------------------------------------
-    # ICamera 接口方法
+    # ICamera Interface Methods
     # ------------------------------------------------------------------
 
     def world_to_screen(
         self, world_x: float, world_y: float
     ) -> Tuple[int, int]:
-        """世界坐标转屏幕像素坐标。
+        """Convert world coordinates to screen pixel coordinates.
 
         Args:
-            world_x: 世界 x 坐标 (m)
-            world_y: 世界 y 坐标 (m)
+            world_x: World x-coordinate (m)
+            world_y: World y-coordinate (m)
 
         Returns:
-            (screen_x, screen_y) 像素坐标
+            (screen_x, screen_y) pixel coordinates
         """
         sx = (world_x - self.center_x) / self.world_scale * self._zoom + self.width / 2
         sy = (world_y - self.center_y) / self.world_scale * self._zoom + self.height / 2
@@ -106,27 +106,27 @@ class Camera(ICamera):
     def screen_to_world(
         self, screen_x: int, screen_y: int
     ) -> Tuple[float, float]:
-        """屏幕像素坐标转世界坐标。
+        """Convert screen pixel coordinates to world coordinates.
 
         Args:
-            screen_x: 屏幕 x 坐标（像素）
-            screen_y: 屏幕 y 坐标（像素）
+            screen_x: Screen x-coordinate (pixels)
+            screen_y: Screen y-coordinate (pixels)
 
         Returns:
-            (world_x, world_y) 世界坐标 (m)
+            (world_x, world_y) world coordinates (m)
         """
         wx = (screen_x - self.width / 2) / self._zoom * self.world_scale + self.center_x
         wy = (screen_y - self.height / 2) / self._zoom * self.world_scale + self.center_y
         return wx, wy
 
     def pan(self, dx: float, dy: float) -> None:
-        """平移相机。
+        """Pan the camera.
 
-        将屏幕像素偏移量转换为世界坐标偏移量。
+        Convert screen pixel offset to world coordinate offset.
 
         Args:
-            dx: x 方向偏移量 (像素，正值向右)
-            dy: y 方向偏移量 (像素，正值向下)
+            dx: X-direction offset (pixels, positive right)
+            dy: Y-direction offset (pixels, positive down)
         """
         world_dx = dx * self.world_scale / self._zoom
         world_dy = dy * self.world_scale / self._zoom
@@ -134,33 +134,33 @@ class Camera(ICamera):
         self.center_y += world_dy
 
     def zoom_at(self, factor: float, screen_center_x: int, screen_center_y: int) -> None:
-        """以屏幕某点为中心缩放。
+        """Zoom centered on a screen point.
 
-        保持指定屏幕坐标对应的世界坐标不变。
+        Keep the world coordinate at the given screen point unchanged.
 
         Args:
-            factor: 缩放倍数 (>1 放大, <1 缩小)
-            screen_center_x: 缩放中心 x (像素)
-            screen_center_y: 缩放中心 y (像素)
+            factor: Zoom factor (>1 zoom in, <1 zoom out)
+            screen_center_x: Zoom center x (pixels)
+            screen_center_y: Zoom center y (pixels)
         """
-        # 记录缩放前该屏幕点对应的世界坐标
+        # Record the world coordinate at this screen point before zoom
         world_x, world_y = self.screen_to_world(screen_center_x, screen_center_y)
 
-        # 更新缩放
+        # Update zoom
         new_zoom = self._zoom * factor
         new_zoom = max(CAMERA_ZOOM_MIN, min(CAMERA_ZOOM_MAX, new_zoom))
 
-        # 调整 center 使得该世界坐标仍映射到相同的屏幕位置
+        # Adjust center so this world coordinate still maps to the same screen position
         self.center_x = world_x - (screen_center_x - self.width / 2) / new_zoom * self.world_scale  # fmt: skip
         self.center_y = world_y - (screen_center_y - self.height / 2) / new_zoom * self.world_scale  # fmt: skip
         self._zoom = new_zoom
 
     def follow(self, world_x: float, world_y: float) -> None:
-        """相机跟随指定世界坐标（居中）。
+        """Camera follows the specified world coordinate (centers on it).
 
         Args:
-            world_x: 目标 x 坐标 (m)
-            world_y: 目标 y 坐标 (m)
+            world_x: Target x-coordinate (m)
+            world_y: Target y-coordinate (m)
         """
         self.center_x = world_x
         self.center_y = world_y
@@ -169,63 +169,64 @@ class Camera(ICamera):
                       vel_x: float = 0.0, vel_y: float = 0.0,
                       dt: float = 0.0,
                       lerp_factor: float | None = None) -> None:
-        """平滑跟随目标位置（速度前馈 + lerp 插值）。
+        """Smoothly follow target position (velocity feedforward + lerp interpolation).
 
-        使用速度前馈预测目标下一帧位置，再 lerp 逼近预测值，
-        大幅减少匀速运动下的稳态偏移。
+        Uses velocity feedforward to predict the target's next-frame position, then lerps
+        toward the prediction, significantly reducing steady-state offset under constant-
+        velocity motion.
 
         Args:
-            target_x: 目标世界 x 坐标 (m)
-            target_y: 目标世界 y 坐标 (m)
-            vel_x: 目标 x 方向速度 (m/s)，用于前馈预测
-            vel_y: 目标 y 方向速度 (m/s)
-            dt: 每帧物理模拟时间 (s)，即 target 在这帧内移动的总时间
-            lerp_factor: 插值因子 (0~1)，默认 CAMERA_FOLLOW_LERP
+            target_x: Target world x-coordinate (m)
+            target_y: Target world y-coordinate (m)
+            vel_x: Target x-velocity (m/s), used for feedforward prediction
+            vel_y: Target y-velocity (m/s)
+            dt: Per-frame physics simulation time (s), i.e., total time target moves this frame
+            lerp_factor: Interpolation factor (0~1), defaults to CAMERA_FOLLOW_LERP
         """
         if lerp_factor is None:
             lerp_factor = CAMERA_FOLLOW_LERP
-        # 速度前馈：预测目标这帧结束时的位置
+        # Velocity feedforward: predict target position at end of frame
         px = target_x + vel_x * dt
         py = target_y + vel_y * dt
         self.center_x += (px - self.center_x) * lerp_factor
         self.center_y += (py - self.center_y) * lerp_factor
 
     def reset(self) -> None:
-        """重置相机到初始位置和缩放。"""
+        """Reset the camera to initial position and zoom."""
         self.center_x = self._initial_center_x
         self.center_y = self._initial_center_y
         self._zoom = self._initial_zoom
 
     # ------------------------------------------------------------------
-    # 辅助方法
+    # Helper Methods
     # ------------------------------------------------------------------
 
     def get_screen_rect_world(self) -> Tuple[float, float, float, float]:
-        """获取当前屏幕视野对应的世界坐标矩形。
+        """Get the world-coordinate rectangle corresponding to the current screen view.
 
         Returns:
-            (left, top, right, bottom) 世界坐标 (m)
+            (left, top, right, bottom) world coordinates (m)
         """
         left, top = self.screen_to_world(0, 0)
         right, bottom = self.screen_to_world(self.width, self.height)
         return left, top, right, bottom
 
     def world_distance_to_screen(self, world_dist: float) -> float:
-        """将世界距离转换为屏幕像素距离。
+        """Convert world distance to screen pixel distance.
 
         Args:
-            world_dist: 世界距离 (m)
+            world_dist: World distance (m)
 
         Returns:
-            像素距离
+            Pixel distance
         """
         return world_dist / self.world_scale * self._zoom
 
     def get_state(self) -> Dict[str, float]:
-        """返回相机当前状态。
+        """Return the current camera state.
 
         Returns:
-            {'center_x': float, 'center_y': float, 'zoom': float} 字典
+            {'center_x': float, 'center_y': float, 'zoom': float} dictionary
         """
         return {
             'center_x': self.center_x,
@@ -234,15 +235,15 @@ class Camera(ICamera):
         }
 
     def is_visible(self, world_x: float, world_y: float, margin: float = 0.0) -> bool:
-        """判断世界坐标是否在当前视野内（含边距）。
+        """Check if a world coordinate is within the current view (with margin).
 
         Args:
-            world_x: 世界 x 坐标 (m)
-            world_y: 世界 y 坐标 (m)
-            margin: 边距（像素），用于提前绘制或延迟裁剪
+            world_x: World x-coordinate (m)
+            world_y: World y-coordinate (m)
+            margin: Margin (pixels), for early drawing or deferred culling
 
         Returns:
-            可见返回 True
+            True if visible
         """
         sx, sy = self.world_to_screen(world_x, world_y)
         return (

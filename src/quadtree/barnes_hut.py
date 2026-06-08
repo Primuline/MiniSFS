@@ -1,7 +1,8 @@
-"""Barnes-Hut 引力近似计算。
+"""Barnes-Hut gravity approximation computation.
 
-通过四叉树遍历，对满足 s/d < theta 条件的远距离节点使用质心近似，
-避免 O(n^2) 的逐一计算，将复杂度降至 O(n log n)。
+Traverses the quadtree and applies centroid approximation to distant nodes
+satisfying the condition s/d < theta, avoiding O(n^2) pairwise calculations
+and reducing complexity to O(n log n).
 
 Typical usage::
 
@@ -17,7 +18,7 @@ import numpy as np
 from src.config import GRAVITATIONAL_CONSTANT, SOFTENING
 from src.core.types import MASS, X, Y
 
-# 预计算软化距离平方
+# Precompute squared softening distance
 _SOFTENING_SQ = SOFTENING * SOFTENING
 
 
@@ -27,22 +28,22 @@ def compute_force(
     bodies: np.ndarray,
     theta: float,
 ) -> Tuple[float, float]:
-    """使用 Barnes-Hut 近似递归计算目标天体受到的总引力。
+    """Recursively compute the total gravitational force on a target body using Barnes-Hut approximation.
 
-    遍历四叉树节点：
-    - 如果节点是叶子节点，直接计算节点内所有天体对目标天体的引力。
-    - 如果节点是内部节点且满足 s/d < theta (远场条件)，
-      用节点质心和总质量近似计算引力，不再递归进入子节点。
-    - 如果不满足近似条件，递归到四个子节点。
+    Traverses quadtree nodes:
+    - If the node is a leaf, directly compute gravitational forces from all bodies within the node.
+    - If the node is internal and satisfies s/d < theta (far-field condition),
+      approximate the force using the node's centroid and total mass, without recursing into children.
+    - If the approximation condition is not met, recurse into the four child nodes.
 
     Args:
-        node: 当前四叉树节点（通常从根节点开始）
-        target_id: 目标天体在 bodies 数组中的行索引
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
-        theta: Barnes-Hut 阈值 (s / d < theta 时使用质心近似)
+        node: Current quadtree node (typically starting from the root)
+        target_id: Row index of the target body in the bodies array
+        bodies: Body state array of shape (N, NUM_FIELDS)
+        theta: Barnes-Hut threshold (use centroid approximation when s / d < theta)
 
     Returns:
-        (fx, fy) 合力向量 (N)
+        (fx, fy) net force vector (N)
     """
     tx = float(bodies[target_id, X])
     ty = float(bodies[target_id, Y])
@@ -56,7 +57,7 @@ def compute_force(
 
 
 # ======================================================================
-# 内部递归函数
+# Internal recursive functions
 # ======================================================================
 
 
@@ -69,23 +70,23 @@ def _walk(
     bodies: np.ndarray,
     theta: float,
 ) -> Tuple[float, float]:
-    """递归遍历四叉树计算引力。
+    """Recursively traverse the quadtree to compute gravitational force.
 
     Args:
-        node: 当前节点
-        target_id: 目标天体 ID
-        tx, ty: 目标天体坐标
-        tm: 目标天体质量
-        bodies: 天体状态数组
-        theta: Barnes-Hut 阈值
+        node: Current node
+        target_id: Target body ID
+        tx, ty: Target body coordinates
+        tm: Target body mass
+        bodies: Body state array
+        theta: Barnes-Hut threshold
 
     Returns:
-        (fx, fy) 合力
+        (fx, fy) net force
     """
     if node.mass == 0.0 or (not node.divided and len(node.points) == 0):
         return (0.0, 0.0)
 
-    # 计算节点边长和目标到质心的距离
+    # Compute node side length and distance from target to centroid
     bx, by, bw, bh = node.boundary
     s = max(bw, bh)
     dx = node.cx - tx
@@ -93,12 +94,12 @@ def _walk(
     d = math.sqrt(dx * dx + dy * dy)
 
     if node.divided:
-        # 内部节点：判断是否可以用质心近似
+        # Internal node: check if centroid approximation can be used
         if d > 0.0 and s / d < theta:
-            # 远场条件满足，使用质心近似
+            # Far-field condition met, use centroid approximation
             return _compute_force_to_mass(tm, node.mass, dx, dy, d)
         else:
-            # 不满足近似条件，递归子节点
+            # Approximation condition not met, recurse into children
             fx, fy = 0.0, 0.0
             for child in (node.nw, node.ne, node.sw, node.se):
                 if child is not None and child.mass > 0.0:
@@ -107,8 +108,8 @@ def _walk(
                     fy += cfy
             return (fx, fy)
     else:
-        # 叶子节点：直接计算所有点的引力（四点合并为质心计算或逐一计算）
-        # 如果叶子内有多个点且远场条件满足，仍可用节点质心
+        # Leaf node: directly compute gravitational force for all points
+        # If there are multiple points in the leaf and far-field condition is met, use node centroid
         if len(node.points) > 1 and d > 0.0 and s / d < theta:
             return _compute_force_to_mass(tm, node.mass, dx, dy, d)
 
@@ -135,17 +136,17 @@ def _compute_force_to_mass(
     dy: float,
     d: float,
 ) -> Tuple[float, float]:
-    """计算目标天体与节点质心之间的引力。
+    """Compute gravitational force between the target body and a node centroid.
 
     Args:
-        target_mass: 目标天体质量
-        node_mass: 节点总质量
-        dx: 目标到质心的 x 分量
-        dy: 目标到质心的 y 分量
-        d: 目标到质心的距离
+        target_mass: Target body mass
+        node_mass: Node total mass
+        dx: x-component from target to centroid
+        dy: y-component from target to centroid
+        d: Distance from target to centroid
 
     Returns:
-        (fx, fy) 引力分量
+        (fx, fy) force components
     """
     dist_sq = d * d + _SOFTENING_SQ
     f = GRAVITATIONAL_CONSTANT * target_mass * node_mass / dist_sq

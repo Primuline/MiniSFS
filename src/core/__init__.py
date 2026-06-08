@@ -1,8 +1,9 @@
-"""MiniSFS 核心类型与接口。
+"""MiniSFS core types and interfaces.
 
-提供项目中所有模块共享的数据类型定义和抽象接口规范。
+Provides shared data type definitions and abstract interface specifications
+used by all modules in the project.
 
-使用示例::
+Usage example::
 
     from src.core.types import (
         BodyField, X, Y, VX, VY, MASS, CHARGE, RADIUS,
@@ -26,7 +27,7 @@ from src.core.types import (
     Force,
     create_body_state_array,
     make_body,
-    # 方便访问的列常量
+    # Convenience column constants
     X,
     Y,
     VX,
@@ -55,7 +56,7 @@ from src.core.interfaces import (
 )
 
 __all__ = [
-    # 类型常量
+    # Type constants
     "BodyField",
     "NUM_FIELDS",
     "X", "Y", "VX", "VY",
@@ -63,13 +64,13 @@ __all__ = [
     "BODY_TYPE", "IS_STATIC", "IS_ACTIVE",
     "BODY_TYPE_STAR", "BODY_TYPE_PLANET",
     "BODY_TYPE_PROBE", "BODY_TYPE_CHARGED",
-    # 类型别名
+    # Type aliases
     "WorldPoint", "ScreenPoint", "Velocity", "Force",
-    # 工厂函数
+    # Factory functions
     "create_body_state_array", "make_body",
-    # 接口
+    # Interfaces
     "IPhysicsEngine", "IQuadtree", "ITrailBuffer",
     "IRenderer", "ICamera", "IGameManager", "IInputHandler",
-    # 数据结构
+    # Data structures
     "Rect",
 ]

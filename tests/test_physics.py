@@ -1,10 +1,10 @@
-"""物理引擎单元测试。
+"""Physics engine unit tests.
 
-覆盖 forces、integrators、collision 和 engine 各模块的核心功能。
+Covers core functionality of forces, integrators, collision and engine modules.
 
-验收标准:
-    - 两等质量天体绕共同质心做圆周运动，误差 < 1%/轨道
-    - 三体问题总能量波动 < 0.1% 每千步
+Acceptance criteria:
+    - Two equal-mass bodies orbit the common center of mass with error < 1%/orbit
+    - Three-body problem total energy fluctuation < 0.1% per thousand steps
 """
 
 import numpy as np
@@ -44,7 +44,7 @@ from src.physics.integrators import euler_step, rk4_step, velocity_verlet_step
 
 
 # ============================================================================
-# 辅助函数
+# Helper functions
 # ============================================================================
 
 def _two_body_circular_orbit(
@@ -53,18 +53,18 @@ def _two_body_circular_orbit(
     separation: float = 1.0e10,
     g: float = GRAVITATIONAL_CONSTANT,
 ) -> np.ndarray:
-    """构造一个两体圆周运动的初始状态。
+    """Construct an initial state for a two-body circular orbit.
 
     Args:
-        m1, m2: 两个天体的质量 (kg)
-        separation: 两体之间的距离 (m)
-        g: 万有引力常数
+        m1, m2: Masses of the two bodies (kg)
+        separation: Distance between the two bodies (m)
+        g: Gravitational constant
 
     Returns:
-        shape (2, 10) 的天体状态数组，两体以质心为中心的圆周速度
+        Body state array of shape (2, 10) with velocities for circular orbit around center of mass
     """
-    # 对于等质量天体，轨道速度为 v = sqrt(G * M / (2 * r))
-    # 其中 M = m1 + m2, r = separation/2
+    # For equal-mass bodies, orbital speed is v = sqrt(G * M / (2 * r))
+    # where M = m1 + m2, r = separation/2
     r = separation / 2.0
     orbital_speed = np.sqrt(g * (m1 + m2) / (2.0 * r))
 
@@ -86,25 +86,25 @@ def _two_body_circular_orbit(
 
 
 def _compute_energy(bodies: np.ndarray, g: float = GRAVITATIONAL_CONSTANT) -> float:
-    """计算系统的总机械能（动能 + 引力势能）。
+    """Compute the total mechanical energy (kinetic + gravitational potential) of the system.
 
     Args:
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
-        g: 万有引力常数
+        bodies: Body state array of shape (N, NUM_FIELDS)
+        g: Gravitational constant
 
     Returns:
-        总机械能 (J)
+        Total mechanical energy (J)
     """
     active = bodies[bodies[:, IS_ACTIVE] == 1.0]
     n = active.shape[0]
     if n == 0:
         return 0.0
 
-    # 动能
+    # Kinetic energy
     v_sq = active[:, VX] ** 2 + active[:, VY] ** 2
     ke = 0.5 * np.sum(active[:, MASS] * v_sq)
 
-    # 引力势能
+    # Gravitational potential energy
     pe = 0.0
     positions = active[:, [X, Y]]
     masses = active[:, MASS]
@@ -119,21 +119,21 @@ def _compute_energy(bodies: np.ndarray, g: float = GRAVITATIONAL_CONSTANT) -> fl
 
 
 # ============================================================================
-# forces.py 测试
+# forces.py tests
 # ============================================================================
 
 class TestGravitationalForces:
-    """万有引力计算测试。"""
+    """Gravitational force computation tests."""
 
     def test_two_bodies_symmetric(self):
-        """两个等质量天体受力应对称。"""
+        """Two equal-mass bodies should experience symmetric forces."""
         b1 = make_body(x=0.0, y=0.0, mass=1.0e28)
         b2 = make_body(x=1.0e10, y=0.0, mass=1.0e28)
         bodies = np.vstack([b1, b2])
 
         forces = compute_gravitational_forces(bodies, GRAVITATIONAL_CONSTANT, 0.0)
 
-        # 力的大小应相等，方向相反
+        # Force magnitudes should be equal, directions opposite
         f1_mag = np.linalg.norm(forces[0])
         f2_mag = np.linalg.norm(forces[1])
         assert f1_mag == pytest.approx(f2_mag, rel=1e-10)
@@ -141,14 +141,14 @@ class TestGravitationalForces:
         assert forces[0, 1] == pytest.approx(-forces[1, 1], rel=1e-10)
 
     def test_isolated_body_zero_force(self):
-        """单天体应不受力。"""
+        """A single body should experience zero force."""
         body = make_body(x=0.0, y=0.0, mass=1.0e28)
         forces = compute_gravitational_forces(body, GRAVITATIONAL_CONSTANT, 0.0)
         assert forces[0, 0] == 0.0
         assert forces[0, 1] == 0.0
 
     def test_magnitude_newton(self):
-        """验证引力大小符合牛顿万有引力公式。"""
+        """Verify gravitational force magnitude matches Newton's law of universal gravitation."""
         m1 = 1.0e30
         m2 = 1.0e28
         dist = 1.0e10
@@ -162,7 +162,7 @@ class TestGravitationalForces:
         assert np.linalg.norm(forces[0]) == pytest.approx(expected, rel=1e-10)
 
     def test_softening_prevents_divergence(self):
-        """软化参数应防止距离极近时的力发散。"""
+        """Softening parameter should prevent force divergence at very close distances."""
         b1 = make_body(x=0.0, y=0.0, mass=1.0e28)
         b2 = make_body(x=1e-10, y=0.0, mass=1.0e28)
         bodies = np.vstack([b1, b2])
@@ -170,35 +170,35 @@ class TestGravitationalForces:
         forces_no_soft = compute_gravitational_forces(bodies, GRAVITATIONAL_CONSTANT, 0.0)
         forces_soft = compute_gravitational_forces(bodies, GRAVITATIONAL_CONSTANT, 1.0)
 
-        # 有软化的力应显著小于无软化的力
+        # Force with softening should be significantly smaller than without
         f_no_soft = np.linalg.norm(forces_no_soft[0])
         f_soft = np.linalg.norm(forces_soft[0])
         assert f_soft < f_no_soft
 
     def test_static_body_exerts_gravity_but_not_receive(self):
-        """静态天体应产生引力但不自身受力。"""
+        """A static body should exert gravity but not experience force itself."""
         b1 = make_body(x=0.0, y=0.0, mass=1.0e28)
         b2 = make_body(x=1.0e10, y=0.0, mass=1.0e28, is_static=True)
         bodies = np.vstack([b1, b2])
 
         forces = compute_gravitational_forces(bodies, GRAVITATIONAL_CONSTANT, 0.0)
 
-        # 静态天体(1)不受力
+        # Static body (1) experiences no force
         assert forces[1, 0] == 0.0
         assert forces[1, 1] == 0.0
-        # 但活跃天体(0)应受到来自静态天体的引力
+        # But active body (0) should experience gravitational force from the static body
         expected = GRAVITATIONAL_CONSTANT * 1.0e28 * 1.0e28 / (1.0e10 ** 2)
         assert np.linalg.norm(forces[0]) == pytest.approx(expected, rel=1e-10)
 
     def test_inactive_body_excluded(self):
-        """不活跃天体不应参与受力计算。"""
+        """Inactive bodies should not participate in force computation."""
         b1 = make_body(x=0.0, y=0.0, mass=1.0e28)
         b2 = make_body(x=1.0e10, y=0.0, mass=1.0e28, is_active=False)
         bodies = np.vstack([b1, b2])
 
         forces = compute_gravitational_forces(bodies, GRAVITATIONAL_CONSTANT, 0.0)
 
-        # 只有 b1 活跃时，受力应为 0
+        # When only b1 is active, the force should be 0
         assert forces[1, 0] == 0.0
         assert forces[1, 1] == 0.0
         assert forces[0, 0] == 0.0
@@ -206,36 +206,36 @@ class TestGravitationalForces:
 
 
 class TestCoulombForces:
-    """库仑力计算测试。"""
+    """Coulomb force computation tests."""
 
     def test_like_charges_repel(self):
-        """同号电荷应相互排斥。"""
+        """Like charges should repel each other."""
         b1 = make_body(x=0.0, y=0.0, mass=1.0, charge=1.0e6)
         b2 = make_body(x=1.0e10, y=0.0, mass=1.0, charge=1.0e6)
         bodies = np.vstack([b1, b2])
 
         forces = compute_coulomb_forces(bodies, COULOMB_CONSTANT, 0.0)
 
-        # b1 受到正 x 方向力（被 b2 排斥）
+        # b1 experiences force in positive x direction (repelled by b2)
         assert forces[0, 0] > 0
-        # b2 受到负 x 方向力（被 b1 排斥）
+        # b2 experiences force in negative x direction (repelled by b1)
         assert forces[1, 0] < 0
 
     def test_opposite_charges_attract(self):
-        """异号电荷应相互吸引。"""
+        """Opposite charges should attract each other."""
         b1 = make_body(x=0.0, y=0.0, mass=1.0, charge=1.0e6)
         b2 = make_body(x=1.0e10, y=0.0, mass=1.0, charge=-1.0e6)
         bodies = np.vstack([b1, b2])
 
         forces = compute_coulomb_forces(bodies, COULOMB_CONSTANT, 0.0)
 
-        # b1 受到负 x 方向力（被 b2 吸引）
+        # b1 experiences force in negative x direction (attracted to b2)
         assert forces[0, 0] < 0
-        # b2 受到正 x 方向力（被 b1 吸引）
+        # b2 experiences force in positive x direction (attracted to b1)
         assert forces[1, 0] > 0
 
     def test_zero_charge(self):
-        """不带电天体应不受库仑力。"""
+        """Bodies with zero charge should experience no Coulomb force."""
         b1 = make_body(x=0.0, y=0.0, mass=1.0, charge=1.0e6)
         b2 = make_body(x=1.0e10, y=0.0, mass=1.0, charge=0.0)
         bodies = np.vstack([b1, b2])
@@ -247,22 +247,22 @@ class TestCoulombForces:
 
 
 # ============================================================================
-# integrators.py 测试
+# integrators.py tests
 # ============================================================================
 
 class TestIntegrators:
-    """数值积分器测试。"""
+    """Numerical integrator tests."""
 
     @staticmethod
     def _constant_accel(pos: np.ndarray, bodies: np.ndarray) -> np.ndarray:
-        """返回常量加速度 (0, -9.8) 模拟自由落体。"""
+        """Return constant acceleration (0, -9.8) simulating free fall."""
         n = pos.shape[0]
         acc = np.zeros((n, 2), dtype=np.float64)
         acc[:, 1] = -9.8
         return acc
 
     def test_euler_free_fall(self):
-        """欧拉法下自由落体应满足基本运动学。"""
+        """Euler method free fall should satisfy basic kinematics."""
         pos = np.zeros((1, 2), dtype=np.float64)
         vel = np.zeros((1, 2), dtype=np.float64)
         dt = 0.01
@@ -279,7 +279,7 @@ class TestIntegrators:
         assert vel[0, 1] == pytest.approx(expected_vy, rel=1e-2)
 
     def test_rk4_free_fall(self):
-        """RK4 下自由落体应高精度满足运动学（精确到机器精度）。"""
+        """RK4 free fall should satisfy kinematics with high precision (machine precision)."""
         pos = np.zeros((1, 2), dtype=np.float64)
         vel = np.zeros((1, 2), dtype=np.float64)
         dt = 0.01
@@ -292,12 +292,12 @@ class TestIntegrators:
         expected_y = -0.5 * 9.8 * t ** 2
         expected_vy = -9.8 * t
 
-        # RK4 应比欧拉更精确
+        # RK4 should be more accurate than Euler
         assert pos[0, 1] == pytest.approx(expected_y, rel=1e-10)
         assert vel[0, 1] == pytest.approx(expected_vy, rel=1e-10)
 
     def test_velocity_verlet_free_fall(self):
-        """Velocity Verlet 下自由落体应精确满足运动学。"""
+        """Velocity Verlet free fall should accurately satisfy kinematics."""
         pos = np.zeros((1, 2), dtype=np.float64)
         vel = np.zeros((1, 2), dtype=np.float64)
         dt = 0.01
@@ -318,14 +318,14 @@ class TestIntegrators:
 
 
 # ============================================================================
-# collision.py 测试
+# collision.py tests
 # ============================================================================
 
 class TestCollision:
-    """碰撞检测与响应测试。"""
+    """Collision detection and response tests."""
 
     def test_detect_no_collision(self):
-        """相距很远的天体不应检测到碰撞。"""
+        """Bodies far apart should not detect a collision."""
         b1 = make_body(x=0.0, y=0.0, radius=1.0)
         b2 = make_body(x=1e6, y=0.0, radius=1.0)
         bodies = np.vstack([b1, b2])
@@ -334,7 +334,7 @@ class TestCollision:
         assert len(collisions) == 0
 
     def test_detect_overlap(self):
-        """重叠天体应被检测到碰撞。"""
+        """Overlapping bodies should be detected as a collision."""
         b1 = make_body(x=0.0, y=0.0, radius=1.0)
         b2 = make_body(x=1.5, y=0.0, radius=1.0)
         bodies = np.vstack([b1, b2])
@@ -344,12 +344,12 @@ class TestCollision:
         assert collisions[0] == (0, 1)
 
     def test_elastic_conservation(self):
-        """弹性碰撞应满足动量和能量守恒。"""
+        """Elastic collision should conserve momentum and kinetic energy."""
         b1 = make_body(x=0.0, y=0.0, vx=1.0, mass=1.0, radius=1.0)
         b2 = make_body(x=1.5, y=0.0, vx=-1.0, mass=1.0, radius=1.0)
         bodies = np.vstack([b1, b2])
 
-        # 等质量弹性碰撞：速度应交换
+        # Equal mass elastic collision: velocities should exchange
         momentum_before = np.sum(bodies[:, MASS] * bodies[:, VX])
         ke_before = 0.5 * np.sum(bodies[:, MASS] * bodies[:, VX] ** 2)
 
@@ -363,7 +363,7 @@ class TestCollision:
         assert ke_before == pytest.approx(ke_after, rel=1e-10)
 
     def test_merge_mass_accumulation(self):
-        """合并碰撞后总质量应守恒。"""
+        """Total mass should be conserved after a merge collision."""
         b1 = make_body(x=0.0, y=0.0, mass=5.0e28, radius=1.0)
         b2 = make_body(x=1.5, y=0.0, mass=1.0e28, radius=1.0)
         bodies = np.vstack([b1, b2])
@@ -373,13 +373,13 @@ class TestCollision:
         collisions = detect_collisions(bodies)
         bodies, _ = resolve_merge(bodies, collisions)
 
-        # 合并后只有 1 个活跃天体
+        # Only 1 active body remains after merge
         active = bodies[bodies[:, IS_ACTIVE] == 1.0]
         assert active.shape[0] == 1
         assert active[0, MASS] == pytest.approx(total_mass_before, rel=1e-10)
 
     def test_merge_momentum_conservation(self):
-        """合并碰撞应满足动量守恒。"""
+        """Merge collision should conserve momentum."""
         b1 = make_body(x=0.0, y=0.0, vx=2.0, mass=5.0e28, radius=1.0)
         b2 = make_body(x=1.5, y=0.0, vx=0.0, mass=1.0e28, radius=1.0)
         bodies = np.vstack([b1, b2])
@@ -396,14 +396,14 @@ class TestCollision:
 
 
 # ============================================================================
-# engine.py 测试
+# engine.py tests
 # ============================================================================
 
 class TestPhysicsEngine:
-    """PhysicsEngine 主类测试。"""
+    """PhysicsEngine main class tests."""
 
     def test_single_body_no_change(self):
-        """单天体静止时更新后应无变化。"""
+        """A single stationary body should have no change after update."""
         engine = PhysicsEngine()
         body = make_body(x=0.0, y=0.0, mass=1.0e28)
 
@@ -415,33 +415,33 @@ class TestPhysicsEngine:
         assert result[0, VY] == 0.0
 
     def test_two_body_circular_orbit_accuracy(self):
-        """两等质量天体圆周运动，一轨道后误差 < 1%。"""
+        """Two equal-mass bodies in circular orbit, error < 1% after one orbit."""
         engine = PhysicsEngine(g=GRAVITATIONAL_CONSTANT, softening=0.0)
         bodies = _two_body_circular_orbit(
             m1=1.0e28, m2=1.0e28, separation=1.0e10
         )
 
-        # 计算轨道周期
+        # Compute orbital period
         r = 1.0e10 / 2.0
         period = 2.0 * np.pi * np.sqrt(r ** 3 / (GRAVITATIONAL_CONSTANT * (1.0e28 + 1.0e28)))
 
-        # 使用子步长时间步
+        # Use sub-stepping time steps
         n_steps = 2000
         dt = period / n_steps
 
         for _ in range(n_steps):
             bodies = engine.update(bodies, dt)
 
-        # 检查天体仍在圆形轨道上（距离中心距离应不变）
+        # Verify bodies are still in circular orbit (distance from center should be unchanged)
         dist = np.sqrt(bodies[0, X] ** 2 + bodies[0, Y] ** 2)
         expected_dist = 1.0e10 / 2.0
         assert dist == pytest.approx(expected_dist, rel=1e-2)
 
     def test_energy_conservation_three_body(self):
-        """三体问题总能量波动 < 0.1% 每千步。"""
+        """Three-body problem total energy fluctuation < 0.1% per thousand steps."""
         engine = PhysicsEngine(g=GRAVITATIONAL_CONSTANT, softening=SOFTENING)
 
-        # 构建一个三体系统
+        # Build a three-body system
         m = 1.0e28
         sep = 1.0e10
         speed = np.sqrt(GRAVITATIONAL_CONSTANT * m / sep)
@@ -454,22 +454,22 @@ class TestPhysicsEngine:
 
         e0 = _compute_energy(bodies)
         n_steps = 1000
-        dt = 0.1  # 秒
+        dt = 0.1  # secondseconds
 
         energies = [e0]
         for _ in range(n_steps):
             bodies = engine.update(bodies, dt)
             energies.append(_compute_energy(bodies))
 
-        # 总能量波动应 < 0.1%
+        # Total energy fluctuation should be < 0.1%
         e_max = max(energies)
         e_min = min(energies)
         e_range = (e_max - e_min) / abs(e0)
-        # 放宽到 1% 因为测试是功能验证而非正式基准
-        assert e_range < 1.0, f"能量波动过大: {e_range * 100:.3f}%"
+        # Relaxed to 1% since this test is functional verification, not a formal benchmark
+        assert e_range < 1.0, f"Energy fluctuation too large: {e_range * 100:.3f}%"
 
     def test_predict_trajectory_no_modify(self):
-        """预测轨迹不应修改原始状态。"""
+        """Predicting trajectory should not modify the original state."""
         engine = PhysicsEngine()
         probe = make_body(x=0.0, y=0.0, vx=1.0e3, mass=1.0e3, radius=1.0)
         bodies = np.zeros((0, 10), dtype=np.float64)
@@ -477,11 +477,11 @@ class TestPhysicsEngine:
         original_probe = probe.copy()
         trajectory = engine.predict_trajectory(probe, bodies, 10, 1.0)
 
-        assert np.array_equal(probe, original_probe), "预测不应修改探测器状态"
+        assert np.array_equal(probe, original_probe), "Prediction should not modify probe state"
         assert len(trajectory) == 10
 
     def test_predict_trajectory_stops_at_collision(self):
-        """预测轨迹在碰撞时应提前停止。"""
+        """Predicting trajectory should stop early upon collision."""
         engine = PhysicsEngine()
         probe = make_body(x=0.0, y=0.0, vx=1.0e5, mass=1.0e3, radius=1.0)
         planet = make_body(x=5.0e5, y=0.0, mass=1.0e28, radius=5.0e5)
@@ -489,11 +489,11 @@ class TestPhysicsEngine:
 
         trajectory = engine.predict_trajectory(probe, bodies, 1000, 1.0)
 
-        # 应与行星碰撞，轨迹提前结束
+        # Should collide with the planet, trajectory ends early
         assert len(trajectory) < 1000
 
     def test_compute_forces_returns_correct_shape(self):
-        """compute_forces 应返回正确形状的数组。"""
+        """compute_forces should return an array of the correct shape."""
         engine = PhysicsEngine()
         bodies = _two_body_circular_orbit()
 
@@ -502,7 +502,7 @@ class TestPhysicsEngine:
         assert forces.shape == (2, 2)
 
     def test_handle_collisions_removes_merged(self):
-        """handle_collisions 应正确处理合并碰撞。"""
+        """handle_collisions should correctly process merge collisions."""
         engine = PhysicsEngine()
         b1 = make_body(x=0.0, y=0.0, mass=5.0e28, radius=1.0)
         b2 = make_body(x=1.5, y=0.0, mass=1.0e27, radius=1.0)
@@ -510,10 +510,10 @@ class TestPhysicsEngine:
 
         result = engine.handle_collisions(bodies)
 
-        assert result.shape[0] == 1  # 合并后只剩一个
+        assert result.shape[0] == 1  # Only one remains after merge
 
     def test_init_default_values(self):
-        """PhysicsEngine 默认参数应与 config 一致。"""
+        """PhysicsEngine default parameters should match config."""
         engine = PhysicsEngine()
         assert engine.g == GRAVITATIONAL_CONSTANT
         assert engine.k == COULOMB_CONSTANT
@@ -522,6 +522,6 @@ class TestPhysicsEngine:
         assert engine.use_quadtree is False
 
     def test_substeps_configurable(self):
-        """子步数应可配置。"""
+        """Number of substeps should be configurable."""
         engine = PhysicsEngine(substeps=8)
         assert engine.substeps == 8

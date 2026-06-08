@@ -1,13 +1,13 @@
-"""碰撞检测与响应模块。
+"""Collision detection and response module.
 
-支持三种碰撞处理策略:
-    - 恒星 vs 行星: 恒星吸收行星（质量、电荷相加）
-    - 行星 vs 行星: 合并为新天体（质心位置，动量守恒）
-    - 探测器 vs 任何天体: 探测器被摧毁
+Supports three collision handling strategies:
+    - Star vs Planet: Star absorbs the planet (mass and charge sum)
+    - Planet vs Planet: Merge into a new body (center-of-mass position, momentum conservation)
+    - Probe vs any body: Probe is destroyed
 
-碰撞事件返回给调用方，供渲染器做特效（闪光、碎裂）。
+Collision events are returned to the caller for the renderer to produce effects (flashes, fragmentation).
 
-用法::
+Usage::
 
     from src.physics.collision import detect_collisions, handle_collisions
 """
@@ -30,8 +30,8 @@ from src.core.types import (
     Y,
 )
 
-# 碰撞事件描述
-# 格式: {"type": "elastic"|"merge", "id_a": int, "id_b": int,
+# Collision event description
+# Format: {"type": "elastic"|"merge", "id_a": int, "id_b": int,
 #        "pos_x": float, "pos_y": float, "vx_a": float, "vy_a": float, ...}
 CollisionEvent = Dict[str, float | int | str]
 
@@ -40,17 +40,18 @@ def detect_collisions(
     bodies: np.ndarray,
     candidates: Optional[List[Tuple[int, int]]] = None,
 ) -> List[Tuple[int, int]]:
-    """检测所有碰撞对。
+    """Detect all collision pairs.
 
-    如果提供了 candidates（宽阶段候选对），只检查这些候选对；
-    否则走 O(n^2) 全量遍历（回退路径）。
+    If candidates (broadphase candidate pairs) are provided, only those
+    candidate pairs are checked; otherwise, an O(n^2) full traversal is
+    performed (fallback path).
 
     Args:
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
-        candidates: 四叉树宽阶段产出的候选对列表，可选
+        bodies: body state array of shape (N, NUM_FIELDS)
+        candidates: list of candidate pairs from quadtree broadphase, optional
 
     Returns:
-        实际碰撞对列表，每项为 (id_a, id_b)，其中 id_a < id_b 避免重复
+        List of actual collision pairs, each as (id_a, id_b), where id_a < id_b to avoid duplicates
     """
     n = bodies.shape[0]
     collisions: List[Tuple[int, int]] = []
@@ -63,18 +64,18 @@ def detect_collisions(
     active = bodies[:, IS_ACTIVE] == 1.0
     static = bodies[:, IS_STATIC] == 1.0
 
-    # 只考虑活跃天体
+    # Only consider active bodies
     active_indices = np.where(active)[0]
     if len(active_indices) < 2:
         return collisions
 
     if candidates is not None:
-        # 宽阶段路径：只检查候选对
+        # Broadphase path: only check candidate pairs
         for i, j in candidates:
-            # 跳过不活跃的
+            # Skip inactive bodies
             if bodies[i, IS_ACTIVE] == 0.0 or bodies[j, IS_ACTIVE] == 0.0:
                 continue
-            # 如果两者都是静态，跳过
+            # Skip if both are static
             if static[i] and static[j]:
                 continue
             delta = positions[i] - positions[j]
@@ -83,7 +84,7 @@ def detect_collisions(
             if dist < min_dist:
                 collisions.append((i, j))
     else:
-        # 回退路径：O(n²) 全量遍历
+        # Fallback path: O(n²) full traversal
         for i_idx, i in enumerate(active_indices):
             for j in active_indices[i_idx + 1:]:
                 if static[i] and static[j]:
@@ -98,7 +99,7 @@ def detect_collisions(
 
 
 def _is_star(body: np.ndarray) -> bool:
-    """判断天体是否为恒星（大质量，通常不可被合并）。
+    """Determine whether a body is a star (large mass, typically not mergeable).
 
     Args:
         body: 1D array of shape (NUM_FIELDS,) representing a single body.
@@ -113,18 +114,19 @@ def resolve_elastic(
     bodies: np.ndarray,
     collision_list: List[Tuple[int, int]],
 ) -> Tuple[np.ndarray, List[CollisionEvent]]:
-    """弹性碰撞处理。
+    """Elastic collision handling.
 
-    使用一维弹性碰撞公式沿碰撞法线方向交换速度分量:
+    Uses 1D elastic collision formulas to exchange velocity components along
+    the collision normal:
         v1_new = ((m1 - m2)*v1 + 2*m2*v2) / (m1 + m2)
         v2_new = ((m2 - m1)*v2 + 2*m1*v1) / (m1 + m2)
 
     Args:
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
-        collision_list: detect_collisions 返回的碰撞对列表
+        bodies: body state array of shape (N, NUM_FIELDS)
+        collision_list: list of collision pairs returned by detect_collisions
 
     Returns:
-        (bodies, events) 元组: 更新后的天体状态和碰撞事件列表
+        (bodies, events) tuple: updated body states and list of collision events
     """
     events: List[CollisionEvent] = []
 
@@ -134,11 +136,11 @@ def resolve_elastic(
         if bodies[i, IS_STATIC] == 1.0 and bodies[j, IS_STATIC] == 1.0:
             continue
 
-        # 质量
+        # Masses
         m1 = bodies[i, MASS]
         m2 = bodies[j, MASS]
 
-        # 位置差向量 (碰撞法线)
+        # Position difference vector (collision normal)
         dx = bodies[j, X] - bodies[i, X]
         dy = bodies[j, Y] - bodies[i, Y]
         dist = np.sqrt(dx * dx + dy * dy)
@@ -147,17 +149,17 @@ def resolve_elastic(
         nx = dx / dist
         ny = dy / dist
 
-        # 将速度投影到法线方向
+        # Project velocities onto the normal direction
         v1n = bodies[i, VX] * nx + bodies[i, VY] * ny
         v2n = bodies[j, VX] * nx + bodies[j, VY] * ny
 
         total_mass = m1 + m2
 
-        # 弹性碰撞后法线方向速度
+        # Velocities along the normal after elastic collision
         v1n_new = ((m1 - m2) * v1n + 2.0 * m2 * v2n) / total_mass
         v2n_new = ((m2 - m1) * v2n + 2.0 * m1 * v1n) / total_mass
 
-        # 更新速度 (法线分量变化)
+        # Update velocities (normal component change)
         dv1 = (v1n_new - v1n)
         dv2 = (v2n_new - v2n)
         bodies[i, VX] += dv1 * nx
@@ -165,10 +167,10 @@ def resolve_elastic(
         bodies[j, VX] += dv2 * nx
         bodies[j, VY] += dv2 * ny
 
-        # 轻微分离以防止粘滞
+        # Slight separation to prevent sticking
         overlap = (bodies[i, RADIUS] + bodies[j, RADIUS]) - dist
         if overlap > 0:
-            # 按质量比例推开
+            # Push apart proportionally by mass
             ratio_i = m2 / total_mass
             ratio_j = m1 / total_mass
             bodies[i, X] -= nx * overlap * ratio_i
@@ -191,18 +193,19 @@ def resolve_merge(
     bodies: np.ndarray,
     collision_list: List[Tuple[int, int]],
 ) -> Tuple[np.ndarray, List[CollisionEvent]]:
-    """合并碰撞处理。
+    """Merge collision handling.
 
-    小质量天体被大质量天体吸收。合并后保留大天体的质量和位置，
-    速度按动量守恒加权平均。小天体被标记为 IS_ACTIVE = 0。
-    恒星不会被其他天体合并。
+    The smaller body is absorbed by the larger one. After merging, the larger
+    body retains its mass and position, and the velocity is weighted by momentum
+    conservation. The smaller body is marked as IS_ACTIVE = 0.
+    Stars cannot be merged by other bodies.
 
     Args:
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
-        collision_list: detect_collisions 返回的碰撞对列表
+        bodies: body state array of shape (N, NUM_FIELDS)
+        collision_list: list of collision pairs returned by detect_collisions
 
     Returns:
-        (bodies, events) 元组: 更新后的天体状态和碰撞事件列表
+        (bodies, events) tuple: updated body states and list of collision events
     """
     events: List[CollisionEvent] = []
 
@@ -215,15 +218,15 @@ def resolve_merge(
         m1 = bodies[i, MASS]
         m2 = bodies[j, MASS]
 
-        # 恒星不能被合并（除非撞上另一个恒星）
+        # Stars cannot be merged (unless colliding with another star)
         is_star_i = _is_star(bodies[i])
         is_star_j = _is_star(bodies[j])
 
         if is_star_i and is_star_j:
-            # 两个恒星相撞: 采用弹性碰撞
+            # Two stars colliding: use elastic collision
             continue
         if is_star_i:
-            # 小质量天体 j 被恒星 i 吸收
+            # Small body j is absorbed by star i
             absorber, absorbed = i, j
             absorber_mass, absorbed_mass = m1, m2
         elif is_star_j:
@@ -236,23 +239,23 @@ def resolve_merge(
             absorber, absorbed = j, i
             absorber_mass, absorbed_mass = m2, m1
 
-        # 动量守恒更新速度
+        # Momentum-conserving velocity update
         total_momentum_x = (bodies[i, MASS] * bodies[i, VX]
                             + bodies[j, MASS] * bodies[j, VX])
         total_momentum_y = (bodies[i, MASS] * bodies[i, VY]
                             + bodies[j, MASS] * bodies[j, VY])
         new_mass = bodies[i, MASS] + bodies[j, MASS]
 
-        # 吸收者获得合并后的属性
+        # Absorber gets the merged properties
         bodies[absorber, VX] = total_momentum_x / new_mass
         bodies[absorber, VY] = total_momentum_y / new_mass
         bodies[absorber, MASS] = new_mass
-        # 新半径: 体积相加的等效半径
+        # New radius: equivalent radius from volume sum
         old_radius = bodies[absorber, RADIUS]
         new_radius = (old_radius ** 3 + bodies[absorbed, RADIUS] ** 3) ** (1.0 / 3.0)
         bodies[absorber, RADIUS] = new_radius
 
-        # 被吸收者标记为不存活
+        # Mark the absorbed body as inactive
         bodies[absorbed, IS_ACTIVE] = 0.0
 
         events.append({
@@ -271,31 +274,32 @@ def handle_collisions(
     merge_threshold: float = 10.0,
     collision_pairs: Optional[List[Tuple[int, int]]] = None,
 ) -> Tuple[np.ndarray, List[CollisionEvent]]:
-    """碰撞检测与自动响应（新版规则）。
+    """Collision detection and automatic response (new rules).
 
-    根据天体类型和碰撞规则处理碰撞:
-        - 恒星 vs 行星: 质量相加（合并到恒星），电荷相加，删除行星
-        - 行星 vs 行星: 质量相加，电荷相加，动量相加；位置设在二者质心；
-          删除两个原实体，用第一个实体位置存放合并结果
-        - 探测器 vs 任何天体: 只删除探测器（IS_ACTIVE=0）
+    Handles collisions based on body type and collision rules:
+        - Star vs Planet: mass sum (merged into star), charge sum, planet removed
+        - Planet vs Planet: mass sum, charge sum, momentum sum; position at their
+          center of mass; both original entities removed, merged result placed at
+          the first entity's position
+        - Probe vs any body: only the probe is removed (IS_ACTIVE=0)
 
     Args:
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
-        merge_threshold: 保留参数（不再使用），保持接口兼容
-        collision_pairs: 四叉树宽阶段产出的候选对列表，可选
+        bodies: body state array of shape (N, NUM_FIELDS)
+        merge_threshold: retained parameter (no longer used), kept for API compatibility
+        collision_pairs: list of candidate pairs from quadtree broadphase, optional
 
     Returns:
-        (bodies, events) 元组: 更新后的天体状态和碰撞事件列表
+        (bodies, events) tuple: updated body states and list of collision events
     """
     collision_list = detect_collisions(bodies, candidates=collision_pairs)
     if not collision_list:
         return bodies, []
 
     events: List[CollisionEvent] = []
-    processed: set = set()  # 已参与碰撞的天体，避免重复处理
+    processed: set = set()  # Bodies already involved in a collision, to avoid duplicate processing
 
     for i, j in collision_list:
-        # 跳过已经处理过的或已不活跃的天体
+        # Skip already processed or inactive bodies
         if bodies[i, IS_ACTIVE] == 0.0 or bodies[j, IS_ACTIVE] == 0.0:
             continue
         if i in processed or j in processed:
@@ -305,7 +309,7 @@ def handle_collisions(
         type_j = int(bodies[j, BODY_TYPE])
 
         # ================================================================
-        # 规则 1: 探测器 vs 任何天体 → 只删除探测器
+        # Rule 1: Probe vs any body -> only delete the probe
         # ================================================================
         if type_i == BODY_TYPE_PROBE:
             bodies[i, IS_ACTIVE] = 0.0
@@ -332,7 +336,7 @@ def handle_collisions(
             continue
 
         # ================================================================
-        # 规则 2: 恒星 vs 行星 → 合并到恒星
+        # Rule 2: Star vs Planet -> merge into star
         # ================================================================
         if type_i == BODY_TYPE_STAR and type_j == BODY_TYPE_PLANET:
             bodies[i, MASS] += bodies[j, MASS]
@@ -363,29 +367,29 @@ def handle_collisions(
             continue
 
         # ================================================================
-        # 规则 3: 行星 vs 行星 → 合并（质心位置，动量守恒）
+        # Rule 3: Planet vs Planet -> merge (center of mass, momentum conservation)
         # ================================================================
         if type_i == BODY_TYPE_PLANET and type_j == BODY_TYPE_PLANET:
             m1 = bodies[i, MASS]
             m2 = bodies[j, MASS]
             total_mass = m1 + m2
 
-            # 质心位置
+            # Center of mass position
             cx = (bodies[i, X] * m1 + bodies[j, X] * m2) / total_mass
             cy = (bodies[i, Y] * m1 + bodies[j, Y] * m2) / total_mass
 
-            # 动量守恒计算合并后速度
+            # Momentum-conserving post-merge velocity
             total_vx = (bodies[i, VX] * m1 + bodies[j, VX] * m2) / total_mass
             total_vy = (bodies[i, VY] * m1 + bodies[j, VY] * m2) / total_mass
 
-            # 合并到 i（复用 i）
+            # Merge into i (reuse i)
             bodies[i, X] = cx
             bodies[i, Y] = cy
             bodies[i, VX] = total_vx
             bodies[i, VY] = total_vy
             bodies[i, MASS] = total_mass
             bodies[i, CHARGE] = bodies[i, CHARGE] + bodies[j, CHARGE]
-            # 半径：体积相加后取立方根
+            # Radius: cubic root of volume sum
             bodies[i, RADIUS] = (
                 bodies[i, RADIUS] ** 3 + bodies[j, RADIUS] ** 3
             ) ** (1.0 / 3.0)
@@ -403,7 +407,7 @@ def handle_collisions(
             continue
 
         # ================================================================
-        # 其他类型碰撞（未定义规则）：跳过（保留原有状态）
+        # Other collision types (undefined rules): skip (preserve original state)
         # ================================================================
 
     return bodies, events

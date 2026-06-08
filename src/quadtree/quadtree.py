@@ -1,7 +1,7 @@
-"""四叉树空间划分实现。
+"""Quadtree spatial partitioning implementation.
 
-提供空间划分加速引力计算和碰撞检测。
-每帧重建 (clear + insert all)，支持圆形范围查询、最近邻查询、碰撞候选查询。
+Provides spatial partitioning to accelerate gravity computation and collision detection.
+Rebuilt every frame (clear + insert all), supports circular range queries, nearest-neighbor queries, collision candidate queries.
 
 Typical usage::
 
@@ -23,20 +23,20 @@ from src.core.types import MASS, X, Y, IS_ACTIVE
 
 
 class QuadtreeNode:
-    """四叉树节点，存储边界、子节点指针、质心统计与点列表。
+    """Quadtree node storing boundary, child node pointers, centroid statistics, and point list.
 
-    叶子节点存储实际点列表；内部节点在分裂后清空点列表并创建四个子节点。
-    每个节点维护子树总质量 (mass) 和质心 (cx, cy)，供 Barnes-Hut 近似使用。
+    Leaf nodes store the actual point list; internal nodes clear the point list after splitting and create four children.
+    Each node maintains the subtree total mass (mass) and centroid (cx, cy) for Barnes-Hut approximation.
 
     Attributes:
-        boundary: 节点覆盖的轴对齐矩形区域
-        capacity: 分裂阈值（点数超过此值则分裂）
-        points: 叶节点内的点列表，每项为 (body_id, x, y, mass)
-        nw, ne, sw, se: 四个子节点（仅当 divided=True 时有效）
-        divided: 是否已分裂为子节点
-        mass: 子树总质量
-        cx: 子树质心 x 坐标
-        cy: 子树质心 y 坐标
+        boundary: Axis-aligned rectangular region covered by this node
+        capacity: Split threshold (splits when point count exceeds this value)
+        points: Point list within leaf nodes, each entry is (body_id, x, y, mass)
+        nw, ne, sw, se: Four child nodes (only valid when divided=True)
+        divided: Whether this node has been subdivided
+        mass: Subtree total mass
+        cx: Subtree centroid x-coordinate
+        cy: Subtree centroid y-coordinate
     """
 
     __slots__ = (
@@ -46,11 +46,11 @@ class QuadtreeNode:
     )
 
     def __init__(self, boundary: Rect, capacity: int) -> None:
-        """初始化四叉树节点。
+        """Initialize a quadtree node.
 
         Args:
-            boundary: 节点覆盖的矩形区域
-            capacity: 分裂阈值
+            boundary: Rectangular region covered by the node
+            capacity: Split threshold
         """
         self.boundary = boundary
         self.capacity = capacity
@@ -65,22 +65,22 @@ class QuadtreeNode:
         self.cy: float = 0.0
 
     def insert(self, body_id: int, x: float, y: float, mass: float) -> bool:
-        """向节点或其子节点插入一个点。
+        """Insert a point into this node or its children.
 
         Args:
-            body_id: 天体在 bodies 数组中的行索引
-            x: x 坐标
-            y: y 坐标
-            mass: 天体质量
+            body_id: Row index of the body in the bodies array
+            x: x-coordinate
+            y: y-coordinate
+            mass: Body mass
 
         Returns:
-            插入成功返回 True，超出节点边界返回 False
+            True if inserted successfully, False if outside node boundary
         """
         bx, by, bw, bh = self.boundary
         if not (bx <= x <= bx + bw and by <= y <= by + bh):
             return False
 
-        # 更新节点质心统计
+        # Update node centroid statistics
         total_mass = self.mass + mass
         if total_mass > 0.0:
             self.cx = (self.cx * self.mass + x * mass) / total_mass
@@ -100,7 +100,7 @@ class QuadtreeNode:
     # ------------------------------------------------------------------
 
     def _subdivide(self) -> None:
-        """将本节点分裂为四个子节点，并将已有节点重新分配。"""
+        """Split this node into four child nodes and redistribute existing points."""
         x, y, w, h = self.boundary
         hw = w * 0.5
         hh = h * 0.5
@@ -111,14 +111,14 @@ class QuadtreeNode:
         self.se = QuadtreeNode(Rect(x + hw, y + hh, hw, hh), self.capacity)
         self.divided = True
 
-        # 重新分配已有节点到子节点
+        # Redistribute existing points to child nodes
         existing_points = self.points
         self.points = []
         for pid, px, py, pmass in existing_points:
             self._insert_to_child(pid, px, py, pmass)
 
     def _insert_to_child(self, body_id: int, x: float, y: float, mass: float) -> bool:
-        """将点插入到合适的子节点。"""
+        """Insert a point into the appropriate child node."""
         cx = self.boundary.x + self.boundary.w * 0.5
         cy = self.boundary.y + self.boundary.h * 0.5
 
@@ -139,13 +139,13 @@ class QuadtreeNode:
 
     def query_range(self, cx: float, cy: float, radius: float,
                     result: List[int]) -> None:
-        """递归查询圆形区域内的 body_id，追加到 result。
+        """Recursively query body_ids within a circular area, appending to result.
 
         Args:
-            cx: 圆心 x
-            cy: 圆心 y
-            radius: 圆半径
-            result: 输出列表
+            cx: Circle center x
+            cy: Circle center y
+            radius: Circle radius
+            result: Output list
         """
         if self.mass == 0.0:
             return
@@ -164,14 +164,14 @@ class QuadtreeNode:
                     result.append(pid)
 
     def query_nearest(self, x: float, y: float) -> Optional[int]:
-        """递归查找距离 (x, y) 最近的天体 ID。
+        """Recursively find the body ID nearest to (x, y).
 
         Args:
-            x: 查询点 x 坐标
-            y: 查询点 y 坐标
+            x: Query point x-coordinate
+            y: Query point y-coordinate
 
         Returns:
-            最近的天体 ID，无天体时返回 None
+            Nearest body ID, or None if no body exists
         """
         best_id: Optional[int] = None
         best_dist_sq: float = float('inf')
@@ -182,7 +182,7 @@ class QuadtreeNode:
             if node.mass == 0.0:
                 return
 
-            # 计算查询点到节点边界的最小距离，用于剪枝
+            # Compute minimum distance from query point to node boundary for pruning
             bx, by, bw, bh = node.boundary
             dx = max(bx - x, 0.0, x - (bx + bw))
             dy = max(by - y, 0.0, y - (by + bh))
@@ -191,7 +191,7 @@ class QuadtreeNode:
                 return
 
             if node.divided:
-                # 按到子节点中心的距离排序，先搜索更近的
+                # Sort by distance to child node center, search closer ones first
                 children = [node.nw, node.ne, node.sw, node.se]
                 children.sort(
                     key=lambda c: _point_dist_sq(x, y, c.cx, c.cy) if c else float('inf')
@@ -210,10 +210,10 @@ class QuadtreeNode:
         return best_id
 
     def collect_pairs(self, pairs: set) -> None:
-        """收集共享同一叶节点的天体对（碰撞候选）。
+        """Collect body pairs sharing the same leaf node (collision candidates).
 
         Args:
-            pairs: 输出集合，每项为 (min_id, max_id)
+            pairs: Output set, each entry is (min_id, max_id)
         """
         if self.mass == 0.0:
             return
@@ -232,18 +232,18 @@ class QuadtreeNode:
 
 
 # ============================================================================
-# Quadtree 主类
+# Quadtree main class
 # ============================================================================
 
 
 class Quadtree(IQuadtree):
-    """四叉树实现，实现 IQuadtree 接口。
+    """Quadtree implementation, implementing the IQuadtree interface.
 
-    支持动态插入、全量重建、圆形范围查询、最近邻查询和 Barnes-Hut 引力近似。
+    Supports dynamic insertion, full rebuild, circular range queries, nearest-neighbor queries, and Barnes-Hut gravity approximation.
 
     Args:
-        boundary: 根节点覆盖的矩形区域
-        capacity: 每个节点最大容量 (默认 QUADTREE_CAPACITY)
+        boundary: Rectangular region covered by the root node
+        capacity: Maximum capacity per node (default QUADTREE_CAPACITY)
     """
 
     def __init__(self, boundary: Rect, capacity: int = QUADTREE_CAPACITY) -> None:
@@ -251,33 +251,33 @@ class Quadtree(IQuadtree):
         self._root = QuadtreeNode(boundary, capacity)
 
     # ------------------------------------------------------------------
-    # IQuadtree 接口方法
+    # IQuadtree interface methods
     # ------------------------------------------------------------------
 
     def insert(self, body_id: int, x: float, y: float) -> bool:
-        """插入天体到四叉树。
+        """Insert a body into the quadtree.
 
         Note:
-            注意此方法使用 mass=0 插入，将不影响质心计算。
-            建议通过 rebuild() 批量插入以正确统计质量。
+            This method inserts with mass=1.0 and does not affect centroid calculations.
+            Use rebuild() for batch insertion to correctly compute mass statistics.
 
         Args:
-            body_id: 天体在 bodies 数组中的行索引
-            x: x 坐标
-            y: y 坐标
+            body_id: Row index of the body in the bodies array
+            x: x-coordinate
+            y: y-coordinate
 
         Returns:
-            插入成功返回 True，超出边界返回 False
+            True if inserted successfully, False if outside boundary
         """
         return self._root.insert(body_id, x, y, 1.0)
 
     def rebuild(self, bodies: np.ndarray) -> None:
-        """清空并重建四叉树。
+        """Clear and rebuild the quadtree.
 
-        根据所有活跃天体的位置自动计算边界矩形（正方形，10% 边距）。
+        Automatically computes the bounding rectangle (square, 10% margin) based on all active body positions.
 
         Args:
-            bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            bodies: Body state array of shape (N, NUM_FIELDS)
         """
         active_indices = np.where(bodies[:, IS_ACTIVE] == 1.0)[0]
         n_active = len(active_indices)
@@ -296,7 +296,7 @@ class Quadtree(IQuadtree):
         max_y = float(np.max(ys))
 
         size = max(max_x - min_x, max_y - min_y, 1.0)
-        size *= 1.1  # 10% 边距
+        size *= 1.1  # 10% margin
         center_x = (min_x + max_x) * 0.5
         center_y = (min_y + max_y) * 0.5
 
@@ -308,72 +308,72 @@ class Quadtree(IQuadtree):
             self._root.insert(body_id, float(xs[i]), float(ys[i]), float(masses[i]))
 
     def query_range(self, x: float, y: float, radius: float) -> List[int]:
-        """范围查询：返回指定圆形区域内的天体 ID 列表。
+        """Range query: return body IDs within the specified circular area.
 
         Args:
-            x: 圆心 x 坐标
-            y: 圆心 y 坐标
-            radius: 圆形半径
+            x: Circle center x-coordinate
+            y: Circle center y-coordinate
+            radius: Circle radius
 
         Returns:
-            区域内的天体 ID 列表
+            List of body IDs within the area
         """
         result: List[int] = []
         self._root.query_range(x, y, radius, result)
         return result
 
     def query_nearest(self, x: float, y: float) -> Optional[int]:
-        """最近邻查询：返回离指定坐标最近的天体 ID。
+        """Nearest neighbor query: return the body ID closest to the specified coordinates.
 
         Args:
-            x: 查询点 x 坐标
-            y: 查询点 y 坐标
+            x: Query point x-coordinate
+            y: Query point y-coordinate
 
         Returns:
-            最近的天体 ID，无天体时返回 None
+            Nearest body ID, or None if no body exists
         """
         return self._root.query_nearest(x, y)
 
     def barnes_hut_force(
         self, body_id: int, bodies: np.ndarray, theta: float
     ) -> Tuple[float, float]:
-        """使用 Barnes-Hut 近似计算指定天体受到的总引力。
+        """Compute total gravitational force on a body using Barnes-Hut approximation.
 
-        将计算委托给 barnes_hut.compute_force 函数。
+        Delegates computation to the barnes_hut.compute_force function.
 
         Args:
-            body_id: 目标天体的 ID
-            bodies: 所有天体的状态数组
-            theta: Barnes-Hut 阈值 (通常 0.5)
+            body_id: ID of the target body
+            bodies: State array of all bodies
+            theta: Barnes-Hut threshold (typically 0.5)
 
         Returns:
-            (fx, fy) 合力向量 (N)
+            (fx, fy) net force vector (N)
         """
         from src.quadtree.barnes_hut import compute_force
         return compute_force(self._root, body_id, bodies, theta)
 
     # ------------------------------------------------------------------
-    # 扩展方法（非接口）
+    # Extension methods (non-interface)
     # ------------------------------------------------------------------
 
     def query_collision_candidates(self) -> List[Tuple[int, int]]:
-        """返回共享同一叶节点的天体对，作为碰撞检测的候选。
+        """Return body pairs sharing the same leaf node, as collision detection candidates.
 
-        这是碰撞检测宽阶段 (broad phase) 的一部分：
-        将树上共叶节点的天体对返回，后续进行精确碰撞检测。
+        This is part of the collision detection broad phase:
+        returns body pairs co-located in leaf nodes for subsequent precise collision detection.
 
         Returns:
-            (id1, id2) 列表，保证 id1 < id2
+            List of (id1, id2), guaranteed id1 < id2
         """
         pairs: set = set()
         self._root.collect_pairs(pairs)
         return list(pairs)
 
     def get_statistics(self) -> dict:
-        """返回四叉树统计信息。
+        """Return quadtree statistics.
 
         Returns:
-            包含节点数、总质量和深度等信息的字典
+            Dictionary containing node count, total mass, depth, etc.
         """
         node_count = 0
         max_depth = 0
@@ -396,25 +396,25 @@ class Quadtree(IQuadtree):
 
 
 # ============================================================================
-# 内部工具函数
+# Internal utility functions
 # ============================================================================
 
 
 def _circle_intersects_rect(
     cx: float, cy: float, r: float, rect: Rect
 ) -> bool:
-    """检测圆形是否与轴对齐矩形相交。
+    """Check whether a circle intersects an axis-aligned rectangle.
 
-    找到矩形上离圆心最近的点，检测距离是否 <= r。
+    Finds the point on the rectangle closest to the circle center and checks if the distance <= r.
 
     Args:
-        cx: 圆心 x
-        cy: 圆心 y
-        r: 圆半径
-        rect: 矩形
+        cx: Circle center x
+        cy: Circle center y
+        r: Circle radius
+        rect: Rectangle
 
     Returns:
-        相交返回 True
+        True if intersecting
     """
     closest_x = max(rect.x, min(cx, rect.x + rect.w))
     closest_y = max(rect.y, min(cy, rect.y + rect.h))
@@ -424,7 +424,7 @@ def _circle_intersects_rect(
 
 
 def _point_dist_sq(x1: float, y1: float, x2: float, y2: float) -> float:
-    """返回两点之间的平方距离。"""
+    """Return the squared distance between two points."""
     dx = x1 - x2
     dy = y1 - y2
     return dx * dx + dy * dy

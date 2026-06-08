@@ -1,10 +1,10 @@
-"""科学计数法输入弹窗模块。
+"""Scientific notation input dialog module.
 
-提供 ScientificInputDialog 类，用于自定义粒子参数的
-科学计数法手动输入（质量、电荷、速度各含系数和指数）。
+Provides the ScientificInputDialog class for manual scientific notation input
+of custom particle parameters (coefficient and exponent for mass, charge, and radius).
 
-提供 EditBodyDialog 类，用于编辑已存在天体的
-质量与电荷参数（无速度输入）。
+Provides the EditBodyDialog class for editing mass and charge parameters of
+existing celestial bodies (no velocity input).
 """
 
 import math
@@ -15,7 +15,7 @@ import pygame
 from src.config import WINDOW_HEIGHT, WINDOW_WIDTH
 
 # ============================================================================
-# 颜色常量
+# Color constants
 # ============================================================================
 
 DIALOG_BG = (20, 20, 40, 220)
@@ -37,12 +37,12 @@ BTN_TEXT_COLOR = (220, 220, 220)
 HINT_COLOR = (120, 120, 140)
 
 # ============================================================================
-# 输入框定义辅助
+# Input field definition helpers
 # ============================================================================
 
-# 每个输入框: (标签, 占位符, 允许小数点, 允许负号)
-# 索引: 0=mass_coeff, 1=mass_exp, 2=charge_coeff, 3=charge_exp,
-#       4=radius_coeff, 5=radius_exp
+# Each field: (label, placeholder, allow_decimal, allow_negative)
+# Index: 0=mass_coeff, 1=mass_exp, 2=charge_coeff, 3=charge_exp,
+#        4=radius_coeff, 5=radius_exp
 FIELD_DEFS: List[Tuple[str, str, bool, bool]] = [
     ("Mass coeff",    "1.0", True,  True),
     ("Mass exp",      "26",  False, True),
@@ -52,11 +52,11 @@ FIELD_DEFS: List[Tuple[str, str, bool, bool]] = [
     ("Radius exp",    "3",   False, False),
 ]
 
-# 行标签
+# Row labels
 ROW_LABELS: List[str] = ["Mass", "Charge", "Radius"]
 ROW_UNITS: List[str] = ["kg", "C", "km"]
 
-# 编辑弹窗字段定义（2 行：Mass, Charge，无 Speed）
+# Edit dialog field definitions (3 rows: Mass, Charge, Radius)
 EDIT_FIELD_DEFS: List[Tuple[str, str, bool, bool]] = [
     ("Mass coeff",  "1.0", True,  True),
     ("Mass exp",    "0",   False, True),
@@ -71,18 +71,18 @@ EDIT_ROW_UNITS: List[str] = ["kg", "C", "km"]
 
 
 # ============================================================================
-# 工具函数
+# Utility functions
 # ============================================================================
 
 
 def _float_to_components(value: float) -> Tuple[str, str]:
-    """将浮点数拆分为系数和指数文本。
+    """Split a float into coefficient and exponent text.
 
     Args:
-        value: 浮点数
+        value: Float value
 
     Returns:
-        (系数文本, 指数文本) 元组
+        (coefficient_text, exponent_text) tuple
     """
     if value == 0.0:
         return ("0", "0")
@@ -94,26 +94,26 @@ def _float_to_components(value: float) -> Tuple[str, str]:
 
 
 # ============================================================================
-# 编辑弹窗 — EditBodyDialog
+# Edit dialog — EditBodyDialog
 # ============================================================================
 
 
 class EditBodyDialog:
-    """编辑天体参数弹窗。
+    """Edit body parameters dialog.
 
-    3 行（Mass, Charge, Radius），前两行每行系数+指数两个输入框，
-    最后一行（Radius）只有一个系数输入框，共 5 个输入框。
-    支持键盘输入（数字、小数点、负号、Backspace、Enter）。
-    激活的输入框显示白色边框 + 闪烁光标。
-    提供 OK / Cancel 按钮。
+    3 rows (Mass, Charge, Radius), each row has a coefficient and exponent input field,
+    except the last row (Radius) which has only one coefficient field, totaling 5 input fields.
+    Supports keyboard input (digits, decimal point, minus sign, Backspace, Enter).
+    Active input field shows white border + blinking cursor.
+    Provides OK / Cancel buttons.
 
-    handle_event 返回:
-        - {"mass": float, "charge": float, "radius": float}  — 确认
-        - "CANCEL"                                             — 取消
-        - None                                                 — 事件已消费，无动作
+    handle_event returns:
+        - {"mass": float, "charge": float, "radius": float}  — confirm
+        - "CANCEL"                                             — cancel
+        - None                                                 — event consumed, no action
     """
 
-    # 布局常量
+    # Layout constants
     PANEL_WIDTH: int = 340
     PANEL_HEIGHT: int = 235
     FIELD_HEIGHT: int = 24
@@ -126,12 +126,12 @@ class EditBodyDialog:
     BLINK_INTERVAL_MS: int = 500
 
     def __init__(self) -> None:
-        """初始化编辑弹窗。"""
+        """Initialize the edit dialog."""
         self.visible: bool = False
-        self.active_field_index: int = -1  # -1 = 无激活
+        self.active_field_index: int = -1  # -1 = no active field
         self.cursor_visible: bool = True
 
-        # 5 个输入字段数据
+        # 5 input field data
         self.fields: List[Dict] = []
         for idx, (_, placeholder, allow_decimal, allow_negative) in enumerate(EDIT_FIELD_DEFS):
             coeff_field = idx in (0, 2, 4)
@@ -144,38 +144,38 @@ class EditBodyDialog:
                 "allow_negative": allow_negative,
             })
 
-        # OK / Cancel 按钮 rect
+        # OK / Cancel buttons rect
         self.ok_rect: pygame.Rect = pygame.Rect(0, 0, self.BUTTON_WIDTH, self.BUTTON_HEIGHT)
         self.cancel_rect: pygame.Rect = pygame.Rect(0, 0, self.BUTTON_WIDTH, self.BUTTON_HEIGHT)
 
-        # 按钮悬停状态
+        # Button hover state
         self.ok_hovered: bool = False
         self.cancel_hovered: bool = False
 
-        # 字体
+        # Fonts
         self._font_title: pygame.font.Font = pygame.font.Font(None, 20)
         self._font_field: pygame.font.Font = pygame.font.Font(None, 18)
         self._font_label: pygame.font.Font = pygame.font.Font(None, 16)
         self._font_small: pygame.font.Font = pygame.font.Font(None, 14)
 
-        # 计算布局
+        # Compute layout
         self._compute_layout()
 
     # ------------------------------------------------------------------
-    # 布局计算
+    # Layout computation
     # ------------------------------------------------------------------
 
     def _compute_layout(self) -> None:
-        """计算所有输入框和按钮的位置。"""
+        """Compute positions for all input fields and buttons."""
         cx = WINDOW_WIDTH // 2
 
-        # 中心垂直偏移
+        # Center vertical offset
         cy = WINDOW_HEIGHT // 2
         row_start_y = cy + self.ROW_START_OFFSET
 
-        # 每行左侧：系数框位置
+        # Left side of each row: coefficient field position
         coeff_x = cx - 55
-        # 每行指数框位置
+        # Each row exponent field position
         exp_x = cx + 60
 
         for row in range(3):
@@ -183,19 +183,19 @@ class EditBodyDialog:
             exp_idx = row * 2 + 1
             row_y = row_start_y + row * self.ROW_SPACING
 
-            # 系数框
+            # Coefficient field
             cf = self.fields[coeff_idx]
             cf["rect"].x = coeff_x
             cf["rect"].y = row_y
             cf["rect"].centery = row_y + self.FIELD_HEIGHT // 2
 
-            # 指数框
+            # Exponent field
             ef = self.fields[exp_idx]
             ef["rect"].x = exp_x
             ef["rect"].y = row_y
             ef["rect"].centery = row_y + self.FIELD_HEIGHT // 2
 
-        # OK / Cancel 按钮位置
+        # OK / Cancel button position
         btn_y = row_start_y + 3 * self.ROW_SPACING + 5
         self.ok_rect.x = cx - 80
         self.ok_rect.y = btn_y
@@ -203,16 +203,16 @@ class EditBodyDialog:
         self.cancel_rect.y = btn_y
 
     # ------------------------------------------------------------------
-    # 预填值
+    # Prefill values
     # ------------------------------------------------------------------
 
     def prefill(self, mass: float, charge: float, radius_meters: float = 7.0e8) -> None:
-        """预填质量和电荷的当前值，以及半径（m → km）。
+        """Prefill the current mass, charge, and radius values (radius: m -> km).
 
         Args:
-            mass: 当前质量 (kg)
-            charge: 当前电荷 (C)
-            radius_meters: 当前半径 (m)，内部转为 km
+            mass: Current mass (kg)
+            charge: Current charge (C)
+            radius_meters: Current radius (m), internally converted to km
         """
         mass_coeff, mass_exp = _float_to_components(mass)
         charge_coeff, charge_exp = _float_to_components(charge)
@@ -221,27 +221,27 @@ class EditBodyDialog:
         self.fields[1]["text"] = mass_exp
         self.fields[2]["text"] = charge_coeff
         self.fields[3]["text"] = charge_exp
-        # 半径：m → km 后拆分
+        # Radius: m -> km then split
         radius_km = radius_meters / 1000.0
         r_coeff, r_exp = _float_to_components(radius_km)
         self.fields[4]["text"] = r_coeff
         self.fields[5]["text"] = r_exp
 
     # ------------------------------------------------------------------
-    # 字段值读取
+    # Field value reading
     # ------------------------------------------------------------------
 
     def _get_field_value(
         self, coeff_idx: int, exp_idx: int
     ) -> float:
-        """读取系数和指数并计算数值。
+        """Read coefficient and exponent and compute the value.
 
         Args:
-            coeff_idx: 系数输入框索引
-            exp_idx: 指数输入框索引
+            coeff_idx: Coefficient input field index
+            exp_idx: Exponent input field index
 
         Returns:
-            计算后的数值
+            Computed numeric value
         """
         coeff_text = self.fields[coeff_idx]["text"]
         exp_text = self.fields[exp_idx]["text"]
@@ -259,13 +259,13 @@ class EditBodyDialog:
         return coeff * (10 ** exp)
 
     def get_results(self) -> Dict[str, float]:
-        """读取所有输入框并计算最终参数。
+        """Read all input fields and compute the final parameters.
 
         Returns:
             {"mass": float (kg), "charge": float (C), "radius": float (m)}
 
-        注意：半径从 km 转为 m（×1000）。
-        解析失败时静默使用默认值（系数 1.0，指数 0）。
+        Note: Radius is converted from km to m (x1000).
+        On parse failure, silently uses defaults (coefficient 1.0, exponent 0).
         """
         mass = self._get_field_value(0, 1)
         charge = self._get_field_value(2, 3)
@@ -274,18 +274,18 @@ class EditBodyDialog:
         return {"mass": mass, "charge": charge, "radius": radius}
 
     # ------------------------------------------------------------------
-    # 输入校验
+    # Input validation
     # ------------------------------------------------------------------
 
     def _is_valid_input(self, char: str, field_idx: int) -> bool:
-        """检查输入的字符是否合法。
+        """Check if the input character is valid.
 
         Args:
-            char: 输入的字符
-            field_idx: 输入框索引
+            char: Input character
+            field_idx: Input field index
 
         Returns:
-            是否合法
+            True if valid
         """
         field = self.fields[field_idx]
         allow_decimal = field["allow_decimal"]
@@ -300,52 +300,52 @@ class EditBodyDialog:
         return False
 
     # ------------------------------------------------------------------
-    # 事件处理
+    # Event handling
     # ------------------------------------------------------------------
 
     def handle_event(
         self, event: pygame.event.Event
     ) -> Optional[Union[str, Dict[str, float]]]:
-        """处理事件。
+        """Handle an event.
 
         Args:
-            event: Pygame 事件
+            event: Pygame event
 
         Returns:
-            - {"mass": float, "charge": float} — 确认
-            - "CANCEL" — 取消
-            - None — 事件已消费，无动作
+            - {"mass": float, "charge": float} — confirm
+            - "CANCEL" — cancel
+            - None — event consumed, no action
         """
         if not self.visible:
             return None
 
-        # 鼠标移动：更新按钮悬停状态
+        # Mouse motion: update button hover state
         if event.type == pygame.MOUSEMOTION:
             self.ok_hovered = self.ok_rect.collidepoint(event.pos)
             self.cancel_hovered = self.cancel_rect.collidepoint(event.pos)
             return None
 
-        # 鼠标点击
+        # Mouse click
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # 检查输入框点击
+            # Check input field click
             for i, field in enumerate(self.fields):
                 if field["rect"].collidepoint(event.pos):
                     self.active_field_index = i
                     self.cursor_visible = True
                     return None
 
-            # 检查 OK 按钮
+            # Check OK button
             if self.ok_rect.collidepoint(event.pos):
                 return self.get_results()
 
-            # 检查 Cancel 按钮
+            # Check Cancel button
             if self.cancel_rect.collidepoint(event.pos):
                 return "CANCEL"
 
-            # 点击弹窗外区域忽略
+            # Ignore clicks outside the dialog
             return None
 
-        # 键盘输入
+        # Keyboard input
         if event.type == pygame.KEYDOWN:
             # Esc = Cancel
             if event.key == pygame.K_ESCAPE:
@@ -365,7 +365,7 @@ class EditBodyDialog:
                 field["text"] = field["text"][:-1]
                 return None
 
-            # 获取按键字符
+            # Get key character
             if event.key == pygame.K_KP_MINUS:
                 char = "-"
             elif event.key == pygame.K_KP_PERIOD:
@@ -376,7 +376,7 @@ class EditBodyDialog:
                 except Exception:
                     return None
 
-            # 检查合法性并附加
+            # Validate and append
             if char and self._is_valid_input(char, self.active_field_index):
                 field["text"] += char
 
@@ -385,14 +385,14 @@ class EditBodyDialog:
         return None
 
     # ------------------------------------------------------------------
-    # 绘制
+    # Drawing
     # ------------------------------------------------------------------
 
     def draw(self, surface: pygame.Surface) -> None:
-        """绘制弹窗。
+        """Draw the dialog.
 
         Args:
-            surface: 目标 Surface
+            surface: Target Surface
         """
         if not self.visible:
             return
@@ -404,24 +404,24 @@ class EditBodyDialog:
         px = cx - pw // 2
         py = cy - ph // 2
 
-        # 半透明背景遮罩
+        # Semi-transparent background overlay
         mask = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
         mask.fill((0, 0, 0, 120))
         surface.blit(mask, (0, 0))
 
-        # 面板背景
+        # Panel background
         panel_surf = pygame.Surface((pw, ph), pygame.SRCALPHA)
         panel_surf.fill(DIALOG_BG)
         surface.blit(panel_surf, (px, py))
         pygame.draw.rect(surface, DIALOG_BORDER, (px, py, pw, ph), 2, border_radius=8)
 
-        # 标题
+        # Title
         title = "Edit Body Parameters"
         title_surf = self._font_title.render(title, True, TEXT_HIGHLIGHT)
         tr = title_surf.get_rect(center=(cx, py + 18))
         surface.blit(title_surf, tr)
 
-        # 光标闪烁
+        # Cursor blink
         now = pygame.time.get_ticks()
         self.cursor_visible = (now // self.BLINK_INTERVAL_MS) % 2 == 0
 
@@ -433,31 +433,31 @@ class EditBodyDialog:
             coeff_idx = row * 2
             exp_idx = row * 2 + 1
 
-            # 行标签
+            # Row label
             lbl_surf = self._font_label.render(EDIT_ROW_LABELS[row], True, LABEL_COLOR)
             surface.blit(lbl_surf, (label_x, row_y + 3))
 
-            # 每行：系数 + *10^ + 指数 + 单位
+            # Each row: coefficient + *10^ + exponent + unit
             self._draw_field(surface, self.fields[coeff_idx], coeff_idx == self.active_field_index, row_y)
 
-            # *10^ 标签
+            # *10^ label
             power_surf = self._font_small.render("*10^", True, LABEL_COLOR)
             power_rect = power_surf.get_rect(
                 midleft=(self.fields[coeff_idx]["rect"].right + 4, row_y + self.FIELD_HEIGHT // 2)
             )
             surface.blit(power_surf, power_rect)
 
-            # 指数输入框
+            # Exponent input field
             self._draw_field(surface, self.fields[exp_idx], exp_idx == self.active_field_index, row_y)
 
-            # 单位
+            # Unit
             unit_surf = self._font_small.render(EDIT_ROW_UNITS[row], True, LABEL_COLOR)
             unit_rect = unit_surf.get_rect(
                 midleft=(self.fields[exp_idx]["rect"].right + 4, row_y + self.FIELD_HEIGHT // 2)
             )
             surface.blit(unit_surf, unit_rect)
 
-        # OK / Cancel 按钮
+        # OK / Cancel buttons
         self._draw_button(
             surface, self.ok_rect, "OK",
             BTN_OK_HOVER if self.ok_hovered else BTN_OK_COLOR,
@@ -467,7 +467,7 @@ class EditBodyDialog:
             BTN_CANCEL_HOVER if self.cancel_hovered else BTN_CANCEL_COLOR,
         )
 
-        # 底部提示
+        # Bottom hint
         hint = "Esc to cancel  |  Enter to confirm"
         hint_surf = self._font_small.render(hint, True, HINT_COLOR)
         hr = hint_surf.get_rect(center=(cx, py + ph - 10))
@@ -480,25 +480,25 @@ class EditBodyDialog:
         is_active: bool,
         row_y: int,
     ) -> None:
-        """绘制单个输入框。
+        """Draw a single input field.
 
         Args:
-            surface: 目标 Surface
-            field: 输入框数据字典
-            is_active: 是否激活
-            row_y: 行垂直位置（用于光标定位）
+            surface: Target Surface
+            field: Input field data dict
+            is_active: Whether the field is active
+            row_y: Row vertical position (used for cursor positioning)
         """
         rect = field["rect"]
 
-        # 背景
+        # Background
         bg_color = FIELD_ACTIVE if is_active else FIELD_INACTIVE
         pygame.draw.rect(surface, bg_color, rect, border_radius=3)
 
-        # 边框
+        # Border
         border_color = FIELD_BORDER_ACTIVE if is_active else FIELD_BORDER_INACTIVE
         pygame.draw.rect(surface, border_color, rect, 1, border_radius=3)
 
-        # 文字或占位符
+        # Text or placeholder
         if field["text"]:
             text_surf = self._font_field.render(field["text"], True, TEXT_HIGHLIGHT)
         else:
@@ -507,7 +507,7 @@ class EditBodyDialog:
         text_rect = text_surf.get_rect(midleft=(rect.x + 4, rect.centery))
         surface.blit(text_surf, text_rect)
 
-        # 光标闪烁（仅激活状态）
+        # Cursor blink (active state only)
         if is_active and self.cursor_visible:
             cursor_x = text_rect.right + 1
             cursor_y1 = rect.y + 3
@@ -521,44 +521,44 @@ class EditBodyDialog:
         text: str,
         color: Tuple[int, int, int],
     ) -> None:
-        """绘制一个按钮。
+        """Draw a button.
 
         Args:
-            surface: 目标 Surface
-            rect: 按钮位置矩形
-            text: 按钮文字
-            color: 按钮颜色
+            surface: Target Surface
+            rect: Button position rectangle
+            text: Button text
+            color: Button color
         """
-        # 背景
+        # Background
         pygame.draw.rect(surface, color, rect, border_radius=4)
         pygame.draw.rect(surface, DIALOG_BORDER, rect, 1, border_radius=4)
 
-        # 文字
+        # Text
         text_surf = self._font_field.render(text, True, BTN_TEXT_COLOR)
         tr = text_surf.get_rect(center=rect.center)
         surface.blit(text_surf, tr)
 
 
 # ============================================================================
-# 自定义粒子输入弹窗 — ScientificInputDialog（保留原实现）
+# Custom particle input dialog — ScientificInputDialog (original implementation preserved)
 # ============================================================================
 
 
 class ScientificInputDialog:
-    """科学计数法输入弹窗。
+    """Scientific notation input dialog.
 
-    6 个输入框：质量系数/指数、电荷系数/指数、半径系数/指数。
-    支持键盘输入（数字、小数点、负号、Backspace、Enter）。
-    激活的输入框显示白色边框 + 闪烁光标。
-    提供 OK / Cancel 按钮。
+    6 input fields: mass coeff/exponent, charge coeff/exponent, radius coeff/exponent.
+    Supports keyboard input (digits, decimal point, minus sign, Backspace, Enter).
+    Active input field shows white border + blinking cursor.
+    Provides OK / Cancel buttons.
 
-    handle_event 返回:
-        - {"mass": float, "charge": float, "radius": float}  — 确认
-        - "CANCEL"                                                            — 取消
-        - None                                                                — 事件已消费，无动作
+    handle_event returns:
+        - {"mass": float, "charge": float, "radius": float}  — confirm
+        - "CANCEL"                                             — cancel
+        - None                                                 — event consumed, no action
     """
 
-    # 布局常量
+    # Layout constants
     PANEL_WIDTH: int = 340
     PANEL_HEIGHT: int = 275
     FIELD_HEIGHT: int = 24
@@ -572,12 +572,12 @@ class ScientificInputDialog:
     BLINK_INTERVAL_MS: int = 500
 
     def __init__(self) -> None:
-        """初始化科学计数法输入弹窗。"""
+        """Initialize the scientific notation input dialog."""
         self.visible: bool = False
-        self.active_field_index: int = -1  # -1 = 无激活
+        self.active_field_index: int = -1  # -1 = no active field
         self.cursor_visible: bool = True
 
-        # 6 个输入字段数据
+        # 6 input field data
         self.fields: List[Dict] = []
         for idx, (_, placeholder, allow_decimal, allow_negative) in enumerate(FIELD_DEFS):
             coeff_field = idx in (0, 2, 4)
@@ -590,38 +590,38 @@ class ScientificInputDialog:
                 "allow_negative": allow_negative,
             })
 
-        # OK / Cancel 按钮 rect
+        # OK / Cancel buttons rect
         self.ok_rect: pygame.Rect = pygame.Rect(0, 0, self.BUTTON_WIDTH, self.BUTTON_HEIGHT)
         self.cancel_rect: pygame.Rect = pygame.Rect(0, 0, self.BUTTON_WIDTH, self.BUTTON_HEIGHT)
 
-        # 按钮悬停状态
+        # Button hover state
         self.ok_hovered: bool = False
         self.cancel_hovered: bool = False
 
-        # 字体
+        # Fonts
         self._font_title: pygame.font.Font = pygame.font.Font(None, 20)
         self._font_field: pygame.font.Font = pygame.font.Font(None, 18)
         self._font_label: pygame.font.Font = pygame.font.Font(None, 16)
         self._font_small: pygame.font.Font = pygame.font.Font(None, 14)
 
-        # 计算布局
+        # Compute layout
         self._compute_layout()
 
     # ------------------------------------------------------------------
-    # 布局计算
+    # Layout computation
     # ------------------------------------------------------------------
 
     def _compute_layout(self) -> None:
-        """计算所有输入框和按钮的位置。"""
+        """Compute positions for all input fields and buttons."""
         cx = WINDOW_WIDTH // 2
 
-        # 中心垂直偏移
+        # Center vertical offset
         cy = WINDOW_HEIGHT // 2
         row_start_y = cy + self.ROW_START_OFFSET
 
-        # 每行左侧：系数框位置
+        # Left side of each row: coefficient field position
         coeff_x = cx - 55
-        # 每行指数框位置
+        # Each row exponent field position
         exp_x = cx + 60
 
         for row in range(3):
@@ -629,20 +629,20 @@ class ScientificInputDialog:
             exp_idx = row * 2 + 1
             row_y = row_start_y + row * self.ROW_SPACING
 
-            # 系数框
+            # Coefficient field
             cf = self.fields[coeff_idx]
             cf["rect"].x = coeff_x
             cf["rect"].y = row_y
-            # 使系数框居中于标签右侧
+            # Center the coefficient field relative to the label on the right
             cf["rect"].centery = row_y + self.FIELD_HEIGHT // 2
 
-            # 指数框
+            # Exponent field
             ef = self.fields[exp_idx]
             ef["rect"].x = exp_x
             ef["rect"].y = row_y
             ef["rect"].centery = row_y + self.FIELD_HEIGHT // 2
 
-        # OK / Cancel 按钮位置
+        # OK / Cancel button position
         btn_y = row_start_y + 3 * self.ROW_SPACING + 10
         self.ok_rect.x = cx - 80
         self.ok_rect.y = btn_y
@@ -650,20 +650,20 @@ class ScientificInputDialog:
         self.cancel_rect.y = btn_y
 
     # ------------------------------------------------------------------
-    # 字段值读取
+    # Field value reading
     # ------------------------------------------------------------------
 
     def _get_field_value(
         self, coeff_idx: int, exp_idx: int
     ) -> float:
-        """读取系数和指数并计算数值。
+        """Read coefficient and exponent and compute the value.
 
         Args:
-            coeff_idx: 系数输入框索引
-            exp_idx: 指数输入框索引
+            coeff_idx: Coefficient input field index
+            exp_idx: Exponent input field index
 
         Returns:
-            计算后的数值
+            Computed numeric value
         """
         coeff_text = self.fields[coeff_idx]["text"]
         exp_text = self.fields[exp_idx]["text"]
@@ -681,20 +681,20 @@ class ScientificInputDialog:
         return coeff * (10 ** exp)
 
     # ------------------------------------------------------------------
-    # 预填值
+    # Prefill values
     # ------------------------------------------------------------------
 
     def prefill(self, mass: float) -> None:
-        """预填 radius 的默认值。
+        """Prefill the default radius value.
 
         Args:
-            mass: 当前质量 (kg)，未使用（保留参数兼容）
+            mass: Current mass (kg), unused (kept for parameter compatibility)
         """
-        # 重设所有字段为 placeholder
+        # Reset all fields to placeholder
         for i, field in enumerate(self.fields):
             field["text"] = field["placeholder"]
 
-        # 使用固定默认半径（米）转为 km 填入弹窗
+        # Use fixed default radius (m), convert to km for the dialog
         from src.config import CUSTOM_RADIUS_DEFAULT
         radius_km = CUSTOM_RADIUS_DEFAULT / 1000.0
         r_coeff, r_exp = _float_to_components(radius_km)
@@ -702,17 +702,17 @@ class ScientificInputDialog:
         self.fields[5]["text"] = r_exp
 
     # ------------------------------------------------------------------
-    # 字段值读取
+    # Field value reading
     # ------------------------------------------------------------------
 
     def get_results(self) -> Dict[str, float]:
-        """读取所有输入框并计算最终参数。
+        """Read all input fields and compute the final parameters.
 
         Returns:
             {"mass": float (kg), "charge": float (C), "radius": float (m)}
 
-        注意：半径从 km 转为 m（×1000）。
-        解析失败时静默使用默认值（系数 1.0，指数 0）。
+        Note: Radius is converted from km to m (x1000).
+        On parse failure, silently uses defaults (coefficient 1.0, exponent 0).
         """
         mass = self._get_field_value(0, 1)
         charge = self._get_field_value(2, 3)
@@ -720,18 +720,18 @@ class ScientificInputDialog:
         return {"mass": mass, "charge": charge, "radius": radius}
 
     # ------------------------------------------------------------------
-    # 输入校验
+    # Input validation
     # ------------------------------------------------------------------
 
     def _is_valid_input(self, char: str, field_idx: int) -> bool:
-        """检查输入的字符是否合法。
+        """Check if the input character is valid.
 
         Args:
-            char: 输入的字符
-            field_idx: 输入框索引
+            char: Input character
+            field_idx: Input field index
 
         Returns:
-            是否合法
+            True if valid
         """
         field = self.fields[field_idx]
         allow_decimal = field["allow_decimal"]
@@ -740,60 +740,60 @@ class ScientificInputDialog:
         if char in "0123456789":
             return True
         if char == "." and allow_decimal:
-            # 检查是否已有小数点
+            # Check for existing decimal point
             return "." not in field["text"]
         if char == "-" and allow_negative:
-            # 负号只能在开头
+            # Negative sign only allowed at the beginning
             return field["text"] == ""
         return False
 
     # ------------------------------------------------------------------
-    # 事件处理
+    # Event handling
     # ------------------------------------------------------------------
 
     def handle_event(
         self, event: pygame.event.Event
     ) -> Optional[Union[str, Dict[str, float]]]:
-        """处理事件。
+        """Handle an event.
 
         Args:
-            event: Pygame 事件
+            event: Pygame event
 
         Returns:
-            - {"mass": float, "charge": float, "radius": float} — 确认
-            - "CANCEL" — 取消
-            - None — 事件已消费，无动作
+            - {"mass": float, "charge": float, "radius": float} — confirm
+            - "CANCEL" — cancel
+            - None — event consumed, no action
         """
         if not self.visible:
             return None
 
-        # 鼠标移动：更新按钮悬停状态
+        # Mouse motion: update button hover state
         if event.type == pygame.MOUSEMOTION:
             self.ok_hovered = self.ok_rect.collidepoint(event.pos)
             self.cancel_hovered = self.cancel_rect.collidepoint(event.pos)
             return None
 
-        # 鼠标点击
+        # Mouse click
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # 检查输入框点击
+            # Check input field click
             for i, field in enumerate(self.fields):
                 if field["rect"].collidepoint(event.pos):
                     self.active_field_index = i
                     self.cursor_visible = True
                     return None
 
-            # 检查 OK 按钮
+            # Check OK button
             if self.ok_rect.collidepoint(event.pos):
                 return self.get_results()
 
-            # 检查 Cancel 按钮
+            # Check Cancel button
             if self.cancel_rect.collidepoint(event.pos):
                 return "CANCEL"
 
-            # 点击弹窗外区域忽略
+            # Ignore clicks outside the dialog
             return None
 
-        # 键盘输入
+        # Keyboard input
         if event.type == pygame.KEYDOWN:
             # Esc = Cancel
             if event.key == pygame.K_ESCAPE:
@@ -813,7 +813,7 @@ class ScientificInputDialog:
                 field["text"] = field["text"][:-1]
                 return None
 
-            # 获取按键字符
+            # Get key character
             if event.key == pygame.K_KP_MINUS:
                 char = "-"
             elif event.key == pygame.K_KP_PERIOD:
@@ -824,7 +824,7 @@ class ScientificInputDialog:
                 except Exception:
                     return None
 
-            # 检查合法性并附加
+            # Validate and append
             if char and self._is_valid_input(char, self.active_field_index):
                 field["text"] += char
 
@@ -833,14 +833,14 @@ class ScientificInputDialog:
         return None
 
     # ------------------------------------------------------------------
-    # 绘制
+    # Drawing
     # ------------------------------------------------------------------
 
     def draw(self, surface: pygame.Surface) -> None:
-        """绘制弹窗。
+        """Draw the dialog.
 
         Args:
-            surface: 目标 Surface
+            surface: Target Surface
         """
         if not self.visible:
             return
@@ -852,24 +852,24 @@ class ScientificInputDialog:
         px = cx - pw // 2
         py = cy - ph // 2
 
-        # 半透明背景遮罩
+        # Semi-transparent background overlay
         mask = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
         mask.fill((0, 0, 0, 120))
         surface.blit(mask, (0, 0))
 
-        # 面板背景
+        # Panel background
         panel_surf = pygame.Surface((pw, ph), pygame.SRCALPHA)
         panel_surf.fill(DIALOG_BG)
         surface.blit(panel_surf, (px, py))
         pygame.draw.rect(surface, DIALOG_BORDER, (px, py, pw, ph), 2, border_radius=8)
 
-        # 标题
+        # Title
         title = "Custom Particle Config"
         title_surf = self._font_title.render(title, True, TEXT_HIGHLIGHT)
         tr = title_surf.get_rect(center=(cx, py + 18))
         surface.blit(title_surf, tr)
 
-        # 光标闪烁
+        # Cursor blink
         now = pygame.time.get_ticks()
         self.cursor_visible = (now // self.BLINK_INTERVAL_MS) % 2 == 0
 
@@ -881,31 +881,31 @@ class ScientificInputDialog:
             coeff_idx = row * 2
             exp_idx = row * 2 + 1
 
-            # 行标签
+            # Row label
             lbl_surf = self._font_label.render(ROW_LABELS[row], True, LABEL_COLOR)
             surface.blit(lbl_surf, (label_x, row_y + 3))
 
-            # 每行：系数 + *10^ + 指数 + 单位
+            # Each row: coefficient + *10^ + exponent + unit
             self._draw_field(surface, self.fields[coeff_idx], coeff_idx == self.active_field_index, row_y)
 
-            # *10^ 标签
+            # *10^ label
             power_surf = self._font_small.render("*10^", True, LABEL_COLOR)
             power_rect = power_surf.get_rect(
                 midleft=(self.fields[coeff_idx]["rect"].right + 4, row_y + self.FIELD_HEIGHT // 2)
             )
             surface.blit(power_surf, power_rect)
 
-            # 指数输入框
+            # Exponent input field
             self._draw_field(surface, self.fields[exp_idx], exp_idx == self.active_field_index, row_y)
 
-            # 单位（在指数框右侧）
+            # Unit (to the right of the exponent field)
             unit_surf = self._font_small.render(ROW_UNITS[row], True, LABEL_COLOR)
             unit_rect = unit_surf.get_rect(
                 midleft=(self.fields[exp_idx]["rect"].right + 4, row_y + self.FIELD_HEIGHT // 2)
             )
             surface.blit(unit_surf, unit_rect)
 
-        # OK / Cancel 按钮
+        # OK / Cancel buttons
         self._draw_button(
             surface, self.ok_rect, "OK",
             BTN_OK_HOVER if self.ok_hovered else BTN_OK_COLOR,
@@ -915,7 +915,7 @@ class ScientificInputDialog:
             BTN_CANCEL_HOVER if self.cancel_hovered else BTN_CANCEL_COLOR,
         )
 
-        # 底部提示
+        # Bottom hint
         hint = "Esc to cancel  |  Enter to confirm"
         hint_surf = self._font_small.render(hint, True, HINT_COLOR)
         hr = hint_surf.get_rect(center=(cx, py + ph - 10))
@@ -928,25 +928,25 @@ class ScientificInputDialog:
         is_active: bool,
         row_y: int,
     ) -> None:
-        """绘制单个输入框。
+        """Draw a single input field.
 
         Args:
-            surface: 目标 Surface
-            field: 输入框数据字典
-            is_active: 是否激活
-            row_y: 行垂直位置（用于光标定位）
+            surface: Target Surface
+            field: Input field data dict
+            is_active: Whether the field is active
+            row_y: Row vertical position (used for cursor positioning)
         """
         rect = field["rect"]
 
-        # 背景
+        # Background
         bg_color = FIELD_ACTIVE if is_active else FIELD_INACTIVE
         pygame.draw.rect(surface, bg_color, rect, border_radius=3)
 
-        # 边框
+        # Border
         border_color = FIELD_BORDER_ACTIVE if is_active else FIELD_BORDER_INACTIVE
         pygame.draw.rect(surface, border_color, rect, 1, border_radius=3)
 
-        # 文字或占位符
+        # Text or placeholder
         if field["text"]:
             text_surf = self._font_field.render(field["text"], True, TEXT_HIGHLIGHT)
         else:
@@ -955,7 +955,7 @@ class ScientificInputDialog:
         text_rect = text_surf.get_rect(midleft=(rect.x + 4, rect.centery))
         surface.blit(text_surf, text_rect)
 
-        # 光标闪烁（仅激活状态）
+        # Cursor blink (active state only)
         if is_active and self.cursor_visible:
             cursor_x = text_rect.right + 1
             cursor_y1 = rect.y + 3
@@ -969,19 +969,19 @@ class ScientificInputDialog:
         text: str,
         color: Tuple[int, int, int],
     ) -> None:
-        """绘制一个按钮。
+        """Draw a button.
 
         Args:
-            surface: 目标 Surface
-            rect: 按钮位置矩形
-            text: 按钮文字
-            color: 按钮颜色
+            surface: Target Surface
+            rect: Button position rectangle
+            text: Button text
+            color: Button color
         """
-        # 背景
+        # Background
         pygame.draw.rect(surface, color, rect, border_radius=4)
         pygame.draw.rect(surface, DIALOG_BORDER, rect, 1, border_radius=4)
 
-        # 文字
+        # Text
         text_surf = self._font_field.render(text, True, BTN_TEXT_COLOR)
         tr = text_surf.get_rect(center=rect.center)
         surface.blit(text_surf, tr)

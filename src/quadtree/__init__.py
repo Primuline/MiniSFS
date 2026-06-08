@@ -1,11 +1,11 @@
-"""MiniSFS 四叉树空间数据结构模块。
+"""MiniSFS quadtree spatial data structure package.
 
-提供：
-- 四叉树实现 (Quadtree) — 空间划分加速引力计算和碰撞检测
-- Barnes-Hut 近似 (compute_force) — O(n log n) 引力加速
-- 尾迹缓冲区 (TrailBuffer) — 基于 deque 的天体历史轨迹
+Provides:
+- Quadtree — Spatial partitioning to accelerate force computation and collision detection.
+- Barnes-Hut approximation (compute_force) — O(n log n) gravitational acceleration.
+- TrailBuffer — Deque-based body trail history.
 
-依赖: NumPy, src.config, src.core
+Dependencies: NumPy, src.config, src.core
 """
 
 from src.quadtree.quadtree import Quadtree, QuadtreeNode

@@ -1,6 +1,6 @@
-"""HUD 与 UI 系统：信息面板、时间控制、工具栏、选中信息。
+"""HUD and UI system: info panel, time controls, toolbar, selection info.
 
-所有 UI 元素绘制在渲染器之上，使用 Pygame 的 Surface 和 Font 实现。
+All UI elements are drawn on top of the renderer using Pygame's Surface and Font.
 """
 
 import math
@@ -44,7 +44,7 @@ from src.core.types import (
 )
 
 # ============================================================================
-# 面板配置
+# Panel configuration
 # ============================================================================
 
 PANEL_BG = (20, 20, 40, 200)
@@ -63,7 +63,7 @@ CONTROL_BAR_HEIGHT = 36
 
 
 class Button:
-    """简单的 UI 按钮。"""
+    """A simple UI button."""
 
     def __init__(
         self,
@@ -77,16 +77,16 @@ class Button:
         hover_color: Tuple[int, int, int] = BTN_HOVER,
         font_size: int = 16,
     ) -> None:
-        """初始化按钮。
+        """Initialize the button.
 
         Args:
-            x, y: 左上角坐标
-            width, height: 尺寸
-            text: 按钮文字
-            action: 按钮触发的动作标识
-            color: 正常颜色
-            hover_color: 悬停颜色
-            font_size: 字体大小
+            x, y: Top-left corner coordinates
+            width, height: Dimensions
+            text: Button label
+            action: Action identifier triggered by the button
+            color: Normal color
+            hover_color: Hover color
+            font_size: Font size
         """
         self.rect = pygame.Rect(x, y, width, height)
         self.text = text
@@ -100,10 +100,10 @@ class Button:
         self.visible = True
 
     def draw(self, surface: pygame.Surface) -> None:
-        """绘制按钮。
+        """Draw the button.
 
         Args:
-            surface: 目标 Surface
+            surface: Target Surface
         """
         if not self.visible:
             return
@@ -116,11 +116,11 @@ class Button:
         elif self.hovered:
             color = self.hover_color
 
-        # 背景
+        # Background
         pygame.draw.rect(surface, color, self.rect, border_radius=4)
         pygame.draw.rect(surface, PANEL_BORDER, self.rect, 1, border_radius=4)
 
-        # 文字
+        # Text
         text_color = TEXT_HIGHLIGHT if (self.active or self.hovered) else TEXT_COLOR
         if self.disabled:
             text_color = (80, 80, 80)
@@ -129,13 +129,13 @@ class Button:
         surface.blit(text_surf, tr)
 
     def handle_event(self, event: pygame.event.Event) -> Optional[str]:
-        """处理事件，返回点击动作。
+        """Handle events and return click action.
 
         Args:
-            event: Pygame 事件
+            event: Pygame event
 
         Returns:
-            点击时返回 action 字符串，否则返回 None
+            Action string on click, None otherwise
         """
         if not self.visible or self.disabled:
             return None
@@ -151,33 +151,34 @@ class Button:
         return None
 
     def set_pos(self, x: int, y: int) -> None:
-        """设置按钮位置。
+        """Set button position.
 
         Args:
-            x, y: 新的左上角坐标
+            x, y: New top-left corner coordinates
         """
         self.rect.x = x
         self.rect.y = y
 
 
 class HUDManager:
-    """HUD 管理器，管理所有 UI 元素。
+    """HUD manager that controls all UI elements.
 
-    维护信息面板、时间控制、工具栏等 UI 组件的状态和绘制。
+    Manages the state and rendering of UI components such as the info panel,
+    time controls, and toolbar.
     """
 
     def __init__(self) -> None:
-        """初始化 HUD 管理器。"""
+        """Initialize the HUD manager."""
         self.width: int = WINDOW_WIDTH
         self.height: int = WINDOW_HEIGHT
 
-        # 字体
+        # Fonts
         self._font_title = pygame.font.Font(None, 20)
         self._font_label = pygame.font.Font(None, 16)
         self._font_value = pygame.font.Font(None, 16)
         self._font_small = pygame.font.Font(None, 14)
 
-        # ============ 工具栏 ============
+        # ============ Toolbar ============
         tool_y = 100
         tool_spacing = 46
         self.tool_buttons: List[Button] = []
@@ -197,9 +198,9 @@ class HUDManager:
 
         self.active_tool: Optional[str] = None
 
-        # ============ 时间控制 ============
+        # ============ Time controls ============
         ctrl_y = self.height - CONTROL_BAR_HEIGHT - 5
-        ctrl_x = self.width // 2 - 96  # 5 个按钮居中
+        ctrl_x = self.width // 2 - 96  # center 5 buttons
         self.time_buttons: List[Button] = []
         time_actions = [
             ("|<", "REWIND"),
@@ -217,40 +218,40 @@ class HUDManager:
             )
             self.time_buttons.append(btn)
 
-        # 时间速度标签
+        # Time speed label
         self.time_speed: float = 1.0
         self.is_paused: bool = False
 
-        # ============ 自定义粒子参数 ============
+        # ============ Custom particle parameters ============
         self.custom_mass: float = CUSTOM_MASS_DEFAULT
         self.custom_charge: float = CUSTOM_CHARGE_DEFAULT
 
-        # 科学计数法输入弹窗
+        # Scientific notation input dialog
         self.custom_dialog_visible: bool = False
         self._input_dialog: ScientificInputDialog = ScientificInputDialog()
 
-        # 编辑天体参数弹窗
+        # Edit body parameter dialog
         self.edit_mass: float = 0.0
         self.edit_charge: float = 0.0
         self.edit_radius: float = 6.0
         self._edit_dialog: EditBodyDialog = EditBodyDialog()
 
-        # 自定义粒子参数（从弹窗读取，单位：米）
+        # Custom particle radius (read from dialog, in meters)
         self.custom_radius: float = CUSTOM_RADIUS_DEFAULT
 
-        # ============ 信息面板 ============
+        # ============ Info panel ============
         self.info_panel_visible: bool = False
         self._info_body_data: Optional[Dict[str, float]] = None
         self._info_body_type: int = -1
 
-        # 选中天体信息
+        # Selected body info bar
         self.selected_body_info: Optional[str] = None
 
-        # 参考系状态
+        # Reference frame state
         self._reference_body_id: Optional[int] = None
         self._reference_body_type: int = -1
 
-        # 状态信息 (由 main.py 每帧更新)
+        # Status info (updated each frame by main.py)
         self._num_bodies: int = 0
         self._time_speed: float = 1.0
         self._fps: float = 0.0
@@ -258,17 +259,17 @@ class HUDManager:
         self._has_mouse_pos: bool = False
 
     # ------------------------------------------------------------------
-    # 更新方法
+    # Update methods
     # ------------------------------------------------------------------
 
     def set_selected_body(
         self, body_data: Optional[np.ndarray], body_id: int
     ) -> None:
-        """更新选中天体的信息。
+        """Update the selected body's information.
 
         Args:
-            body_data: 天体的状态行 (shape (NUM_FIELDS,))
-            body_id: 天体的 ID
+            body_data: Body state row (shape (NUM_FIELDS,))
+            body_id: Body ID
         """
         if body_data is None:
             self.info_panel_visible = False
@@ -291,7 +292,7 @@ class HUDManager:
         }
         self._info_body_type = int(body_data[BODY_TYPE])
 
-        # 生成简要描述
+        # Generate brief description
         type_names = {0: "Star", 1: "Planet", 2: "Probe", 3: "Charged"}
         type_name = type_names.get(self._info_body_type, "Unknown")
         speed = math.sqrt(
@@ -299,38 +300,38 @@ class HUDManager:
         )
         self.selected_body_info = (
             f"{type_name} #{body_id}  "
-            f"速度: {speed:.2e} m/s"
+            f"Speed: {speed:.2e} m/s"
         )
 
     @property
     def reference_body_id(self) -> Optional[int]:
-        """获取当前参考系天体 ID。"""
+        """Get the current reference frame body ID."""
         return self._reference_body_id
 
     def set_reference_frame(self, body_id: int, body_type: int) -> None:
-        """设置参考系天体。
+        """Set the reference frame body.
 
         Args:
-            body_id: 天体 ID
-            body_type: 天体类型
+            body_id: Body ID
+            body_type: Body type
         """
         self._reference_body_id = body_id
         self._reference_body_type = body_type
 
     def clear_reference_frame(self) -> None:
-        """清除参考系。"""
+        """Clear the reference frame."""
         self._reference_body_id = None
         self._reference_body_type = -1
 
     def set_status_info(self, num_bodies: int, time_speed: float, fps: float,
                         mouse_world_pos: tuple[float, float] | None = None) -> None:
-        """更新状态信息（由 main.py 每帧调用）。
+        """Update status info (called each frame by main.py).
 
         Args:
-            num_bodies: 当前天体数量
-            time_speed: 时间倍速
-            fps: 当前帧率
-            mouse_world_pos: 鼠标世界坐标（None 表示无有效位置）
+            num_bodies: Current number of bodies
+            time_speed: Time speed multiplier
+            fps: Current frame rate
+            mouse_world_pos: Mouse world position (None if no valid position)
         """
         self._num_bodies = num_bodies
         self._time_speed = time_speed
@@ -342,13 +343,13 @@ class HUDManager:
             self._has_mouse_pos = False
 
     def get_tool_display_name(self, tool: str) -> str:
-        """获取工具对应的天体类型名称。
+        """Get the display name for the body type corresponding to a tool.
 
         Args:
-            tool: 工具标识
+            tool: Tool identifier
 
         Returns:
-            显示名称
+            Display name
         """
         names = {
             "TOOL_STAR": "Star",
@@ -360,13 +361,13 @@ class HUDManager:
         return names.get(tool, tool)
 
     def get_tool_body_type(self, tool: str) -> int:
-        """获取工具对应的天体类型值。
+        """Get the body type value corresponding to a tool.
 
         Args:
-            tool: 工具标识
+            tool: Tool identifier
 
         Returns:
-            BODY_TYPE_* 常量
+            BODY_TYPE_* constant
         """
         mapping = {
             "TOOL_STAR": BODY_TYPE_STAR,
@@ -377,16 +378,16 @@ class HUDManager:
         return mapping.get(tool, BODY_TYPE_PLANET)
 
     def get_default_body_params(self, tool: str) -> Tuple[float, float, float, float]:
-        """获取工具的默认天体参数。
+        """Get the default body parameters for a tool.
 
         Args:
-            tool: 工具标识
+            tool: Tool identifier
 
         Returns:
-            (mass, radius, charge, body_type) 元组
+            (mass, radius, charge, body_type) tuple
         """
         if tool == "TOOL_CUSTOM":
-            # custom_radius 存的是米，转回像素（因为调用方会 * WORLD_SCALE）
+            # custom_radius is stored in meters, convert back to pixels (caller multiplies by WORLD_SCALE)
             pixel_radius = max(2.0, min(self.custom_radius / WORLD_SCALE, 30.0))
             return (self.custom_mass, pixel_radius, self.custom_charge, float(BODY_TYPE_PLANET))
 
@@ -399,55 +400,55 @@ class HUDManager:
         return mapping.get(tool, (DEFAULT_MASS_PLANET, DEFAULT_RADIUS_PLANET, 0.0, float(BODY_TYPE_PLANET)))
 
     # ------------------------------------------------------------------
-    # 事件处理
+    # Event handling
     # ------------------------------------------------------------------
 
     def handle_event(self, event: pygame.event.Event) -> Optional[str]:
-        """处理 HUD 事件。
+        """Handle HUD events.
 
         Args:
-            event: Pygame 事件
+            event: Pygame event
 
         Returns:
-            动作字符串（如 "TOOL_STAR", "PLAY_PAUSE"）
+            Action string (e.g. "TOOL_STAR", "PLAY_PAUSE")
         """
-        # 编辑弹窗优先处理（当弹窗可见时）
+        # Edit dialog has priority (when visible)
         if self._edit_dialog.visible:
             dlg_result = self._edit_dialog.handle_event(event)
             if dlg_result is not None:
                 if isinstance(dlg_result, dict):
-                    # OK: 读取结果并存储编辑值
+                    # OK: read results and store edit values
                     self.edit_mass = dlg_result["mass"]
                     self.edit_charge = dlg_result["charge"]
                     self.edit_radius = dlg_result["radius"]
                     return "EDIT_DIALOG_OK"
                 elif dlg_result == "CANCEL":
                     return "EDIT_DIALOG_CANCEL"
-            # 弹窗消费了事件，不继续传递
+            # Dialog consumed the event, do not propagate
             return None
 
-        # 自定义粒子弹窗优先处理（当弹窗可见时）
+        # Custom particle dialog has priority (when visible)
         if self.custom_dialog_visible:
             dlg_result = self._input_dialog.handle_event(event)
             if dlg_result is not None:
                 if isinstance(dlg_result, dict):
-                    # OK: 读取结果并更新自定义参数
+                    # OK: read results and update custom parameters
                     self.custom_mass = dlg_result["mass"]
                     self.custom_charge = dlg_result["charge"]
                     self.custom_radius = dlg_result["radius"]
                     return "CUSTOM_DIALOG_OK"
                 elif dlg_result == "CANCEL":
                     return "CUSTOM_DIALOG_CANCEL"
-            # 弹窗消费了事件，不继续传递
+            # Dialog consumed the event, do not propagate
             return None
 
-        # 工具栏事件
+        # Toolbar events
         for btn in self.tool_buttons:
             action = btn.handle_event(event)
             if action:
                 return action
 
-        # 时间控制事件
+        # Time control events
         for btn in self.time_buttons:
             action = btn.handle_event(event)
             if action:
@@ -456,34 +457,34 @@ class HUDManager:
         return None
 
     def set_tool_active(self, tool: Optional[str]) -> None:
-        """设置当前激活的工具。
+        """Set the currently active tool.
 
         Args:
-            tool: 工具标识
+            tool: Tool identifier
         """
         self.active_tool = tool
         for btn in self.tool_buttons:
             btn.active = (btn.action == tool)
 
     def set_play_pause_state(self, is_paused: bool) -> None:
-        """设置播放/暂停状态。
+        """Set the play/pause state.
 
         Args:
-            is_paused: 是否暂停
+            is_paused: Whether paused
         """
         self.is_paused = is_paused
         if len(self.time_buttons) >= 2:
             self.time_buttons[1].text = ">" if is_paused else "||"
 
     def set_time_speed(self, speed: float) -> None:
-        """设置时间速度。
+        """Set the time speed.
 
         Args:
-            speed: 时间速度倍率
+            speed: Time speed multiplier
         """
         self.time_speed = speed
         for i, btn in enumerate(self.time_buttons):
-            if i >= 2:  # 快进按钮
+            if i >= 2:  # fast-forward buttons
                 btn.active = False
         if speed >= 8.0:
             self.time_buttons[4].active = True
@@ -493,17 +494,17 @@ class HUDManager:
             self.time_buttons[2].active = True
 
     # ------------------------------------------------------------------
-    # 编辑弹窗控制
+    # Edit dialog control
     # ------------------------------------------------------------------
 
     def show_custom_dialog(self) -> None:
-        """打开自定义粒子输入弹窗并预填半径默认值。"""
+        """Open the custom particle input dialog and prefill radius default value."""
         self._input_dialog.prefill(self.custom_mass)
         self.custom_dialog_visible = True
         self._input_dialog.visible = True
 
     def hide_custom_dialog(self) -> None:
-        """关闭自定义粒子输入弹窗并重置输入状态。"""
+        """Close the custom particle input dialog and reset input state."""
         self.custom_dialog_visible = False
         self._input_dialog.visible = False
         self._input_dialog.active_field_index = -1
@@ -511,33 +512,33 @@ class HUDManager:
             field["text"] = ""
 
     def show_edit_dialog(self, mass: float, charge: float, radius_meters: float = 6.0) -> None:
-        """打开编辑天体参数弹窗并预填当前值。
+        """Open the edit body parameter dialog and prefill current values.
 
         Args:
-            mass: 当前质量 (kg)
-            charge: 当前电荷 (C)
-            radius_meters: 当前半径 (m)，内部转为 km 显示
+            mass: Current mass (kg)
+            charge: Current charge (C)
+            radius_meters: Current radius (m), internally converted to km for display
         """
         self._edit_dialog.prefill(mass, charge, radius_meters)
         self._edit_dialog.visible = True
 
     def hide_edit_dialog(self) -> None:
-        """关闭编辑天体参数弹窗并重置输入状态。"""
+        """Close the edit body parameter dialog and reset input state."""
         self._edit_dialog.visible = False
         self._edit_dialog.active_field_index = -1
         for field in self._edit_dialog.fields:
             field["text"] = ""
 
     # ------------------------------------------------------------------
-    # 绘制
+    # Drawing
     # ------------------------------------------------------------------
 
     def draw(self, surface: pygame.Surface, camera=None) -> None:
-        """绘制所有 HUD 元素。
+        """Draw all HUD elements.
 
         Args:
-            surface: 目标 Surface
-            camera: 可选的 Camera 对象，用于绘制比例尺
+            surface: Target Surface
+            camera: Optional Camera object for drawing the scale bar
         """
         self._draw_info_panel(surface)
         self._draw_toolbar(surface)
@@ -553,10 +554,10 @@ class HUDManager:
             self._draw_scale_bar(surface, camera)
 
     def _draw_info_panel(self, surface: pygame.Surface) -> None:
-        """绘制信息面板。
+        """Draw the info panel.
 
         Args:
-            surface: 目标 Surface
+            surface: Target Surface
         """
         if not self.info_panel_visible or self._info_body_data is None:
             return
@@ -566,7 +567,7 @@ class HUDManager:
         panel_w = INFO_PANEL_WIDTH
         panel_h = 200
 
-        # 背景
+        # Background
         panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         panel_surf.fill(PANEL_BG)
         surface.blit(panel_surf, (panel_x, panel_y))
@@ -575,14 +576,14 @@ class HUDManager:
             (panel_x, panel_y, panel_w, panel_h), 1, border_radius=4,
         )
 
-        # 标题
+        # Title
         type_names = {0: "Star", 1: "Planet", 2: "Probe", 3: "Charged"}
         type_name = type_names.get(self._info_body_type, "Unknown")
         title = f"{type_name} #{int(self._info_body_data['id'])}"
         title_surf = self._font_title.render(title, True, TEXT_HIGHLIGHT)
         surface.blit(title_surf, (panel_x + 10, panel_y + 8))
 
-        # 信息行
+        # Info rows
         data = self._info_body_data
         lines = [
             ("Pos", f"({data['x']:.2e}, {data['y']:.2e})"),
@@ -605,49 +606,49 @@ class HUDManager:
             surface.blit(value_surf, (panel_x + 80, y))
 
     def _draw_toolbar(self, surface: pygame.Surface) -> None:
-        """绘制工具栏。
+        """Draw the toolbar.
 
         Args:
-            surface: 目标 Surface
+            surface: Target Surface
         """
-        # 工具栏背景
+        # Toolbar background
         tool_bg = pygame.Surface((TOOLBAR_WIDTH, self.height), pygame.SRCALPHA)
         tool_bg.fill((15, 15, 35, 180))
         surface.blit(tool_bg, (0, 0))
 
-        # 工具标题
+        # Tool title
         title_surf = self._font_title.render("Tools", True, LABEL_COLOR)
         surface.blit(title_surf, (6, 70))
 
-        # 工具按钮
+        # Tool buttons
         for btn in self.tool_buttons:
             btn.draw(surface)
 
-        # 当前工具提示
+        # Current tool hint
         if self.active_tool:
             hint = self.get_tool_display_name(self.active_tool)
             hint_surf = self._font_small.render(hint, True, TEXT_HIGHLIGHT)
             surface.blit(hint_surf, (5, 55))
 
     def _draw_custom_dialog(self, surface: pygame.Surface) -> None:
-        """绘制居中科学计数法输入弹窗。
+        """Draw the centered scientific notation input dialog.
 
         Args:
-            surface: 目标 Surface
+            surface: Target Surface
         """
         self._input_dialog.draw(surface)
 
     def _draw_time_controls(self, surface: pygame.Surface) -> None:
-        """绘制时间控制按钮。
+        """Draw the time control buttons.
 
         Args:
-            surface: 目标 Surface
+            surface: Target Surface
         """
         bar_y = self.height - CONTROL_BAR_HEIGHT - 5
         bar_w = 240
         bar_x = self.width // 2 - bar_w // 2
 
-        # 背景
+        # Background
         bar_bg = pygame.Surface((bar_w, CONTROL_BAR_HEIGHT), pygame.SRCALPHA)
         bar_bg.fill((15, 15, 35, 200))
         surface.blit(bar_bg, (bar_x, bar_y))
@@ -656,11 +657,11 @@ class HUDManager:
             (bar_x, bar_y, bar_w, CONTROL_BAR_HEIGHT), 1, border_radius=4,
         )
 
-        # 按钮
+        # Buttons
         for btn in self.time_buttons:
             btn.draw(surface)
 
-        # 速度指示
+        # Speed indicator
         speed_text = f"{self.time_speed:.0f}x"
         if self.is_paused:
             speed_text = "PAUSED"
@@ -671,10 +672,10 @@ class HUDManager:
         surface.blit(speed_surf, sr)
 
     def _draw_active_tool_indicator(self, surface: pygame.Surface) -> None:
-        """绘制当前激活工具的提示指示。
+        """Draw the active tool indicator hint.
 
         Args:
-            surface: 目标 Surface
+            surface: Target Surface
         """
         if self.active_tool:
             tool_name = self.get_tool_display_name(self.active_tool)
@@ -683,10 +684,10 @@ class HUDManager:
             surface.blit(text_surf, (50, 5))
 
     def _draw_selected_info_bar(self, surface: pygame.Surface) -> None:
-        """绘制选中天体信息条和参考系指示（顶部居中）。
+        """Draw the selected body info bar and reference frame indicator (centered at top).
 
         Args:
-            surface: 目标 Surface
+            surface: Target Surface
         """
         lines = []
         if self.selected_body_info:
@@ -709,10 +710,10 @@ class HUDManager:
             surface.blit(text_surf, tr)
 
     def _draw_status_info(self, surface: pygame.Surface) -> None:
-        """绘制左上角状态信息（FPS、天体数、倍速、鼠标坐标）。
+        """Draw the top-left status info (FPS, body count, speed, mouse position).
 
         Args:
-            surface: 目标 Surface
+            surface: Target Surface
         """
         lines = [
             f"Bodies: {self._num_bodies}  |  Speed: {self._time_speed:.0f}x  |  FPS: {self._fps:.0f}",
@@ -721,7 +722,7 @@ class HUDManager:
             wx, wy = self._mouse_world_pos
             lines.append(f"Mouse: ({wx:.3e}, {wy:.3e}) m")
 
-        # 计算总宽高
+        # Calculate total dimensions
         line_height = 18
         total_h = len(lines) * line_height + 8
         max_w = max(self._font_small.size(l)[0] for l in lines) + 12
@@ -735,17 +736,17 @@ class HUDManager:
             surface.blit(text_surf, (14, 12 + i * line_height))
 
     def _draw_scale_bar(self, surface: pygame.Surface, camera) -> None:
-        """绘制右下角比例尺。
+        """Draw the bottom-right scale bar.
 
         Args:
-            surface: 目标 Surface
-            camera: Camera 对象，用于计算世界距离
+            surface: Target Surface
+            camera: Camera object used to calculate world distance
         """
         from src.config import SCALE_BAR_X, SCALE_BAR_Y
 
-        raw = 200.0 * camera.world_scale / camera.zoom  # 约 200px 对应的世界距离
+        raw = 200.0 * camera.world_scale / camera.zoom  # world distance corresponding to ~200px
 
-        # 取整到 1/2/5 倍数
+        # Round to 1/2/5 multiples
         magnitude = 10.0 ** math.floor(math.log10(raw))
         normalized = raw / magnitude
         if normalized < 1.5:
@@ -763,14 +764,14 @@ class HUDManager:
         x = self.width - SCALE_BAR_X - int_length
         y = self.height - SCALE_BAR_Y
 
-        # 水平线条
+        # Horizontal line
         bar_color = (200, 200, 220)
         pygame.draw.line(surface, bar_color, (x, y), (x + int_length, y), 2)
-        # 两端竖线
+        # Vertical end lines
         pygame.draw.line(surface, bar_color, (x, y - 3), (x, y + 3), 2)
         pygame.draw.line(surface, bar_color, (x + int_length, y - 3), (x + int_length, y + 3), 2)
 
-        # 文字
+        # Text
         if scaled >= 1e12:
             text = f"{scaled:.0e} m"
         elif scaled >= 1e9:

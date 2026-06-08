@@ -1,16 +1,16 @@
-"""数值积分器模块。
+"""Numerical integrator module.
 
-提供三种积分器用于天体运动方程的数值积分:
-    - RK4（Runge-Kutta 4 阶）: 主积分器，高精度，推荐用于轨迹预测
-    - Euler（显式欧拉）: 快速且简单，但精度低且能量不守恒
-    - Velocity Verlet: 能量守恒好，适合长时间稳定模拟
+Provides three integrators for numerical integration of celestial motion equations:
+    - RK4 (Runge-Kutta 4th order): Main integrator, high precision, recommended for trajectory prediction
+    - Euler (Explicit Euler): Fast and simple, but low precision and energy is not conserved
+    - Velocity Verlet: Good energy conservation, suitable for long-term stable simulation
 
-所有积分器接收相同的接口:
-    f(state, bodies) -> acceleration: 计算加速度的函数
-    state: shape (N, 2) 的位置/速度数组 (pos, vel)
-    bodies: shape (N, NUM_FIELDS) 的天体状态
+All integrators accept the same interface:
+    f(state, bodies) -> acceleration: Function to compute acceleration
+    state: shape (N, 2) position/velocity array (pos, vel)
+    bodies: shape (N, NUM_FIELDS) celestial body state
 
-用法::
+Usage::
 
     from src.physics.integrators import rk4_step, euler_step, velocity_verlet_step
 """
@@ -19,7 +19,7 @@ from typing import Callable, Tuple
 
 import numpy as np
 
-# 加速度函数类型: (pos: (N,2), bodies: (N, F)) -> acc: (N,2)
+# Acceleration function type: (pos: (N,2), bodies: (N, F)) -> acc: (N,2)
 AccelFunc = Callable[[np.ndarray, np.ndarray], np.ndarray]
 
 
@@ -30,24 +30,24 @@ def euler_step(
     bodies: np.ndarray,
     dt: float,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """显式欧拉积分一步。
+    """Explicit Euler integration for one step.
 
-    Euler 方法使用当前加速度更新速度，再使用新速度更新位置:
+    Euler method updates velocity using current acceleration, then updates position using the new velocity:
         v_new = v + a * dt
         x_new = x + v_new * dt
 
     Args:
-        pos: shape (N, 2) 的位置数组 (m)
-        vel: shape (N, 2) 的速度数组 (m/s)
-        accel_fn: 计算加速度的函数 accel_fn(pos, bodies) -> (N, 2)
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组 (用于质量计算)
-        dt: 时间步长 (s)
+        pos: shape (N, 2) position array (m)
+        vel: shape (N, 2) velocity array (m/s)
+        accel_fn: Acceleration function accel_fn(pos, bodies) -> (N, 2)
+        bodies: shape (N, NUM_FIELDS) celestial body state array (used for mass calculation)
+        dt: Time step (s)
 
     Returns:
-        (pos_new, vel_new, acc_new) 三元组:
-            pos_new: shape (N, 2) 更新后的位置
-            vel_new: shape (N, 2) 更新后的速度
-            acc_new: shape (N, 2) 新位置的加速度（供 Velocity Verlet 用）
+        (pos_new, vel_new, acc_new) tuple:
+            pos_new: shape (N, 2) updated position
+            vel_new: shape (N, 2) updated velocity
+            acc_new: shape (N, 2) acceleration at new position (used by Velocity Verlet)
     """
     acc = accel_fn(pos, bodies)
     vel_new = vel + acc * dt
@@ -62,20 +62,20 @@ def rk4_step(
     bodies: np.ndarray,
     dt: float,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """4 阶 Runge-Kutta 积分一步。
+    """4th order Runge-Kutta integration for one step.
 
-    RK4 是推荐的默认积分器，精度高，适用于精确模拟和轨迹预测。
-    对于 N 体问题，每步需要 4 次加速度计算。
+    RK4 is the recommended default integrator with high precision, suitable for accurate simulation and trajectory prediction.
+    For the N-body problem, it requires 4 acceleration evaluations per step.
 
     Args:
-        pos: shape (N, 2) 的位置数组 (m)
-        vel: shape (N, 2) 的速度数组 (m/s)
-        accel_fn: 计算加速度的函数 accel_fn(pos, bodies) -> (N, 2)
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
-        dt: 时间步长 (s)
+        pos: shape (N, 2) position array (m)
+        vel: shape (N, 2) velocity array (m/s)
+        accel_fn: Acceleration function accel_fn(pos, bodies) -> (N, 2)
+        bodies: shape (N, NUM_FIELDS) celestial body state array
+        dt: Time step (s)
 
     Returns:
-        (pos_new, vel_new, acc_new) 三元组
+        (pos_new, vel_new, acc_new) tuple
     """
     # k1
     a1 = accel_fn(pos, bodies)                     # (N, 2)
@@ -95,11 +95,11 @@ def rk4_step(
     k4_vel = vel + a3 * dt
     a4 = accel_fn(k4_pos, bodies)
 
-    # 加权平均
+    # Weighted average
     vel_new = vel + (dt / 6.0) * (a1 + 2.0 * a2 + 2.0 * a3 + a4)
     pos_new = pos + (dt / 6.0) * (vel + 2.0 * k2_vel + 2.0 * k3_vel + k4_vel)
 
-    # 计算新位置的加速度（供 Velocity Verlet 或外部使用）
+    # Compute acceleration at the new position (for Velocity Verlet or external use)
     acc_new = accel_fn(pos_new, bodies)
 
     return pos_new, vel_new, acc_new
@@ -113,29 +113,29 @@ def velocity_verlet_step(
     bodies: np.ndarray,
     dt: float,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Velocity Verlet 积分一步。
+    """Velocity Verlet integration for one step.
 
-    速度 Verlet 是辛积分器，长时间模拟时能量守恒优于 RK4。
-    需要前一时刻的加速度作为输入。
+    Velocity Verlet is a symplectic integrator with better energy conservation than RK4 for long-term simulation.
+    Requires the acceleration from the previous time step as input.
 
     Args:
-        pos: shape (N, 2) 的位置数组 (m)
-        vel: shape (N, 2) 的速度数组 (m/s)
-        acc: shape (N, 2) 当前加速度 (m/s^2)，来自上一时间步
-        accel_fn: 计算加速度的函数 accel_fn(pos, bodies) -> (N, 2)
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
-        dt: 时间步长 (s)
+        pos: shape (N, 2) position array (m)
+        vel: shape (N, 2) velocity array (m/s)
+        acc: shape (N, 2) current acceleration (m/s^2), from the previous time step
+        accel_fn: Acceleration function accel_fn(pos, bodies) -> (N, 2)
+        bodies: shape (N, NUM_FIELDS) celestial body state array
+        dt: Time step (s)
 
     Returns:
-        (pos_new, vel_new, acc_new) 三元组
+        (pos_new, vel_new, acc_new) tuple
     """
-    # 半步位置更新
+    # Half-step position update
     pos_new = pos + vel * dt + 0.5 * acc * dt ** 2
 
-    # 计算新位置的加速度
+    # Compute acceleration at the new position
     acc_new = accel_fn(pos_new, bodies)
 
-    # 速度更新: 使用新旧加速度的平均值
+    # Velocity update: average of old and new acceleration
     vel_new = vel + 0.5 * (acc + acc_new) * dt
 
     return pos_new, vel_new, acc_new

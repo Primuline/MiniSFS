@@ -1,11 +1,11 @@
-"""四叉树 Barnes-Hut 性能与精度基准测试。
+"""Quadtree Barnes-Hut performance and accuracy benchmark.
 
-对比 O(n²) 直接引力计算 vs Barnes-Hut 近似在不同天体数量下的：
-    - 计算耗时
-    - 相对精度误差
-    - 加速比
+Compares O(n^2) direct gravitational computation vs Barnes-Hut approximation at various body counts:
+    - Computation time
+    - Relative accuracy error
+    - Speedup ratio
 
-用法:
+Usage:
     python -m tests.benchmark_quadtree
 """
 
@@ -28,18 +28,18 @@ from src.quadtree.quadtree import Quadtree
 
 
 # ============================================================================
-# 暴力 O(n²) 计算
+# Brute-force O(n^2) computation
 # ============================================================================
 
 
 def brute_force_forces(bodies: np.ndarray) -> np.ndarray:
-    """直接 O(n²) 计算所有天体的引力合力。
+    """Direct O(n^2) computation of gravitational forces on all bodies.
 
     Args:
-        bodies: shape (N, NUM_FIELDS) 的天体状态数组
+        bodies: Body state array of shape (N, NUM_FIELDS)
 
     Returns:
-        shape (N, 2) 的合力数组 (N)
+        Force array of shape (N, 2) in Newtons
     """
     n = bodies.shape[0]
     forces = np.zeros((n, 2), dtype=np.float64)
@@ -65,28 +65,28 @@ def brute_force_forces(bodies: np.ndarray) -> np.ndarray:
 
 
 # ============================================================================
-# 测试配置
+# Test configuration
 # ============================================================================
 
-# 不同天体数量级
+# Different body count orders of magnitude
 BODY_COUNTS: List[int] = [10, 50, 100, 200, 500, 1000, 2000]
 
-# 每轮重复次数（取中位数）
+# Number of repeats per round (median taken)
 REPEATS: int = 5
 
-# 随机种子（保证可复现）
+# Random seed (for reproducibility)
 SEED: int = 42
 
 
 def generate_scene(n: int, spread: float = 1e9) -> np.ndarray:
-    """生成随机天体场景。
+    """Generate a random body scene.
 
     Args:
-        n: 天体数量
-        spread: 分布范围 (±spread)
+        n: Number of bodies
+        spread: Distribution range (±spread)
 
     Returns:
-        shape (N, NUM_FIELDS) 的天体数组
+        Body array of shape (N, NUM_FIELDS)
     """
     rng = np.random.default_rng(SEED + n)
     bodies = create_body_state_array(n)
@@ -97,17 +97,17 @@ def generate_scene(n: int, spread: float = 1e9) -> np.ndarray:
 
 
 def median_time(results: List[float]) -> float:
-    """返回中位数时间（去除异常值）。"""
+    """Return the median time (outlier-resistant)."""
     return float(np.median(results))
 
 
 # ============================================================================
-# 基准测试主流程
+# Benchmark main flow
 # ============================================================================
 
 
 def run_benchmark() -> None:
-    """执行完整基准测试并打印结果。"""
+    """Run the full benchmark and print results."""
     print("=" * 90)
     print("  MiniSFS Quadtree Barnes-Hut Performance Benchmark")
     print("=" * 90)
@@ -121,7 +121,7 @@ def run_benchmark() -> None:
     for n in BODY_COUNTS:
         bodies = generate_scene(n)
 
-        # --- 暴力法 ---
+        # --- Brute-force ---
         brute_times: List[float] = []
         brute_forces = None
         for _ in range(REPEATS):
@@ -131,7 +131,7 @@ def run_benchmark() -> None:
             brute_times.append(t1 - t0)
 
         # --- Barnes-Hut ---
-        # 先构建四叉树（单独计时）
+        # Build quadtree first (timed separately)
         extent = 1.1e9 * 1.1
         tree = Quadtree(Rect(-extent, -extent, 2 * extent, 2 * extent))
 
@@ -160,7 +160,7 @@ def run_benchmark() -> None:
         bh_build_med = median_time(build_times)
         bh_total_med = median_time(bh_total_times)
 
-        # --- 精度 ---
+        # --- Accuracy ---
         errors: List[float] = []
         if brute_forces is not None:
             for i in range(n):
@@ -195,13 +195,13 @@ def run_benchmark() -> None:
               f"{speedup:>6.1f}x | {median_error*100:>7.3f}% | {bh_build_med*1000:>6.2f}ms")
 
     # ========================================================================
-    # 数据分析
+    # Data analysis
     # ========================================================================
     print("\n" + "=" * 90)
     print("  Data Analysis")
     print("=" * 90)
 
-    # 找到性能交叉点
+    # Find performance cross-over point
     print("\n  [1] Cross-over point (where BH beats brute)")
     for d in results_data:
         if d["speedup"] >= 1.0:
@@ -239,7 +239,7 @@ def run_benchmark() -> None:
               f"O(n log n) predicted={bh_expected:>8.2f}ms")
 
     # ========================================================================
-    # 结论
+    # Conclusions
     # ========================================================================
     print("\n" + "=" * 90)
     print("  Conclusions & Recommendations")
