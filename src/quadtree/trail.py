@@ -15,7 +15,7 @@ Typical usage::
 """
 
 from collections import deque
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
 
@@ -71,7 +71,7 @@ class TrailBuffer(ITrailBuffer):
                     dq.clear()
         self._trails[body_id].append((float(x), float(y)))
 
-    def push_all(self, bodies: np.ndarray) -> None:
+    def push_all(self, bodies: np.ndarray, exclude: Optional[set] = None) -> None:
         """为所有活跃天体的当前位置追加尾迹帧。
 
         追加完成后，清理已不存在的天体的残留尾迹，避免
@@ -79,9 +79,14 @@ class TrailBuffer(ITrailBuffer):
 
         Args:
             bodies: shape (N, NUM_FIELDS) 的天体状态数组
+            exclude: 可选，要排除的天体 ID 集合（如被抓取拖拽的天体）
         """
+        if exclude is None:
+            exclude = set()
         active_set = set(int(idx) for idx in np.where(bodies[:, IS_ACTIVE] == 1.0)[0])
         for body_id in active_set:
+            if body_id in exclude:
+                continue
             self.push_frame(body_id, float(bodies[body_id, X]), float(bodies[body_id, Y]))
         # 清理残留尾迹（已被移除的天体）
         stale = [bid for bid in self._trails if bid not in active_set]

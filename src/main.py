@@ -272,6 +272,10 @@ def main() -> None:
     # 显示尾迹
     show_trails = True
 
+    # 抓取拖拽状态
+    is_grabbing = False
+    grabbed_body_id: Optional[int] = None
+
     # 当前选中天体
     selected_body_id: Optional[int] = None
 
@@ -305,8 +309,8 @@ def main() -> None:
                 if hud_cmd in ("PLAY_PAUSE", "FAST_2X", "FAST_4X", "REWIND"):
                     continue
 
-            # InputHandler 处理
-            inp_cmd = input_handler.handle_event(event)
+            # InputHandler 处理（传入 bodies 和 camera 用于抓取检测）
+            inp_cmd = input_handler.handle_event(event, bodies, camera)
             if inp_cmd is not None:
                 commands.append(inp_cmd)
 
@@ -446,6 +450,60 @@ def main() -> None:
                         renderer.selected_body_id = None
                         hud.set_selected_body(None, -1)
 
+            # --- 左键抓取拖拽 ---
+            elif cmd.startswith("GRAB_START:"):
+                parts = cmd.split(":")
+                sx_str = parts[1].split(",")
+                body_id = int(sx_str[0])
+                sx, sy = int(sx_str[1]), int(sx_str[2])
+
+                if active_tool:
+                    # 有工具激活时不进入抓取模式，重置 handler 状态
+                    input_handler.reset_grab()
+                    # 当作工具放置处理（与 CLICK 相同逻辑）
+                    if sx < 50 or sy > WINDOW_HEIGHT - 50:
+                        continue
+                    world_x, world_y = camera.screen_to_world(sx, sy)
+                    mass, radius, charge, body_type = hud.get_default_body_params(active_tool)
+                    new_body = make_body(
+                        x=world_x, y=world_y,
+                        vx=0.0, vy=0.0,
+                        mass=mass,
+                        radius=radius * WORLD_SCALE,
+                        charge=charge,
+                        body_type=int(body_type),
+                    )
+                    bodies = add_body_to_array(bodies, new_body)
+                    if int(body_type) == BODY_TYPE_PROBE:
+                        selected_body_id = bodies.shape[0] - 1
+                        renderer.selected_body_id = selected_body_id
+                        hud.set_selected_body(bodies[selected_body_id], selected_body_id)
+                else:
+                    # 进入抓取模式
+                    is_grabbing = True
+                    grabbed_body_id = body_id
+                    is_paused = True
+                    hud.set_play_pause_state(True)
+                    # 选中被抓取的天体
+                    selected_body_id = body_id
+                    renderer.selected_body_id = body_id
+                    hud.set_selected_body(bodies[body_id], body_id)
+
+            elif cmd.startswith("GRAB_DRAG:"):
+                parts = cmd.split(":")
+                coords = parts[1].split(",")
+                sx, sy = int(coords[1]), int(coords[2])
+                if grabbed_body_id is not None and grabbed_body_id < bodies.shape[0]:
+                    wx, wy = camera.screen_to_world(sx, sy)
+                    bodies[grabbed_body_id, X] = wx
+                    bodies[grabbed_body_id, Y] = wy
+
+            elif cmd == "GRAB_END":
+                is_grabbing = False
+                grabbed_body_id = None
+                is_paused = False
+                hud.set_play_pause_state(False)
+
             # --- 右键 ---
             elif cmd.startswith("RIGHT_CLICK:"):
                 parts = cmd.split(":")
@@ -540,7 +598,7 @@ def main() -> None:
         # 3. 物理更新（固定时间步）
         # ================================================================
 
-        if not is_paused:
+        if not is_paused and not is_grabbing:
             if time_speed > 100:
                 # 高倍速：直接放大 dt（避免数百万小步积累）
                 # 物理引擎内部用 SUBSTEPS=4 拆分，RK4 能保证稳定
@@ -562,7 +620,10 @@ def main() -> None:
         # 4. 尾迹记录
         # ================================================================
 
-        trail_buffer.push_all(bodies)
+        if is_grabbing and grabbed_body_id is not None:
+            trail_buffer.push_all(bodies, exclude={grabbed_body_id})
+        else:
+            trail_buffer.push_all(bodies)
 
         # ================================================================
         # 5. 更新尾迹后的数据
@@ -585,12 +646,13 @@ def main() -> None:
                 renderer.selected_body_id = None
                 hud.set_selected_body(None, -1)
 
-        # 预测轨迹（选中探测器时，每 3 帧重新计算并缓存）
+        # 预测轨迹（选中探测器时，每 3 帧重新计算并缓存；抓取时跳过）
         _prediction_frame_counter += 1
         should_recalc = (
             selected_body_id is not None
             and selected_body_id < bodies.shape[0]
             and int(bodies[selected_body_id, BODY_TYPE]) == BODY_TYPE_PROBE
+            and not is_grabbing
         )
         # 切换选中天体时立即重新计算
         if should_recalc and selected_body_id != _last_predicted_body_id:
@@ -686,9 +748,10 @@ def main() -> None:
         # 更新窗口标题
         actual_fps = clock.get_fps()
         paused_indicator = " PAUSED" if is_paused else ""
+        grabbing_indicator = " GRABBING" if is_grabbing else ""
         speed_indicator = f" {time_multiplier:.0f}x" if time_multiplier > 1 else ""
         pygame.display.set_caption(
-            f"MiniSFS{paused_indicator}{speed_indicator}"
+            f"MiniSFS{grabbing_indicator}{paused_indicator}{speed_indicator}"
             f" - 天体: {bodies.shape[0]}"
             f" - zoom: {camera.zoom:.1f}"
             f" - {actual_fps:.0f} FPS"

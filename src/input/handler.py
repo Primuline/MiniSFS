@@ -51,6 +51,10 @@ class InputHandler(IInputHandler):
         self.pan_camera_center_x: float = 0.0
         self.pan_camera_center_y: float = 0.0
 
+        # 抓取拖拽状态
+        self.is_grabbing: bool = False
+        self.grabbed_body_id: Optional[int] = None
+
         # 发射探测器拖拽状态
         self.is_aiming: bool = False
         self.aim_start_x: int = 0
@@ -114,7 +118,9 @@ class InputHandler(IInputHandler):
     # 事件处理
     # ------------------------------------------------------------------
 
-    def handle_event(self, event: pygame.event.Event) -> Optional[str]:
+    def handle_event(self, event: pygame.event.Event,
+                     bodies: Optional["np.ndarray"] = None,
+                     camera: Optional[ICamera] = None) -> Optional[str]:
         """处理单个 Pygame 事件（公开方法，供主循环分发事件时调用）。
 
         与 ``process_events()`` 的区别是此方法只处理传入的单个事件，不自动
@@ -122,6 +128,8 @@ class InputHandler(IInputHandler):
 
         Args:
             event: Pygame 事件
+            bodies: 可选天体状态数组，用于检测左键抓取
+            camera: 可选相机对象，用于抓取检测的坐标转换
 
         Returns:
             命令字符串，或 None
@@ -134,12 +142,16 @@ class InputHandler(IInputHandler):
         if event.type == pygame.MOUSEMOTION:
             self.mouse_screen_x, self.mouse_screen_y = event.pos
 
-            # 拖拽平移
+            # 拖拽平移（中键）
             if self.is_panning:
                 dx = event.pos[0] - self.pan_last_x
                 dy = event.pos[1] - self.pan_last_y
                 self.pan_last_x, self.pan_last_y = event.pos
                 return f"PAN:{dx},{dy}"
+
+            # 抓取拖拽
+            if self.is_grabbing and self.grabbed_body_id is not None:
+                return f"GRAB_DRAG:{self.grabbed_body_id},{self.mouse_screen_x},{self.mouse_screen_y}"
 
             # 探测器瞄准拖拽
             if self.is_aiming:
@@ -158,7 +170,7 @@ class InputHandler(IInputHandler):
 
         # 鼠标按下
         if event.type == pygame.MOUSEBUTTONDOWN:
-            return self._handle_mouse_down(event)
+            return self._handle_mouse_down(event, bodies, camera)
 
         # 鼠标释放
         if event.type == pygame.MOUSEBUTTONUP:
@@ -176,11 +188,15 @@ class InputHandler(IInputHandler):
 
         return None
 
-    def _handle_mouse_down(self, event: pygame.event.Event) -> Optional[str]:
+    def _handle_mouse_down(self, event: pygame.event.Event,
+                           bodies: Optional["np.ndarray"] = None,
+                           camera: Optional[ICamera] = None) -> Optional[str]:
         """处理鼠标按下事件。
 
         Args:
             event: Pygame 事件
+            bodies: 可选天体状态数组，用于检测左键抓取
+            camera: 可选相机对象，用于抓取检测的坐标转换
 
         Returns:
             命令字符串
@@ -206,6 +222,14 @@ class InputHandler(IInputHandler):
 
             self._last_click_time = now
             self._last_click_pos = (x, y)
+
+            # 检查是否点击在天体上（抓取拖拽）
+            if bodies is not None and camera is not None:
+                found_id = self.find_body_at_screen_pos(x, y, bodies, camera)
+                if found_id is not None:
+                    self.is_grabbing = True
+                    self.grabbed_body_id = found_id
+                    return f"GRAB_START:{found_id},{x},{y}"
 
             # 开始拖拽检测
             self.is_dragging = True
@@ -240,6 +264,11 @@ class InputHandler(IInputHandler):
             命令字符串
         """
         if event.button == 1:
+            if self.is_grabbing:
+                self.is_grabbing = False
+                self.grabbed_body_id = None
+                return "GRAB_END"
+
             self.is_dragging = False
             # 如果拖拽距离大，视为发射探测器
             if self.is_aiming:
@@ -329,6 +358,11 @@ class InputHandler(IInputHandler):
         dx = self.mouse_screen_x - self.aim_start_x
         dy = self.mouse_screen_y - self.aim_start_y
         return float(dx), float(dy)
+
+    def reset_grab(self) -> None:
+        """取消抓取状态（当 main.py 决定不进入抓取模式时调用）。"""
+        self.is_grabbing = False
+        self.grabbed_body_id = None
 
     def start_aiming(self) -> None:
         """开始瞄准（右键在探测器上按下时调用）。"""
