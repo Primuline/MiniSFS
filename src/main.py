@@ -9,7 +9,6 @@
 
 import math
 import sys
-import time
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -278,13 +277,8 @@ def main() -> None:
 
     # 预测轨迹缓存
     predicted_trajectory: Optional[np.ndarray] = None
-
-    # 性能诊断计数器
-    _perf_frame_count = 0
-    _perf_t_physics = 0.0
-    _perf_t_collision = 0.0
-    _perf_t_trail = 0.0
-    _perf_t_prediction = 0.0
+    _prediction_frame_counter: int = 0  # 仅每 N 帧重新计算预测轨迹
+    _last_predicted_body_id: Optional[int] = None  # 跟踪上次选中的探测器 ID
 
     # ==================================================================
     # 主循环
@@ -546,7 +540,6 @@ def main() -> None:
         # 3. 物理更新（固定时间步）
         # ================================================================
 
-        _t_phys_start = time.perf_counter()
         if not is_paused:
             if time_speed > 100:
                 # 高倍速：直接放大 dt（避免数百万小步积累）
@@ -564,15 +557,12 @@ def main() -> None:
         else:
             # 暂停时重置累积器
             accumulator = 0.0
-        _perf_t_physics += time.perf_counter() - _t_phys_start
 
         # ================================================================
         # 4. 尾迹记录
         # ================================================================
 
-        _t_trail_start = time.perf_counter()
         trail_buffer.push_all(bodies)
-        _perf_t_trail += time.perf_counter() - _t_trail_start
 
         # ================================================================
         # 5. 更新尾迹后的数据
@@ -595,24 +585,35 @@ def main() -> None:
                 renderer.selected_body_id = None
                 hud.set_selected_body(None, -1)
 
-        # 预测轨迹（选中探测器时）
-        _t_pred_start = time.perf_counter()
-        predicted_trajectory = None
-        if (
+        # 预测轨迹（选中探测器时，每 3 帧重新计算并缓存）
+        _prediction_frame_counter += 1
+        should_recalc = (
             selected_body_id is not None
             and selected_body_id < bodies.shape[0]
             and int(bodies[selected_body_id, BODY_TYPE]) == BODY_TYPE_PROBE
-        ):
+        )
+        # 切换选中天体时立即重新计算
+        if should_recalc and selected_body_id != _last_predicted_body_id:
+            _prediction_frame_counter = 0
+            _last_predicted_body_id = selected_body_id
+        if not should_recalc:
+            _last_predicted_body_id = None
+
+        if should_recalc and _prediction_frame_counter % 3 == 1:
             probe_data = bodies[selected_body_id:selected_body_id + 1].copy()
-            # 从其他天体中排除探测器本身
             other_bodies = np.delete(bodies, selected_body_id, axis=0)
             if other_bodies.shape[0] > 0:
                 pred = physics_engine.predict_trajectory(
-                    probe_data, other_bodies, steps=300, dt=physics_dt
+                    probe_data, other_bodies, steps=60, dt=physics_dt
                 )
                 if pred.shape[0] > 0:
                     predicted_trajectory = pred
-        _perf_t_prediction += time.perf_counter() - _t_pred_start
+                else:
+                    predicted_trajectory = None
+            else:
+                predicted_trajectory = None
+        elif not should_recalc:
+            predicted_trajectory = None
 
         # 更新粒子系统
         particle_system.update(frame_dt)
@@ -672,24 +673,6 @@ def main() -> None:
         # 绘制 HUD
         hud.draw(renderer.screen)
         renderer.render_hud(game_state)
-
-        # 性能诊断（每 60 帧打印一次）
-        _perf_frame_count += 1
-        if _perf_frame_count >= 60:
-            _perf_frame_count = 0
-            phys_ms = _perf_t_physics * 1000.0 / 60.0
-            trail_ms = _perf_t_trail * 1000.0 / 60.0
-            pred_ms = _perf_t_prediction * 1000.0 / 60.0
-            total_ms = phys_ms + trail_ms + pred_ms
-            if pred_ms > 1.0 or phys_ms > 5.0:
-                print(
-                    f"[PERF] phys={phys_ms:.2f}ms  trail={trail_ms:.2f}ms  "
-                    f"pred={pred_ms:.2f}ms  total={total_ms:.2f}ms  "
-                    f"FPS={actual_fps:.0f}  bodies={bodies.shape[0]}"
-                )
-            _perf_t_physics = 0.0
-            _perf_t_trail = 0.0
-            _perf_t_prediction = 0.0
 
         # 更新窗口标题
         actual_fps = clock.get_fps()
