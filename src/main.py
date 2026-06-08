@@ -62,7 +62,7 @@ from src.core.types import (
 )
 from src.input.handler import InputHandler
 from src.physics.engine import PhysicsEngine
-from src.physics.forces import find_nearest_star, predict_single_star_trajectory
+# from src.physics.forces import find_nearest_star
 from src.quadtree.trail import TrailBuffer
 from src.rendering.camera import Camera
 from src.rendering.effects import ParticleSystem
@@ -358,48 +358,53 @@ def main() -> None:
     ) -> Optional[Dict[str, object]]:
         """计算放置预览轨迹。
 
-        有引力源时计算二体弯曲轨迹，无引力源时画直线。
+        使用物理引擎的 RK4 + 全量引力进行预测，与探测器实时预测一致。
+        无引力源时画直线。
 
         Args:
             pos: shape (2,) 预览位置世界坐标
             vel: shape (2,) 速度向量
-            star_info: (star_pos, star_mass, star_radius) 或 None
+            star_info: 未使用（保留参数兼容）
             body_radius_world: 放置天体半径（米）
 
         Returns:
-            predict_single_star_trajectory 格式的字典，或 None
-                （无引力源时返回直线轨迹字典）
+            包含 trajectory/collided/escaped/orbited 的字典，或 None
         """
         speed = float(np.linalg.norm(vel))
         if speed < 1.0:
             return None
 
-        if star_info is not None:
-            star_pos, star_mass, star_radius = star_info
-            # 使用速度自适应 dt
-            dt = min(1e9 / max(speed, 1.0), 20000.0)
-            dt = max(dt, 100.0)
-
-            return predict_single_star_trajectory(
-                pos=pos,
-                vel=vel,
-                star_pos=star_pos,
-                star_mass=star_mass,
-                star_radius=star_radius,
-                body_radius=body_radius_world,
-                g=GRAVITATIONAL_CONSTANT,
-                softening=SOFTENING,
-                steps=2000,
-                dt=dt,
-            )
+        # 构造临时探测器用于预测
+        # 使用与模拟相同的 dt 和时间倍率，预测约 1-2 秒视觉时间
+        if time_speed > 100:
+            pred_dt = physics_dt * time_speed
+            pred_steps = max(3, int(60 // max(1, time_multiplier)))
         else:
-            # 无引力源：沿速度方向画直线
-            pts = 100
-            time_total = 5e6  # 总预测时间 5e6 秒
-            total_dist = speed * time_total
-            if total_dist < 1.0:
+            pred_dt = physics_dt
+            pred_steps = 60
+
+        probe_body = make_body(
+            x=float(pos[0]), y=float(pos[1]),
+            vx=float(vel[0]), vy=float(vel[1]),
+            mass=1.0, radius=body_radius_world,
+            body_type=BODY_TYPE_PROBE,
+        )
+
+        try:
+            raw_traj = physics_engine.predict_trajectory(
+                probe_body, bodies, steps=pred_steps, dt=pred_dt,
+            )
+            if raw_traj.shape[0] < 2:
                 return None
-            pts_list = []
+            collided = raw_traj.shape[0] < pred_steps
+            return {
+                "trajectory": raw_traj,
+                "collided": collided,
+                "escaped": False,
+                "orbited": False,
+            }
+        except Exception:
+            return None
             for i in range(pts):
                 t = i / (pts - 1)
                 pts_list.append(pos + vel * t * time_total)
@@ -1267,14 +1272,11 @@ def main() -> None:
                 ux = dx_screen / arrow_dist
                 uy = dy_screen / arrow_dist
                 vel = np.array([ux * actual_speed, uy * actual_speed], dtype=np.float64)
-                # 获取引力源
-                star_info = _get_gravity_source(bodies, reference_body_id)
-                # 计算轨迹
-                body_radius_pixels = hud._compute_custom_radius()
-                body_radius = body_radius_pixels * WORLD_SCALE
+                # 计算轨迹（使用物理引擎 RK4 + 全量引力）
+                body_radius = hud._compute_custom_radius()
                 placement_trajectory = _compute_placement_trajectory(
                     np.array([px, py], dtype=np.float64), vel,
-                    star_info, body_radius,
+                    None, body_radius,
                 )
         elif simple_placement_stage == 2 and simple_arrow_start is not None:
             px, py = simple_preview_pos
@@ -1290,13 +1292,11 @@ def main() -> None:
                 ux = dx_screen / arrow_dist
                 uy = dy_screen / arrow_dist
                 vel = np.array([ux * actual_speed, uy * actual_speed], dtype=np.float64)
-                # 获取引力源
-                star_info = _get_gravity_source(bodies, reference_body_id)
-                # 计算轨迹
+                # 计算轨迹（使用物理引擎 RK4 + 全量引力）
                 body_radius = radius_pixels * WORLD_SCALE
                 placement_trajectory = _compute_placement_trajectory(
                     np.array([px, py], dtype=np.float64), vel,
-                    star_info, body_radius,
+                    None, body_radius,
                 )
 
         # 渲染
