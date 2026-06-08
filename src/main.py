@@ -23,8 +23,6 @@ from src.config import (
     CAMERA_ZOOM_MIN,
     CUSTOM_ARROW_MAX_LENGTH,
     CUSTOM_CHARGE_DEFAULT,
-    CUSTOM_MASS_DEFAULT,
-    CUSTOM_RADIUS_FACTOR,
     CUSTOM_SPEED_DEFAULT,
     DEFAULT_CHARGE_CHARGED,
     DEFAULT_MASS_CHARGED,
@@ -80,75 +78,41 @@ def create_default_scene() -> np.ndarray:
     包含：
         - 1 颗大质量静态恒星（中心）
         - 1 颗行星绕恒星轨道运动
-        - 1 颗更小的卫星绕行星轨道运动
-        - 1 个初始静止的探测器（便于玩家操作）
 
-    天体参数经过调整，在 WORLD_SCALE = 1e9 m/px 下肉眼可见。
+    半径直接使用世界单位（米），不再乘以 WORLD_SCALE。
 
     Returns:
         shape (N, NUM_FIELDS) 的天体状态数组
     """
-    scale = WORLD_SCALE  # 1e9 m/px
-
     bodies_list = []
 
     # 1. 中心恒星（静态）
     star = make_body(
         x=0.0, y=0.0,
         vx=0.0, vy=0.0,
-        mass=DEFAULT_MASS_STAR,  # 1e30
-        radius=scale * DEFAULT_RADIUS_STAR,  # 20 * 1e9 = 2e10 m
+        mass=DEFAULT_MASS_STAR,  # 2.0e30 kg
+        radius=7.0e8,  # 世界单位（米），约太阳半径
         body_type=BODY_TYPE_STAR,
         is_static=True,
     )
     bodies_list.append(star)
 
     # 2. 行星（绕恒星公转）
-    # 轨道参数：约 150px 半径
-    orbit_radius = 150.0 * scale  # 1.5e11 m
-    planet_mass = DEFAULT_MASS_PLANET  # 5e28
+    # 轨道参数：1亿km = 1.0e11 m
+    orbit_radius = 1.0e11
     # 圆周运动速度 v = sqrt(G * M / r)
     orbital_speed = math.sqrt(
-        DEFAULT_MASS_STAR * 6.67430e-11 / orbit_radius
+        DEFAULT_MASS_STAR * GRAVITATIONAL_CONSTANT / orbit_radius
     )
 
     planet = make_body(
         x=orbit_radius, y=0.0,
         vx=0.0, vy=orbital_speed,
-        mass=planet_mass,
-        radius=scale * DEFAULT_RADIUS_PLANET,  # 8 * 1e9 = 8e9 m
+        mass=DEFAULT_MASS_PLANET,  # 6.0e26 kg
+        radius=6.4e6,  # 世界单位（米），约地球半径
         body_type=BODY_TYPE_PLANET,
     )
     bodies_list.append(planet)
-
-    # 3. 卫星（绕行星公转）
-    moon_orbit = 40.0 * scale  # 4e10 m
-    moon_mass = 1.0e27
-
-    # 卫星相对于行星的速度
-    moon_orbital_speed = math.sqrt(
-        planet_mass * 6.67430e-11 / moon_orbit
-    )
-    # 卫星相对于恒星的位置和速度 = 行星的位置和速度 + 卫星的相对位置和速度
-    moon = make_body(
-        x=orbit_radius + moon_orbit, y=0.0,
-        vx=0.0, vy=orbital_speed + moon_orbital_speed,
-        mass=moon_mass,
-        radius=scale * 5.0,  # 5px
-        body_type=BODY_TYPE_PLANET,
-    )
-    bodies_list.append(moon)
-
-    # 4. 探测器（初始位于行星附近）
-    probe_offset = 60.0 * scale
-    probe = make_body(
-        x=orbit_radius - probe_offset, y=0.0,
-        vx=0.0, vy=orbital_speed,
-        mass=DEFAULT_MASS_PROBE,
-        radius=scale * DEFAULT_RADIUS_PROBE,
-        body_type=BODY_TYPE_PROBE,
-    )
-    bodies_list.append(probe)
 
     # 合并所有天体
     return np.vstack(bodies_list)
@@ -245,6 +209,8 @@ def main() -> None:
     # 创建模块实例
     renderer = Renderer(WINDOW_WIDTH, WINDOW_HEIGHT)
     camera = Camera(WINDOW_WIDTH, WINDOW_HEIGHT, WORLD_SCALE)
+    # 初始缩放：让恒星+轨道在视野内
+    camera.zoom_at(0.008, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
     physics_engine = PhysicsEngine(
         substeps=SUBSTEPS,
         use_quadtree=False,
@@ -265,8 +231,8 @@ def main() -> None:
     # 物理时间步
     physics_dt = TIME_STEP  # 固定 1/60 秒
     accumulator = 0.0
-    # 基准时间速度：世界尺度 1e9 m/px，需要 ~3e6 倍加速轨道才肉眼可见
-    BASE_TIME_SPEED = 3_000_000.0
+    # 基准时间速度：世界尺度 8e5 m/px，需要 ~50000 倍加速轨道才肉眼可见
+    BASE_TIME_SPEED = 50000.0
     time_speed = BASE_TIME_SPEED
     time_multiplier = 1.0  # 相对于基准速度的倍率（1x, 2x, 4x）
     is_paused = False
@@ -290,6 +256,11 @@ def main() -> None:
 
     # 当前选中天体
     selected_body_id: Optional[int] = None
+
+    # 框选状态
+    box_select_start: Optional[Tuple[int, int]] = None
+    box_select_end: Optional[Tuple[int, int]] = None
+    selected_body_ids: set = set()
 
     # 参考系天体 ID（双击进入参考系）
     reference_body_id: Optional[int] = None
@@ -327,12 +298,7 @@ def main() -> None:
         custom_placement_stage = 0
         custom_preview_pos = None
         custom_arrow_start = None
-        hud.custom_dialog_visible = False
-        hud._input_dialog.visible = False
-        hud._input_dialog.active_field_index = -1
-        # 重置输入框内容
-        for field in hud._input_dialog.fields:
-            field["text"] = ""
+        hud.hide_custom_dialog()
         if active_tool == "TOOL_CUSTOM":
             active_tool = None
             hud.set_tool_active(None)
@@ -605,9 +571,7 @@ def main() -> None:
                         is_paused = True
                         hud.set_play_pause_state(True)
                         custom_placement_stage = 1
-                        hud.custom_dialog_visible = True
-                        hud._input_dialog.visible = True
-                        hud._input_dialog.active_field_index = -1
+                        hud.show_custom_dialog()
                     elif cmd in ("TOOL_STAR", "TOOL_PLANET", "TOOL_PROBE"):
                         # 简单放置工具：冻结时间 + 进入预览位置阶段
                         is_paused = True
@@ -620,12 +584,8 @@ def main() -> None:
             elif cmd.startswith("CUSTOM_DIALOG_"):
                 if cmd == "CUSTOM_DIALOG_OK":
                     # 关闭弹窗，进入放置预览阶段
-                    # 数值已由 HUD.handle_event 存入 hud.custom_mass/charge/speed
-                    hud.custom_dialog_visible = False
-                    hud._input_dialog.visible = False
-                    hud._input_dialog.active_field_index = -1
-                    for field in hud._input_dialog.fields:
-                        field["text"] = ""
+                    # 数值已由 HUD.handle_event 存入 hud.custom_mass/charge/speed/radius
+                    hud.hide_custom_dialog()
                     custom_placement_stage = 2
                 elif cmd == "CUSTOM_DIALOG_CANCEL":
                     # 取消整个操作
@@ -638,13 +598,11 @@ def main() -> None:
                         idx = selected_body_id
                         new_mass = hud.edit_mass
                         new_charge = hud.edit_charge
-                        # 更新质量、电荷
+                        new_radius = hud.edit_radius  # 单位 m
+                        # 更新质量、电荷、半径
                         bodies[idx, MASS] = new_mass
                         bodies[idx, CHARGE] = new_charge
-                        # 自动重算半径：pixel_radius = CUSTOM_RADIUS_FACTOR * sqrt(mass / CUSTOM_MASS_DEFAULT)
-                        pixel_radius = CUSTOM_RADIUS_FACTOR * math.sqrt(new_mass / CUSTOM_MASS_DEFAULT)
-                        pixel_radius = max(2.0, min(pixel_radius, 30.0))
-                        bodies[idx, RADIUS] = pixel_radius * WORLD_SCALE
+                        bodies[idx, RADIUS] = new_radius
                         # 刷新信息面板
                         hud.set_selected_body(bodies[idx], idx)
                     hud.hide_edit_dialog()
@@ -749,12 +707,12 @@ def main() -> None:
                         # 阶段 3：放置天体
                         if custom_preview_pos is not None and custom_arrow_start is not None:
                             px, py = custom_preview_pos
-                            radius_pixels = hud._compute_custom_radius()
+                            radius_world = hud._compute_custom_radius()
                             new_body = make_body(
                                 x=px, y=py,
                                 vx=0.0, vy=0.0,
                                 mass=hud.custom_mass,
-                                radius=radius_pixels * WORLD_SCALE,
+                                radius=radius_world,
                                 charge=hud.custom_charge,
                                 body_type=BODY_TYPE_PLANET,
                             )
@@ -826,10 +784,13 @@ def main() -> None:
                         renderer.selected_body_id = found_id
                         hud.set_selected_body(bodies[found_id], found_id)
                     else:
-                        # 取消选择
+                        # 取消选择并启动框选
                         selected_body_id = None
                         renderer.selected_body_id = None
                         hud.set_selected_body(None, -1)
+                        selected_body_ids.clear()
+                        box_select_start = (sx, sy)
+                        box_select_end = None
 
             # --- 左键抓取拖拽 ---
             elif cmd.startswith("GRAB_START:"):
@@ -916,12 +877,12 @@ def main() -> None:
                     elif custom_placement_stage == 3:
                         if custom_preview_pos is not None and custom_arrow_start is not None:
                             px, py = custom_preview_pos
-                            radius_pixels = hud._compute_custom_radius()
+                            radius_world = hud._compute_custom_radius()
                             new_body = make_body(
                                 x=px, y=py,
                                 vx=0.0, vy=0.0,
                                 mass=hud.custom_mass,
-                                radius=radius_pixels * WORLD_SCALE,
+                                radius=radius_world,
                                 charge=hud.custom_charge,
                                 body_type=BODY_TYPE_PLANET,
                             )
@@ -1014,6 +975,28 @@ def main() -> None:
                 is_paused = False
                 hud.set_play_pause_state(False)
 
+            # --- 框选结束 ---
+            elif cmd.startswith("BOX_SELECT_END:"):
+                parts = cmd.split(":")
+                coords = parts[1].split(",")
+                x1, y1, x2, y2 = (
+                    int(coords[0]), int(coords[1]),
+                    int(coords[2]), int(coords[3]),
+                )
+                # 计算选框内的天体
+                selected_body_ids.clear()
+                for i in range(bodies.shape[0]):
+                    if bodies[i, IS_ACTIVE] == 0.0:
+                        continue
+                    wx = float(bodies[i, X])
+                    wy = float(bodies[i, Y])
+                    sx, sy = camera.world_to_screen(wx, wy)
+                    if x1 <= sx <= x2 and y1 <= sy <= y2:
+                        selected_body_ids.add(i)
+                # 清除选框状态
+                box_select_start = None
+                box_select_end = None
+
             # --- 右键 ---
             elif cmd.startswith("RIGHT_CLICK:"):
                 parts = cmd.split(":")
@@ -1071,7 +1054,8 @@ def main() -> None:
                     body_charge = float(bodies[found_id, CHARGE])
                     is_paused = True
                     hud.set_play_pause_state(True)
-                    hud.show_edit_dialog(body_mass, body_charge)
+                    body_radius = float(bodies[found_id, RADIUS])
+                    hud.show_edit_dialog(body_mass, body_charge, body_radius)
                 else:
                     # 右键空白 → 取消选择
                     selected_body_id = None
@@ -1164,6 +1148,13 @@ def main() -> None:
                     continue
                 else:
                     running = False
+
+        # ================================================================
+        # 框选状态更新
+        # ================================================================
+
+        if box_select_start is not None:
+            box_select_end = (input_handler.mouse_screen_x, input_handler.mouse_screen_y)
 
         # ================================================================
         # 3. 物理更新（固定时间步）
@@ -1315,8 +1306,7 @@ def main() -> None:
                 # 获取引力源
                 star_info = _get_gravity_source(bodies, reference_body_id)
                 # 计算轨迹
-                body_radius_pixels = hud._compute_custom_radius()
-                body_radius = body_radius_pixels * WORLD_SCALE
+                body_radius = hud._compute_custom_radius()
                 placement_trajectory = _compute_placement_trajectory(
                     np.array([px, py], dtype=np.float64), vel,
                     star_info, body_radius,
@@ -1345,22 +1335,33 @@ def main() -> None:
                 )
 
         # 渲染
+        renderer.box_select_start = box_select_start
+        renderer.box_select_end = box_select_end
+        renderer.selected_body_ids = selected_body_ids
         renderer.render(bodies, trails, camera, fade_factors)
+
+        # 框选框绘制
+        renderer.draw_box_selection()
+
+        # 多选提示
+        if len(selected_body_ids) > 1:
+            info_surf = renderer._font_medium.render(
+                f"Selected: {len(selected_body_ids)} bodies", True, (0, 200, 255)
+            )
+            renderer.screen.blit(info_surf, (10, 60))
 
         # 自定义粒子放置预览
         if custom_placement_stage == 2:
             # 阶段 2：预览圆跟随鼠标
             mouse_wx, mouse_wy = input_handler.get_mouse_world_pos(camera)
-            radius_pixels = hud._compute_custom_radius()
-            radius_world = radius_pixels * WORLD_SCALE
+            radius_world = hud._compute_custom_radius()
             renderer.draw_placement_preview(
                 mouse_wx, mouse_wy, radius_world, camera, renderer.screen
             )
         elif custom_placement_stage == 3 and custom_preview_pos is not None:
             # 阶段 3：固定预览圆 + 速度方向箭头
             px, py = custom_preview_pos
-            radius_pixels = hud._compute_custom_radius()
-            radius_world = radius_pixels * WORLD_SCALE
+            radius_world = hud._compute_custom_radius()
             renderer.draw_placement_preview(
                 px, py, radius_world, camera, renderer.screen
             )

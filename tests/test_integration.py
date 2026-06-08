@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 from src.config import (
+    CAMERA_ZOOM_MAX,
     CLICK_SELECTION_RADIUS,
     COULOMB_CONSTANT,
     GRAVITATIONAL_CONSTANT,
@@ -199,19 +200,19 @@ class TestPhysicsIntegration:
         bodies = create_default_scene()
 
         count = engine.get_body_count(bodies)
-        assert count == 4, f"应有 4 个活跃天体，实际 {count}"
+        assert count == 2, f"应有 4 个活跃天体，实际 {count}"
 
         # 检查第 0 个天体（恒星）
         state = engine.get_body_state(bodies, 0)
         assert state["is_static"] is True
-        assert state["mass"] == pytest.approx(1.0e30, rel=1e-10)
+        assert state["mass"] == pytest.approx(2.0e30, rel=1e-10)
         assert state["x"] == 0.0
         assert state["y"] == 0.0
 
         # 检查第 1 个天体（行星）
         state = engine.get_body_state(bodies, 1)
         assert state["is_static"] is False
-        assert state["mass"] == pytest.approx(5.0e28, rel=1e-10)
+        assert state["mass"] == pytest.approx(6.0e26, rel=1e-10)
         assert state["vx"] == 0.0
         assert float(state["vy"]) > 0  # 有切向速度
 
@@ -268,7 +269,7 @@ class TestCameraIntegration:
 
         # 多次缩放到最大
         camera.zoom_at(10.0, 640, 360)
-        assert camera.zoom <= 10.0, "zoom 不应超过最大值"
+        assert camera.zoom <= CAMERA_ZOOM_MAX, "zoom 不应超过最大值"
 
     def test_camera_get_state(self) -> None:
         """验证 get_state 返回正确的相机状态字典。"""
