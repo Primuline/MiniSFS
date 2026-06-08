@@ -831,6 +831,12 @@ def main() -> None:
                         renderer.selected_body_id = selected_body_id
                         hud.set_selected_body(bodies[selected_body_id], selected_body_id)
                 else:
+                    if is_paused:
+                        # 暂停状态下不抓取天体，只选中
+                        selected_body_id = body_id
+                        renderer.selected_body_id = body_id
+                        hud.set_selected_body(bodies[body_id], body_id)
+                        continue
                     # 进入抓取模式
                     is_grabbing = True
                     grabbed_body_id = body_id
