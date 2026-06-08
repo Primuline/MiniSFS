@@ -525,16 +525,19 @@ def main() -> None:
         # ================================================================
 
         if not is_paused:
-            accumulator += frame_dt * time_speed
-
-            # 限制最大累积时间，防止物理崩溃
-            max_accumulate = physics_dt * 10
-            if accumulator > max_accumulate:
-                accumulator = max_accumulate
-
-            while accumulator >= physics_dt:
-                bodies = physics_engine.update(bodies, physics_dt)
-                accumulator -= physics_dt
+            if time_speed > 100:
+                # 高倍速：直接放大 dt（避免数百万小步积累）
+                # 物理引擎内部用 SUBSTEPS=4 拆分，RK4 能保证稳定
+                big_dt = physics_dt * time_speed
+                bodies = physics_engine.update(bodies, big_dt)
+            else:
+                accumulator += frame_dt * time_speed
+                max_accumulate = physics_dt * 10
+                if accumulator > max_accumulate:
+                    accumulator = max_accumulate
+                while accumulator >= physics_dt:
+                    bodies = physics_engine.update(bodies, physics_dt)
+                    accumulator -= physics_dt
         else:
             # 暂停时重置累积器
             accumulator = 0.0
