@@ -572,6 +572,11 @@ def main() -> None:
                                 is_static=True,
                             )
                             bodies = add_body_to_array(bodies, new_body)
+                            # 参考系速度叠加
+                            if reference_body_id is not None and reference_body_id < bodies.shape[0]:
+                                if int(bodies[reference_body_id, IS_ACTIVE]) == 1:
+                                    bodies[-1, VX] += bodies[reference_body_id, VX]
+                                    bodies[-1, VY] += bodies[reference_body_id, VY]
                             _cancel_simple_placement()
                         else:
                             # 行星/探测器：固定预览位置，进入速度设定阶段
@@ -606,6 +611,11 @@ def main() -> None:
                                 uy = dy_screen / arrow_dist
                                 bodies[-1, VX] = ux * actual_speed
                                 bodies[-1, VY] = uy * actual_speed
+                            # 参考系速度叠加
+                            if reference_body_id is not None and reference_body_id < bodies.shape[0]:
+                                if int(bodies[reference_body_id, IS_ACTIVE]) == 1:
+                                    bodies[-1, VX] += bodies[reference_body_id, VX]
+                                    bodies[-1, VY] += bodies[reference_body_id, VY]
 
                             # 如果放置的是探测器，选择它
                             if int(body_type) == BODY_TYPE_PROBE:
@@ -653,6 +663,11 @@ def main() -> None:
                                 uy = dy_screen / arrow_dist
                                 bodies[-1, VX] = ux * actual_speed
                                 bodies[-1, VY] = uy * actual_speed
+                            # 参考系速度叠加
+                            if reference_body_id is not None and reference_body_id < bodies.shape[0]:
+                                if int(bodies[reference_body_id, IS_ACTIVE]) == 1:
+                                    bodies[-1, VX] += bodies[reference_body_id, VX]
+                                    bodies[-1, VY] += bodies[reference_body_id, VY]
 
                         # 清理放置状态
                         _cancel_custom_placement()
@@ -729,6 +744,11 @@ def main() -> None:
                                 is_static=True,
                             )
                             bodies = add_body_to_array(bodies, new_body)
+                            # 参考系速度叠加
+                            if reference_body_id is not None and reference_body_id < bodies.shape[0]:
+                                if int(bodies[reference_body_id, IS_ACTIVE]) == 1:
+                                    bodies[-1, VX] += bodies[reference_body_id, VX]
+                                    bodies[-1, VY] += bodies[reference_body_id, VY]
                             _cancel_simple_placement()
                         else:
                             simple_preview_pos = (world_x, world_y)
@@ -836,6 +856,7 @@ def main() -> None:
                 else:
                     if is_paused:
                         # 暂停状态下不抓取天体，只选中
+                        input_handler.reset_grab()
                         selected_body_id = body_id
                         renderer.selected_body_id = body_id
                         hud.set_selected_body(bodies[body_id], body_id)
