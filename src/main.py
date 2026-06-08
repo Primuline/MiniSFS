@@ -1045,6 +1045,11 @@ def main() -> None:
                 elif custom_placement_stage > 0:
                     _cancel_custom_placement()
                 elif reference_body_id is not None:
+                    # 保存当前参考系天体位置，使中心保持在当前位置
+                    if reference_body_id < bodies.shape[0]:
+                        last_x = float(bodies[reference_body_id, X])
+                        last_y = float(bodies[reference_body_id, Y])
+                        camera.follow(last_x, last_y)
                     zoom_to_restore = _saved_zoom_before_frame
                     if abs(camera.zoom - zoom_to_restore) > 0.01:
                         camera.zoom_at(zoom_to_restore / camera.zoom, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
@@ -1156,6 +1161,11 @@ def main() -> None:
         # 参考系天体消失检查
         if reference_body_id is not None:
             if reference_body_id >= bodies.shape[0] or bodies[reference_body_id, IS_ACTIVE] == 0.0:
+                # 保存最后已知位置并跟随，使中心停在消失点
+                if reference_body_id < bodies.shape[0]:
+                    last_x = float(bodies[reference_body_id, X])
+                    last_y = float(bodies[reference_body_id, Y])
+                    camera.follow(last_x, last_y)
                 # 退出时恢复 zoom
                 zoom_to_restore = _saved_zoom_before_frame
                 if abs(camera.zoom - zoom_to_restore) > 0.01:
