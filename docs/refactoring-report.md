@@ -117,6 +117,7 @@ while delta_angle < -math.pi:
 ### 提交历史
 
 ```
+8031548 fix: resolve 11 pre-existing test failures in test_physics.py
 2cc8920 refactor: use round_to_nice_number utility in hud.py scale bar
 17091b6 refactor: use normalize_angle_delta utility in forces.py and main.py
 f61eca3 refactor: merge EditBodyDialog and ScientificInputDialog into shared base class
@@ -127,9 +128,13 @@ a58f395 refactor: translate Chinese to English in src/core/ and set up utils pac
 
 ### 测试结果
 
-- 91 个测试通过（重构前后一致）
-- 11 个预存失败（均为物理引擎浮点数精度问题，非本次重构引入）
-- 每步提交均运行 `pytest tests/ -q` 验证
+- **102 passed, 0 failed** — 全部测试通过
+- 修复了 11 个预存测试失败：
+  1. `forces.py`: `softening=0` 时对角线 `r_squared=0` 导致 NaN → 加 `np.fill_diagonal` 保护
+  2. Coulomb 测试: 同号/异号电荷受力方向断言符号反了 → 修正
+  3. 轨道测试: 等质量双体圆周运动速度公式错误（快 2 倍）→ 修正
+  4. 碰撞预测测试: dt=1 时探测器跳过行星 → 放行星中心 + dt=0.1
+  5. 碰撞合并测试: handle_collisions 不删除 inactive 行 → 改为检查 IS_ACTIVE
 
 ---
 
@@ -159,6 +164,5 @@ src/
 
 ## 后续建议
 
-1. **修复预存的 11 个测试失败** — 均为 `forces.py` 中 `r_squared` 在 `softening=0` 时的除零问题，建议调整测试 softening 参数
-2. **进一步抽取** — `_draw_alpha_line()` 在 `effects.py` 中被调用 6 次，可移至 `utils/tools.py`
-3. **类型注解补全** — `main.py` 中部分局部变量缺少类型注解
+1. **进一步抽取** — `_draw_alpha_line()` 在 `effects.py` 中被调用 6 次，可移至 `utils/tools.py`
+2. **类型注解补全** — `main.py` 中部分局部变量缺少类型注解
