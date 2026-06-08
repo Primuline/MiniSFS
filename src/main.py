@@ -447,6 +447,7 @@ def main() -> None:
                 if found_id is not None and int(bodies[found_id, BODY_TYPE]) == BODY_TYPE_PROBE:
                     # 开始瞄准
                     is_aiming = True
+                    input_handler.start_aiming()
                     aim_start_screen = (sx, sy)
                     world_x, world_y = camera.screen_to_world(sx, sy)
                     aim_start_world = (world_x, world_y)
@@ -475,11 +476,13 @@ def main() -> None:
             # --- 发射探测器 ---
             elif cmd.startswith("LAUNCH_PROBE:"):
                 parts = cmd.split(":")
-                if len(parts) == 5:
-                    start_x = float(parts[1])
-                    start_y = float(parts[2])
-                    dx = float(parts[3])
-                    dy = float(parts[4])
+                if len(parts) >= 2:
+                    coords = parts[1].split(",")
+                    if len(coords) == 4:
+                        start_x = float(coords[0])
+                        start_y = float(coords[1])
+                        dx = float(coords[2])
+                        dy = float(coords[3])
 
                     # 转换为世界坐标速度
                     # 拖拽方向的反向为发射方向，力度与拖拽距离成正比

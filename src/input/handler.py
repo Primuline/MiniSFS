@@ -245,9 +245,13 @@ class InputHandler(IInputHandler):
             self.is_panning = False
             return None
 
-        elif event.button == 3:  # 释放右键
+        elif event.button == 3:  # 释放右键 — 探测器瞄准发射
             if self.is_aiming:
                 self.is_aiming = False
+                dx = event.pos[0] - self.aim_start_x
+                dy = event.pos[1] - self.aim_start_y
+                if math.sqrt(dx * dx + dy * dy) > 5:
+                    return f"LAUNCH_PROBE:{self.aim_start_x},{self.aim_start_y},{dx},{dy}"
             return None
 
         return None
