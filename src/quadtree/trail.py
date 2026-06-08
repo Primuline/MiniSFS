@@ -51,6 +51,9 @@ class TrailBuffer(ITrailBuffer):
         """追加一帧坐标到指定天体的尾迹中。
 
         如果该天体还没有尾迹，自动创建一个新的 deque。
+        如果该 body_id 的前一帧到当前位置出现大幅度跳跃
+        （> 1e12 m，表明数组压缩后 body_id 已对应不同天体），
+        自动清空旧尾迹重新开始记录。
 
         Args:
             body_id: 天体 ID
@@ -59,18 +62,31 @@ class TrailBuffer(ITrailBuffer):
         """
         if body_id not in self._trails:
             self._trails[body_id] = deque(maxlen=self._maxlen)
+        else:
+            dq = self._trails[body_id]
+            if dq:
+                lx, ly = dq[-1]
+                # 1e12m ≈ 10 个轨道半径，远超一帧内的正常位移
+                if (x - lx) ** 2 + (y - ly) ** 2 > 1e24:
+                    dq.clear()
         self._trails[body_id].append((float(x), float(y)))
 
     def push_all(self, bodies: np.ndarray) -> None:
         """为所有活跃天体的当前位置追加尾迹帧。
 
+        追加完成后，清理已不存在的天体的残留尾迹，避免
+        天体被移除后旧尾迹出现在新放置的天体上。
+
         Args:
             bodies: shape (N, NUM_FIELDS) 的天体状态数组
         """
-        active_indices = np.where(bodies[:, IS_ACTIVE] == 1.0)[0]
-        for idx in active_indices:
-            body_id = int(idx)
-            self.push_frame(body_id, float(bodies[idx, X]), float(bodies[idx, Y]))
+        active_set = set(int(idx) for idx in np.where(bodies[:, IS_ACTIVE] == 1.0)[0])
+        for body_id in active_set:
+            self.push_frame(body_id, float(bodies[body_id, X]), float(bodies[body_id, Y]))
+        # 清理残留尾迹（已被移除的天体）
+        stale = [bid for bid in self._trails if bid not in active_set]
+        for bid in stale:
+            del self._trails[bid]
 
     def get_trail(self, body_id: int) -> List[Tuple[float, float]]:
         """获取指定天体的尾迹坐标列表 (从旧到新)。
