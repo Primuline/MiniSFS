@@ -286,6 +286,9 @@ def main() -> None:
     # 当前选中天体
     selected_body_id: Optional[int] = None
 
+    # 参考系天体 ID（双击进入参考系）
+    reference_body_id: Optional[int] = None
+
     # 预测轨迹缓存
     predicted_trajectory: Optional[np.ndarray] = None
     _prediction_frame_counter: int = 0  # 仅每 N 帧重新计算预测轨迹
@@ -951,6 +954,8 @@ def main() -> None:
                     wx = float(bodies[found_id, X])
                     wy = float(bodies[found_id, Y])
                     camera.follow(wx, wy)
+                    reference_body_id = found_id
+                    hud.set_reference_frame(found_id, int(bodies[found_id, BODY_TYPE]))
 
             # --- 发射探测器 ---
             elif cmd.startswith("LAUNCH_PROBE:"):
@@ -1001,6 +1006,10 @@ def main() -> None:
                     _cancel_simple_placement()
                 elif custom_placement_stage > 0:
                     _cancel_custom_placement()
+                elif reference_body_id is not None:
+                    reference_body_id = None
+                    hud.clear_reference_frame()
+                    continue
                 else:
                     running = False
 
@@ -1030,10 +1039,12 @@ def main() -> None:
         # 4. 尾迹记录
         # ================================================================
 
-        if is_grabbing and grabbed_body_id is not None:
-            trail_buffer.push_all(bodies, exclude={grabbed_body_id})
-        else:
-            trail_buffer.push_all(bodies)
+        # 暂停时尾迹不增加新帧也不推进淡出计数器
+        if not is_paused:
+            if is_grabbing and grabbed_body_id is not None:
+                trail_buffer.push_all(bodies, exclude={grabbed_body_id})
+            else:
+                trail_buffer.push_all(bodies)
 
         # ================================================================
         # 5. 更新尾迹后的数据
