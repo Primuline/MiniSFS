@@ -14,7 +14,7 @@ from src.config import (
     WORLD_SCALE,
 )
 from src.core.types import BODY_TYPE, IS_STATIC, MASS, RADIUS, VX, VY, X, Y
-from src.main import create_level_1_scene
+from src.main import create_level_1_scene, probe_radius_to_tool_pixels
 
 
 def test_level_1_contains_earth_moon_and_probe() -> None:
@@ -51,3 +51,11 @@ def test_level_1_probe_starts_on_earth_surface_clear_of_collision() -> None:
     probe_distance = math.hypot(float(bodies[2, X]), float(bodies[2, Y]))
 
     assert probe_distance == pytest.approx(earth_radius + probe_radius + 1.0)
+
+
+def test_probe_radius_tool_conversion_preserves_small_probe_radius() -> None:
+    """Probe placement should not clamp sub-pixel radii to one world-scale pixel."""
+    radius_meters = 100.0
+    radius_pixels = probe_radius_to_tool_pixels(radius_meters)
+
+    assert radius_pixels * WORLD_SCALE == pytest.approx(radius_meters)

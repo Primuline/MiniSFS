@@ -208,6 +208,11 @@ class ProbeRocketState:
     mass_flow_rate: float
 
 
+def probe_radius_to_tool_pixels(radius_meters: float) -> float:
+    """Convert a probe world radius to the legacy tool radius unit."""
+    return max(1.0, radius_meters) / WORLD_SCALE
+
+
 def add_body_to_array(
     bodies: np.ndarray,
     body_data: np.ndarray,
@@ -684,7 +689,7 @@ def main() -> None:
         if tool == "TOOL_PROBE":
             if pending_probe_rocket_state is not None:
                 mass = pending_probe_rocket_state.dry_mass + pending_probe_rocket_state.fuel_mass
-            radius_pixels = max(1.0, pending_probe_radius / WORLD_SCALE)
+            radius_pixels = probe_radius_to_tool_pixels(pending_probe_radius)
         return mass, radius_pixels, charge, body_type
 
     # --- Trajectory preview helper functions ---
