@@ -107,15 +107,15 @@ BODY_TYPE_PLANET: int = 1    # planet — ordinary body
 BODY_TYPE_PROBE: int = 2     # probe — player-controlled
 BODY_TYPE_CHARGED: int = 3   # charged particle — affected by Coulomb force
 
-# Default body radii/size (pixels). Probe uses equilateral triangle side length.
-DEFAULT_RADIUS_STAR: float = 875.0     # 7e8 m = 7e5 km @ 800 km/px
-DEFAULT_RADIUS_PLANET: float = 8.0
-DEFAULT_RADIUS_PROBE: float = 0.6
+# Default body radii/size (pixels). Probe uses equilateral triangle inradius.
+DEFAULT_RADIUS_STAR: float = 869.625   # Sun radius 6.957e8 m @ 800 km/px
+DEFAULT_RADIUS_PLANET: float = 7.96375 # Earth radius 6.371e6 m @ 800 km/px
+DEFAULT_RADIUS_PROBE: float = 0.000125 # 100 m @ 800 km/px
 DEFAULT_RADIUS_CHARGED: float = 6.0
 
 # Default body masses (kg)
-DEFAULT_MASS_STAR: float = 2.0e30
-DEFAULT_MASS_PLANET: float = 6.0e26
+DEFAULT_MASS_STAR: float = 1.98847e30
+DEFAULT_MASS_PLANET: float = 5.972e24
 DEFAULT_MASS_PROBE: float = 1.0
 DEFAULT_MASS_CHARGED: float = 1.0e10
 
@@ -127,13 +127,13 @@ DEFAULT_CHARGE_CHARGED: float = 1.0e6
 # ============================================================================
 
 # Default custom particle mass (kg)
-CUSTOM_MASS_DEFAULT: float = 1.0e26
+CUSTOM_MASS_DEFAULT: float = 5.972e24
 # Default custom particle charge (C)
 CUSTOM_CHARGE_DEFAULT: float = 0.0
 # Default custom particle speed (m/s)
 CUSTOM_SPEED_DEFAULT: float = 1.0e4
-# Default custom particle radius (m) — Earth radius 6400 km
-CUSTOM_RADIUS_DEFAULT: float = 6.4e6
+# Default custom particle radius (m) — Earth radius 6371 km
+CUSTOM_RADIUS_DEFAULT: float = 6.371e6
 # Custom particle mass adjustment step (multiplier)
 CUSTOM_MASS_STEP: float = 10.0
 # Custom particle charge step (C)
@@ -183,10 +183,10 @@ TARGET_ZONE_RADIUS: float = 15.0
 PROBE_FUEL_MAX: float = 10.0
 
 # Probe rocket defaults
-PROBE_ROCKET_TOTAL_MASS_DEFAULT: float = 1.0e5
-PROBE_ROCKET_FUEL_MASS_DEFAULT: float = 7.0e4
-PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT: float = 3.0e3
-PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT: float = 50.0
+PROBE_ROCKET_TOTAL_MASS_DEFAULT: float = 2.8e6
+PROBE_ROCKET_FUEL_MASS_DEFAULT: float = 2.1e6
+PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT: float = 2.5e3
+PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT: float = 1.4e4
 
 # Score weights
 SCORE_WEIGHT_TIME: float = 0.3

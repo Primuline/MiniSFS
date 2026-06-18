@@ -104,8 +104,8 @@ def create_default_scene() -> np.ndarray:
     star = make_body(
         x=0.0, y=0.0,
         vx=0.0, vy=0.0,
-        mass=DEFAULT_MASS_STAR,  # 2.0e30 kg
-        radius=7.0e8,  # 7e5 km
+        mass=DEFAULT_MASS_STAR,
+        radius=DEFAULT_RADIUS_STAR * WORLD_SCALE,
         body_type=BODY_TYPE_STAR,
         is_static=True,
     )
@@ -120,8 +120,8 @@ def create_default_scene() -> np.ndarray:
     planet = make_body(
         x=orbit_radius, y=0.0,
         vx=0.0, vy=orbital_speed,
-        mass=DEFAULT_MASS_PLANET,  # 6.0e26 kg
-        radius=6.4e6,  # 6.4e3 km
+        mass=DEFAULT_MASS_PLANET,
+        radius=DEFAULT_RADIUS_PLANET * WORLD_SCALE,
         body_type=BODY_TYPE_PLANET,
     )
     bodies_list.append(planet)

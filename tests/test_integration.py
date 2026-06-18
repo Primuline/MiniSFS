@@ -17,7 +17,14 @@ from src.config import (
     CAMERA_ZOOM_MAX,
     CLICK_SELECTION_RADIUS,
     COULOMB_CONSTANT,
+    DEFAULT_MASS_PLANET,
+    DEFAULT_MASS_STAR,
+    DEFAULT_RADIUS_PLANET,
+    DEFAULT_RADIUS_PROBE,
     GRAVITATIONAL_CONSTANT,
+    PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
+    PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
+    PROBE_ROCKET_TOTAL_MASS_DEFAULT,
     SOFTENING,
     WORLD_SCALE,
 )
@@ -206,16 +213,31 @@ class TestPhysicsIntegration:
         # Check body 0 (star)
         state = engine.get_body_state(bodies, 0)
         assert state["is_static"] is True
-        assert state["mass"] == pytest.approx(2.0e30, rel=1e-10)
+        assert state["mass"] == pytest.approx(DEFAULT_MASS_STAR, rel=1e-10)
         assert state["x"] == 0.0
         assert state["y"] == 0.0
 
         # Check body 1 (planet)
         state = engine.get_body_state(bodies, 1)
         assert state["is_static"] is False
-        assert state["mass"] == pytest.approx(6.0e26, rel=1e-10)
+        assert state["mass"] == pytest.approx(DEFAULT_MASS_PLANET, rel=1e-10)
         assert state["vx"] == 0.0
         assert float(state["vy"]) > 0  # has tangential velocity
+
+    def test_default_probe_thrust_exceeds_default_planet_surface_gravity(self) -> None:
+        """Default probe settings should lift off from an Earth-like default planet."""
+        contact_radius = (
+            DEFAULT_RADIUS_PLANET * WORLD_SCALE
+            + DEFAULT_RADIUS_PROBE * WORLD_SCALE
+        )
+        surface_g = GRAVITATIONAL_CONSTANT * DEFAULT_MASS_PLANET / (contact_radius ** 2)
+        thrust_acc = (
+            PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT
+            * PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT
+            / PROBE_ROCKET_TOTAL_MASS_DEFAULT
+        )
+
+        assert thrust_acc > surface_g
 
     def test_get_total_momentum(self) -> None:
         """Verify momentum query API returns reasonable values."""

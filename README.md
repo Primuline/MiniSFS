@@ -14,7 +14,7 @@ A **2D space sandbox simulator** based on real N-body physics gravity. Place sta
 - **Reference frame mode** — Double-click a body to enter reference frame view (smooth follow + auto-zoom), Esc to exit
 - **Trajectory preview** — Real-time predicted orbit display; reference frames use true future relative trajectories
 - **Probe aiming** — Right-click probe, then drag to set launch direction and speed
-- **Probe rocket control** — Probe placement opens a rocket parameter dialog; probe radius is the equilateral triangle side length
+- **Probe rocket control** — Probe placement opens a rocket parameter dialog; probe radius is the equilateral triangle center-to-edge distance
 - **Edit body** — Right-click an existing body to edit mass/charge/radius (scientific notation)
 - **Trail system** — Auto-record trajectories, with relative trails in reference frame mode
 - **Time control** — Slow 2x / restore 1x / speed up 2x buttons, bounded from 1/64x to 64x

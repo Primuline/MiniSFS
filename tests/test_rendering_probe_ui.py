@@ -22,15 +22,15 @@ def pygame_dummy() -> None:
 def test_validate_probe_parameters_computes_dry_mass() -> None:
     """Valid probe settings should include dry mass."""
     result = validate_probe_parameters(
-        total_mass=1.0e5,
-        fuel_mass=7.0e4,
-        exhaust_velocity=3.0e3,
-        mass_flow_rate=50.0,
-        radius=8.0e5,
+        total_mass=2.8e6,
+        fuel_mass=2.1e6,
+        exhaust_velocity=2.5e3,
+        mass_flow_rate=1.4e4,
+        radius=100.0,
     )
 
-    assert result["dry_mass"] == pytest.approx(3.0e4)
-    assert result["fuel_mass"] == pytest.approx(7.0e4)
+    assert result["dry_mass"] == pytest.approx(7.0e5)
+    assert result["fuel_mass"] == pytest.approx(2.1e6)
 
 
 def test_validate_probe_parameters_rejects_invalid_fuel() -> None:
@@ -39,9 +39,9 @@ def test_validate_probe_parameters_rejects_invalid_fuel() -> None:
         validate_probe_parameters(
             total_mass=1.0e5,
             fuel_mass=1.0e5,
-            exhaust_velocity=3.0e3,
-            mass_flow_rate=50.0,
-            radius=8.0e5,
+            exhaust_velocity=2.5e3,
+            mass_flow_rate=1.4e4,
+            radius=100.0,
         )
 
 
@@ -53,9 +53,12 @@ def test_probe_dialog_prefill_and_results(pygame_dummy) -> None:
 
     result = dialog.get_results()
 
-    assert result["total_mass"] == pytest.approx(1.0e5)
-    assert result["fuel_mass"] == pytest.approx(7.0e4)
-    assert result["dry_mass"] == pytest.approx(3.0e4)
+    assert result["total_mass"] == pytest.approx(2.8e6)
+    assert result["fuel_mass"] == pytest.approx(2.1e6)
+    assert result["dry_mass"] == pytest.approx(7.0e5)
+    assert result["exhaust_velocity"] == pytest.approx(2.5e3)
+    assert result["mass_flow_rate"] == pytest.approx(1.4e4)
+    assert result["radius"] == pytest.approx(100.0)
 
 
 def test_hud_probe_fuel_panel_draws(pygame_dummy) -> None:
