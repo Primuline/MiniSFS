@@ -115,6 +115,7 @@ class Renderer(IRenderer):
         trails: Dict[int, List[Tuple[float, float]]],
         camera: ICamera,
         fade_factors: Optional[Dict[int, float]] = None,
+        reference_body_id: Optional[int] = None,
     ) -> None:
         """Render a single frame.
 
@@ -145,7 +146,7 @@ class Renderer(IRenderer):
         draw_trails(self.screen, trails, body_speeds, camera, fade_factors)
 
         # Draw bodies
-        self._draw_bodies(bodies, camera)
+        self._draw_bodies(bodies, camera, reference_body_id)
 
         # Selection highlight (single + multi)
         if self.selected_body_id is not None or len(self.selected_body_ids) > 0:
@@ -243,7 +244,12 @@ class Renderer(IRenderer):
     # Internal drawing methods
     # ------------------------------------------------------------------
 
-    def _draw_bodies(self, bodies: np.ndarray, camera: ICamera) -> None:
+    def _draw_bodies(
+        self,
+        bodies: np.ndarray,
+        camera: ICamera,
+        reference_body_id: Optional[int] = None,
+    ) -> None:
         """Draw all active bodies.
 
         Args:
@@ -275,6 +281,17 @@ class Renderer(IRenderer):
                 self._draw_planet(sx, sy, screen_radius, mass, is_static)
             elif body_type == BODY_TYPE_PROBE:
                 landing_normal = self._probe_landing_normal(bodies, i)
+                draw_vx = vx
+                draw_vy = vy
+                if (
+                    landing_normal is None
+                    and reference_body_id is not None
+                    and reference_body_id < bodies.shape[0]
+                    and reference_body_id != i
+                    and bodies[reference_body_id, IS_ACTIVE] == 1.0
+                ):
+                    draw_vx -= float(bodies[reference_body_id, VX])
+                    draw_vy -= float(bodies[reference_body_id, VY])
                 speed = math.sqrt(vx * vx + vy * vy)
                 if landing_normal is None and speed <= 1.0:
                     # Fallback: orient away from nearest non-probe body
@@ -292,7 +309,7 @@ class Renderer(IRenderer):
                             min_dist = dist
                             nearest_dir = (float(delta[0] / dist), float(delta[1] / dist))
                     landing_normal = nearest_dir
-                self._draw_probe(sx, sy, screen_radius, vx, vy, landing_normal)
+                self._draw_probe(sx, sy, screen_radius, draw_vx, draw_vy, landing_normal)
             elif body_type == BODY_TYPE_CHARGED:
                 self._draw_charged(sx, sy, screen_radius, charge)
 
@@ -372,11 +389,7 @@ class Renderer(IRenderer):
             vx, vy: Velocity components
             landing_normal: Optional outward normal from a landed host body.
         """
-        speed = math.sqrt(vx * vx + vy * vy)
-        if landing_normal is not None:
-            angle = math.atan2(landing_normal[1], landing_normal[0])
-        else:
-            angle = math.atan2(vy, vx) if speed > 0.1 else 0.0
+        angle = self._probe_direction_angle(vx, vy, landing_normal)
 
         side = max(5.1, side_length * 2.0 * math.sqrt(3.0))
         height = math.sqrt(3.0) * side / 2.0
@@ -403,6 +416,18 @@ class Renderer(IRenderer):
         pygame.draw.polygon(self.screen, UI_BLACK, [nose, left, right], 1)
         pygame.draw.circle(self.screen, UI_BLACK, nose, max(2, int(side * 0.12)))
         pygame.draw.circle(self.screen, UI_WHITE, nose, max(2, int(side * 0.12)), 1)
+
+    def _probe_direction_angle(
+        self,
+        vx: float,
+        vy: float,
+        landing_normal: Optional[Tuple[float, float]] = None,
+    ) -> float:
+        """Return the probe nose direction angle in screen/world coordinates."""
+        if landing_normal is not None:
+            return math.atan2(landing_normal[1], landing_normal[0])
+        speed = math.sqrt(vx * vx + vy * vy)
+        return math.atan2(vy, vx) if speed > 0.1 else 0.0
 
     def _draw_charged(self, sx: int, sy: int, radius: float, charge: float) -> None:
         """Draw a charged particle with +/- sign.

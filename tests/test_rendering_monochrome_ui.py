@@ -7,6 +7,7 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import numpy as np
 import pygame
+import pytest
 
 from src.config import (
     BODY_TYPE_CHARGED,
@@ -135,6 +136,20 @@ def test_landed_probe_normal_ignores_absolute_host_velocity() -> None:
     ]
 
     assert renderer._probe_landing_normal(bodies, 1) == (1.0, 0.0)
+
+
+def test_probe_direction_uses_relative_velocity_input() -> None:
+    """Probe nose direction should follow the velocity supplied by the caller."""
+    renderer = Renderer(width=240, height=180)
+
+    assert renderer._probe_direction_angle(0.0, -10.0) == pytest.approx(-np.pi / 2)
+
+
+def test_probe_direction_landing_normal_overrides_velocity() -> None:
+    """Landed probes should point away from the host even if moving with it."""
+    renderer = Renderer(width=240, height=180)
+
+    assert renderer._probe_direction_angle(100.0, -50.0, (1.0, 0.0)) == pytest.approx(0.0)
 
 
 def test_renderer_state_label_is_shifted_right_of_toolbar() -> None:

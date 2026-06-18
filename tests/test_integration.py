@@ -369,6 +369,43 @@ class TestInputIntegration:
         assert camera.center_x != initial_center_x, "center_x should change after drag"
         assert camera.center_y != initial_center_y, "center_y should change after drag"
 
+    def test_left_click_body_selects_without_grab(self, pygame_dummy) -> None:
+        """Left-clicking a body should select, not start body dragging."""
+        import pygame
+
+        camera = Camera(width=1280, height=720, world_scale=WORLD_SCALE)
+        handler = InputHandler()
+        bodies = create_default_scene()
+        screen_x, screen_y = camera.world_to_screen(float(bodies[1, X]), float(bodies[1, Y]))
+
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN,
+            {"pos": (screen_x, screen_y), "button": 1},
+        )
+        cmd = handler.handle_event(event, bodies, camera)
+
+        assert cmd.startswith("CLICK:")
+        assert handler.is_grabbing is False
+
+    def test_middle_click_body_starts_grab(self, pygame_dummy) -> None:
+        """Middle-clicking a body should start body dragging instead of panning."""
+        import pygame
+
+        camera = Camera(width=1280, height=720, world_scale=WORLD_SCALE)
+        handler = InputHandler()
+        bodies = create_default_scene()
+        screen_x, screen_y = camera.world_to_screen(float(bodies[1, X]), float(bodies[1, Y]))
+
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN,
+            {"pos": (screen_x, screen_y), "button": 2},
+        )
+        cmd = handler.handle_event(event, bodies, camera)
+
+        assert cmd == f"GRAB_START:1,{screen_x},{screen_y}"
+        assert handler.is_grabbing is True
+        assert handler.is_panning is False
+
     def test_keyboard_shortcuts(self, pygame_dummy) -> None:
         """Simulate keyboard shortcuts should return the correct commands."""
         import pygame

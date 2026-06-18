@@ -211,7 +211,7 @@ class InputHandler(IInputHandler):
         x, y = event.pos
         self.mouse_screen_x, self.mouse_screen_y = x, y
 
-        if event.button == 1:  # Left button — select
+        if event.button == 1:  # Left button — select / double-click reference frame
             # Double-click detection
             now = pygame.time.get_ticks() / 1000.0
             time_since_last = now - self._last_click_time
@@ -230,14 +230,6 @@ class InputHandler(IInputHandler):
             self._last_click_time = now
             self._last_click_pos = (x, y)
 
-            # Check if clicked on a celestial body (grab-drag)
-            if bodies is not None and camera is not None:
-                found_id = self.find_body_at_screen_pos(x, y, bodies, camera)
-                if found_id is not None:
-                    self.is_grabbing = True
-                    self.grabbed_body_id = found_id
-                    return f"GRAB_START:{found_id},{x},{y}"
-
             # Start drag detection
             self.is_dragging = True
             self.drag_start_x = x
@@ -245,7 +237,13 @@ class InputHandler(IInputHandler):
 
             return f"CLICK:{x},{y}"
 
-        elif event.button == 2:  # Middle button - pan
+        elif event.button == 2:  # Middle button - grab body, or pan on empty space
+            if bodies is not None and camera is not None:
+                found_id = self.find_body_at_screen_pos(x, y, bodies, camera)
+                if found_id is not None:
+                    self.is_grabbing = True
+                    self.grabbed_body_id = found_id
+                    return f"GRAB_START:{found_id},{x},{y}"
             self.is_panning = True
             self.pan_last_x, self.pan_last_y = event.pos
             return None
@@ -301,6 +299,10 @@ class InputHandler(IInputHandler):
             return None
 
         elif event.button == 2:  # Release middle button
+            if self.is_grabbing:
+                self.is_grabbing = False
+                self.grabbed_body_id = None
+                return "GRAB_END"
             self.is_panning = False
             return None
 

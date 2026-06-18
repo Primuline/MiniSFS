@@ -291,6 +291,41 @@ def find_landed_probe_ids(bodies: np.ndarray) -> set[int]:
     return landed
 
 
+def find_landed_probe_contacts(bodies: np.ndarray) -> Dict[int, Tuple[int, np.ndarray]]:
+    """Return landed probe contacts as probe_id -> (host_id, outward_normal)."""
+    contacts: Dict[int, Tuple[int, np.ndarray]] = {}
+    for probe_id in range(bodies.shape[0]):
+        if (
+            int(bodies[probe_id, IS_ACTIVE]) != 1
+            or int(bodies[probe_id, BODY_TYPE]) != BODY_TYPE_PROBE
+        ):
+            continue
+
+        probe_pos = bodies[probe_id, [X, Y]]
+        probe_vel = bodies[probe_id, [VX, VY]]
+        probe_radius = float(bodies[probe_id, RADIUS])
+        for host_id in range(bodies.shape[0]):
+            if host_id == probe_id:
+                continue
+            if (
+                int(bodies[host_id, IS_ACTIVE]) != 1
+                or int(bodies[host_id, BODY_TYPE]) == BODY_TYPE_PROBE
+            ):
+                continue
+            delta = probe_pos - bodies[host_id, [X, Y]]
+            dist = float(np.linalg.norm(delta))
+            if dist < 1e-12:
+                continue
+            contact_dist = float(bodies[host_id, RADIUS] + probe_radius)
+            tolerance = max(1.0, probe_radius * 0.05)
+            relative_speed = float(np.linalg.norm(probe_vel - bodies[host_id, [VX, VY]]))
+            if abs(dist - contact_dist) <= tolerance and relative_speed <= 1.0:
+                contacts[probe_id] = (host_id, delta / dist)
+                break
+
+    return contacts
+
+
 def transform_trails_to_reference_frame(
     trails: Dict[int, List[Tuple[float, float]]],
     bodies: np.ndarray,
@@ -560,16 +595,30 @@ def main() -> None:
             and int(bodies[reference_body_id, BODY_TYPE]) == BODY_TYPE_PROBE
         )
 
+    def _controlled_probe_id() -> Optional[int]:
+        """Return the probe currently controlled by keyboard thrust, if any."""
+        if (
+            selected_body_id is not None
+            and selected_body_id < bodies.shape[0]
+            and int(bodies[selected_body_id, IS_ACTIVE]) == 1
+            and int(bodies[selected_body_id, BODY_TYPE]) == BODY_TYPE_PROBE
+        ):
+            return selected_body_id
+        if _is_probe_reference_frame():
+            return reference_body_id
+        return None
+
     def _apply_probe_thrust(direction: Tuple[float, float], effective_dt: float) -> None:
-        """Apply manual probe thrust in reference frame mode."""
-        if not _is_probe_reference_frame() or reference_body_id is None:
+        """Apply manual probe thrust to the selected or reference-frame probe."""
+        probe_id = _controlled_probe_id()
+        if probe_id is None:
             return
-        state = probe_rocket_states.get(reference_body_id)
+        state = probe_rocket_states.get(probe_id)
         if state is None or state.fuel_mass <= 0.0 or state.mass_flow_rate <= 0.0:
             return
 
         result = compute_rocket_burn(
-            current_mass=float(bodies[reference_body_id, MASS]),
+            current_mass=float(bodies[probe_id, MASS]),
             fuel_mass=state.fuel_mass,
             dry_mass=state.dry_mass,
             exhaust_velocity=state.exhaust_velocity,
@@ -580,14 +629,37 @@ def main() -> None:
         if result.fuel_used <= 0.0:
             return
 
-        bodies[reference_body_id, VX] += result.delta_v[0]
-        bodies[reference_body_id, VY] += result.delta_v[1]
+        contacts = find_landed_probe_contacts(bodies)
+        contact = contacts.get(probe_id)
+        if contact is not None and effective_dt > 0.0:
+            host_id, normal = contact
+            direction_vec = np.array(direction, dtype=np.float64)
+            norm = float(np.linalg.norm(direction_vec))
+            if norm > 1e-12:
+                direction_vec /= norm
+                thrust_acc = state.mass_flow_rate * state.exhaust_velocity / max(
+                    float(bodies[probe_id, MASS]),
+                    1e-12,
+                )
+                contact_dist = float(bodies[host_id, RADIUS] + bodies[probe_id, RADIUS])
+                host_gravity = (
+                    GRAVITATIONAL_CONSTANT
+                    * float(bodies[host_id, MASS])
+                    / max(contact_dist * contact_dist, 1e-12)
+                )
+                if float(np.dot(direction_vec, normal)) > 0.7 and thrust_acc > host_gravity:
+                    clearance = max(1.0, float(bodies[probe_id, RADIUS]) * 0.1)
+                    bodies[probe_id, X] = bodies[host_id, X] + normal[0] * (contact_dist + clearance)
+                    bodies[probe_id, Y] = bodies[host_id, Y] + normal[1] * (contact_dist + clearance)
+
+        bodies[probe_id, VX] += result.delta_v[0]
+        bodies[probe_id, VY] += result.delta_v[1]
         state.fuel_mass = result.remaining_fuel_mass
-        bodies[reference_body_id, MASS] = result.new_mass
+        bodies[probe_id, MASS] = result.new_mass
 
     def _handle_direction_command(cmd: str) -> None:
         """Route arrow keys to probe thrust in probe frame, otherwise camera pan."""
-        if _is_probe_reference_frame():
+        if _controlled_probe_id() is not None:
             direction_map = {
                 "PAN_LEFT": (-1.0, 0.0),
                 "PAN_RIGHT": (1.0, 0.0),
@@ -851,7 +923,7 @@ def main() -> None:
         keys = pygame.key.get_pressed()
         if game_state == GAME_STATE_MENU:
             pass
-        elif _is_probe_reference_frame():
+        elif _controlled_probe_id() is not None:
             thrust_x = 0.0
             thrust_y = 0.0
             if keys[pygame.K_LEFT]:
@@ -1896,7 +1968,7 @@ def main() -> None:
             bodies,
             reference_body_id,
         )
-        renderer.render(bodies, display_trails, camera, fade_factors)
+        renderer.render(bodies, display_trails, camera, fade_factors, reference_body_id)
 
         # Custom particle placement preview
         if custom_placement_stage == 2:
@@ -2007,8 +2079,9 @@ def main() -> None:
                 input_handler.mouse_world_y,
             ),
         )
-        if _is_probe_reference_frame() and reference_body_id is not None:
-            rocket_state = probe_rocket_states.get(reference_body_id)
+        controlled_probe_id = _controlled_probe_id()
+        if controlled_probe_id is not None:
+            rocket_state = probe_rocket_states.get(controlled_probe_id)
             if rocket_state is not None:
                 hud.set_probe_fuel_info(
                     rocket_state.fuel_mass,

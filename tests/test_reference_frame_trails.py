@@ -5,7 +5,11 @@ import pytest
 
 from src.config import BODY_TYPE_PLANET, BODY_TYPE_PROBE
 from src.core.types import VX, VY, X, Y, make_body
-from src.main import find_landed_probe_ids, transform_trails_to_reference_frame
+from src.main import (
+    find_landed_probe_contacts,
+    find_landed_probe_ids,
+    transform_trails_to_reference_frame,
+)
 from src.rendering.camera import Camera
 
 
@@ -92,3 +96,31 @@ def test_find_landed_probe_ids_detects_resting_probe() -> None:
     bodies[1, VX] += 10.0
     bodies[1, VY] += 10.0
     assert find_landed_probe_ids(bodies) == set()
+
+
+def test_find_landed_probe_contacts_returns_host_and_normal() -> None:
+    """Landed contact lookup should expose the host id and outward normal."""
+    host = make_body(
+        x=0.0,
+        y=0.0,
+        vx=0.0,
+        vy=0.0,
+        mass=1.0e24,
+        radius=10.0,
+        body_type=BODY_TYPE_PLANET,
+    )
+    probe = make_body(
+        x=0.0,
+        y=-15.0,
+        vx=0.0,
+        vy=0.0,
+        mass=1.0,
+        radius=5.0,
+        body_type=BODY_TYPE_PROBE,
+    )
+    bodies = np.vstack([host, probe])
+
+    host_id, normal = find_landed_probe_contacts(bodies)[1]
+
+    assert host_id == 0
+    assert np.allclose(normal, [0.0, -1.0])
