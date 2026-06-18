@@ -53,8 +53,8 @@ from src.rendering.effects import (
 
 
 PROBE_MIN_VISIBLE_RADIUS_WORLD = 1.0
-PROBE_VISUAL_RADIUS_BASE_PX = 1.0
-PROBE_VISUAL_RADIUS_LOG_STEP_PX = 0.75
+PROBE_VISUAL_RADIUS_BASE_PX = 0.25
+PROBE_VISUAL_RADIUS_LOG_STEP_PX = 0.4
 
 
 class Renderer(IRenderer):
@@ -408,7 +408,7 @@ class Renderer(IRenderer):
         """
         angle = self._probe_direction_angle(vx, vy, landing_normal)
 
-        side = max(1.0, side_length * 2.0 * math.sqrt(3.0))
+        side = max(0.5, side_length * 2.0 * math.sqrt(3.0))
         height = math.sqrt(3.0) * side / 2.0
         nose_dist = height * 2.0 / 3.0
         base_dist = height / 3.0
@@ -431,8 +431,9 @@ class Renderer(IRenderer):
         )
         pygame.draw.polygon(self.screen, UI_WHITE, [nose, left, right])
         pygame.draw.polygon(self.screen, UI_BLACK, [nose, left, right], 1)
-        pygame.draw.circle(self.screen, UI_BLACK, nose, max(2, int(side * 0.12)))
-        pygame.draw.circle(self.screen, UI_WHITE, nose, max(2, int(side * 0.12)), 1)
+        nose_radius = max(1, int(round(side * 0.12)))
+        pygame.draw.circle(self.screen, UI_BLACK, nose, nose_radius)
+        pygame.draw.circle(self.screen, UI_WHITE, nose, nose_radius, 1)
 
     def _probe_direction_angle(
         self,
@@ -571,7 +572,7 @@ class Renderer(IRenderer):
         color = UI_WHITE
 
         if body_type == BODY_TYPE_PROBE:
-            side = max(4.0, screen_radius * 2.0 * math.sqrt(3.0))
+            side = max(0.5, screen_radius * 2.0 * math.sqrt(3.0))
             height = math.sqrt(3.0) * side / 2.0
             nose = (int(isx), int(isy - height * 2.0 / 3.0))
             left = (int(isx - side / 2.0), int(isy + height / 3.0))

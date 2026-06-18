@@ -210,6 +210,27 @@ def test_probe_visual_radius_varies_below_one_thousand_kilometers() -> None:
     assert one_hundred_kilometers < below_one_thousand_kilometers
 
 
+def test_rendered_probe_size_varies_below_one_thousand_kilometers() -> None:
+    """Rendered probe pixels should reflect sub-1000 km radius changes."""
+    renderer = Renderer(width=120, height=90)
+
+    def rendered_size(radius_world: float) -> Tuple[int, int]:
+        renderer.screen.fill((0, 0, 0))
+        screen_radius = renderer._probe_screen_radius(radius_world, ScaledCamera())
+        renderer._draw_probe(60, 45, screen_radius, vx=1.0, vy=0.0)
+        pixels = pygame.surfarray.array3d(renderer.screen)
+        filled = pixels.sum(axis=2) > 0
+        xs, ys = filled.nonzero()
+        return (int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1))
+
+    one_hundred_meters = rendered_size(100.0)
+    one_hundred_kilometers = rendered_size(100_000.0)
+    below_one_thousand_kilometers = rendered_size(999_000.0)
+
+    assert one_hundred_meters < one_hundred_kilometers
+    assert one_hundred_kilometers < below_one_thousand_kilometers
+
+
 def test_small_probe_preview_uses_world_scale() -> None:
     """A 0.1 km probe should not render larger than an Earth-sized planet."""
     renderer = Renderer(width=120, height=90)
