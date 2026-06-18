@@ -30,12 +30,12 @@
       "name": "Probe",
       "type": "probe",
       "x": 0.0,
-      "y": -7171001.0,
+      "y": -6371101.0,
       "vx": 0.0,
       "vy": 0.0,
-      "mass": 1.0e5,
+      "mass": 2.8e6,
       "charge": 0.0,
-      "radius": 8.0e5,
+      "radius": 100.0,
       "static": false
     }
   ]

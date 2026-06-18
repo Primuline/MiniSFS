@@ -391,7 +391,7 @@ class Renderer(IRenderer):
         """
         angle = self._probe_direction_angle(vx, vy, landing_normal)
 
-        side = max(5.1, side_length * 2.0 * math.sqrt(3.0))
+        side = max(1.0, side_length * 2.0 * math.sqrt(3.0))
         height = math.sqrt(3.0) * side / 2.0
         nose_dist = height * 2.0 / 3.0
         base_dist = height / 3.0
@@ -531,8 +531,9 @@ class Renderer(IRenderer):
         self, world_x: float, world_y: float,
         radius_world: float, camera: ICamera,
         surface: pygame.Surface,
+        body_type: int = BODY_TYPE_PLANET,
     ) -> None:
-        """Draw a dashed placement preview circle + crosshair.
+        """Draw a dashed placement preview for the body being placed.
 
         Args:
             world_x: Preview center world x coordinate (m)
@@ -540,13 +541,26 @@ class Renderer(IRenderer):
             radius_world: Preview radius in world coordinates (m)
             camera: Camera object
             surface: Target draw Surface
+            body_type: Body type to preview.
         """
         sx, sy = camera.world_to_screen(world_x, world_y)
-        screen_radius = max(2.0, camera.world_distance_to_screen(radius_world))
+        screen_radius = max(1.0, camera.world_distance_to_screen(radius_world))
         int_sr = int(screen_radius)
         isx, isy = int(sx), int(sy)
 
         color = UI_WHITE
+
+        if body_type == BODY_TYPE_PROBE:
+            side = max(4.0, screen_radius * 2.0 * math.sqrt(3.0))
+            height = math.sqrt(3.0) * side / 2.0
+            nose = (int(isx), int(isy - height * 2.0 / 3.0))
+            left = (int(isx - side / 2.0), int(isy + height / 3.0))
+            right = (int(isx + side / 2.0), int(isy + height / 3.0))
+            pygame.draw.polygon(surface, UI_BLACK, [nose, left, right])
+            pygame.draw.polygon(surface, color, [nose, left, right], 2)
+            pygame.draw.circle(surface, color, nose, max(1, int(side * 0.12)))
+            pygame.draw.circle(surface, color, (isx, isy), 1)
+            return
 
         # Dashed circle: 32 segments, draw every other segment
         num_segments = 32

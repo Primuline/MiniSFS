@@ -1976,14 +1976,16 @@ def main() -> None:
             mouse_wx, mouse_wy = input_handler.get_mouse_world_pos(camera)
             radius_world = hud.custom_radius
             renderer.draw_placement_preview(
-                mouse_wx, mouse_wy, radius_world, camera, renderer.screen
+                mouse_wx, mouse_wy, radius_world, camera, renderer.screen,
+                BODY_TYPE_PLANET,
             )
         elif custom_placement_stage == 3 and custom_preview_pos is not None:
             # Stage 3: fixed preview circle + velocity direction arrow
             px, py = custom_preview_pos
             radius_world = hud.custom_radius
             renderer.draw_placement_preview(
-                px, py, radius_world, camera, renderer.screen
+                px, py, radius_world, camera, renderer.screen,
+                BODY_TYPE_PLANET,
             )
             # Only draw velocity arrow when length > 3px
             spx, spy = camera.world_to_screen(px, py)
@@ -2002,18 +2004,20 @@ def main() -> None:
         if simple_placement_stage == 1 and simple_placement_tool is not None:
             # Stage 1: preview circle follows mouse
             mouse_wx, mouse_wy = input_handler.get_mouse_world_pos(camera)
-            _, radius_pixels, _, _ = _get_simple_body_params(simple_placement_tool)
+            _, radius_pixels, _, body_type = _get_simple_body_params(simple_placement_tool)
             radius_world = radius_pixels * WORLD_SCALE
             renderer.draw_placement_preview(
-                mouse_wx, mouse_wy, radius_world, camera, renderer.screen
+                mouse_wx, mouse_wy, radius_world, camera, renderer.screen,
+                int(body_type),
             )
         elif simple_placement_stage == 2 and simple_preview_pos is not None:
             # Stage 2: fixed preview circle + velocity direction arrow (no length limit)
             px, py = simple_preview_pos
-            _, radius_pixels, _, _ = _get_simple_body_params(simple_placement_tool)
+            _, radius_pixels, _, body_type = _get_simple_body_params(simple_placement_tool)
             radius_world = radius_pixels * WORLD_SCALE
             renderer.draw_placement_preview(
-                px, py, radius_world, camera, renderer.screen
+                px, py, radius_world, camera, renderer.screen,
+                int(body_type),
             )
             # Only draw velocity arrow when length > 3px
             spx, spy = camera.world_to_screen(px, py)

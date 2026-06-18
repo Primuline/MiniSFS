@@ -8,7 +8,10 @@ from src.config import (
     BODY_TYPE_PLANET,
     BODY_TYPE_PROBE,
     BODY_TYPE_STAR,
+    DEFAULT_RADIUS_PROBE,
     GRAVITATIONAL_CONSTANT,
+    PROBE_ROCKET_TOTAL_MASS_DEFAULT,
+    WORLD_SCALE,
 )
 from src.core.types import BODY_TYPE, IS_STATIC, MASS, RADIUS, VX, VY, X, Y
 from src.main import create_level_1_scene
@@ -23,6 +26,8 @@ def test_level_1_contains_earth_moon_and_probe() -> None:
     assert int(bodies[1, BODY_TYPE]) == BODY_TYPE_PLANET
     assert int(bodies[2, BODY_TYPE]) == BODY_TYPE_PROBE
     assert bodies[0, IS_STATIC] == 1.0
+    assert bodies[2, MASS] == pytest.approx(PROBE_ROCKET_TOTAL_MASS_DEFAULT)
+    assert bodies[2, RADIUS] == pytest.approx(DEFAULT_RADIUS_PROBE * WORLD_SCALE)
 
 
 def test_level_1_moon_uses_circular_orbit_speed() -> None:

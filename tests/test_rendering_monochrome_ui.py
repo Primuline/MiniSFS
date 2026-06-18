@@ -152,6 +152,41 @@ def test_probe_direction_landing_normal_overrides_velocity() -> None:
     assert renderer._probe_direction_angle(100.0, -50.0, (1.0, 0.0)) == pytest.approx(0.0)
 
 
+def test_probe_render_size_scales_with_radius() -> None:
+    """Probe display size should grow when its stored radius grows."""
+    renderer = Renderer(width=120, height=90)
+
+    renderer.screen.fill((0, 0, 0))
+    renderer._draw_probe(60, 45, side_length=1.0, vx=1.0, vy=0.0)
+    small_pixels = pygame.surfarray.array3d(renderer.screen)
+    small_count = np.count_nonzero(small_pixels)
+
+    renderer.screen.fill((0, 0, 0))
+    renderer._draw_probe(60, 45, side_length=8.0, vx=1.0, vy=0.0)
+    large_pixels = pygame.surfarray.array3d(renderer.screen)
+    large_count = np.count_nonzero(large_pixels)
+
+    assert large_count > small_count
+
+
+def test_probe_placement_preview_draws_triangle() -> None:
+    """Probe placement preview should render a triangle instead of a circle."""
+    renderer = Renderer(width=120, height=90)
+    camera = StubCamera()
+
+    renderer.draw_placement_preview(
+        60.0,
+        45.0,
+        radius_world=8.0,
+        camera=camera,
+        surface=renderer.screen,
+        body_type=BODY_TYPE_PROBE,
+    )
+
+    pixels = pygame.surfarray.array3d(renderer.screen)
+    assert np.count_nonzero(pixels) > 0
+
+
 def test_renderer_state_label_is_shifted_right_of_toolbar() -> None:
     """The bottom State label should not overlap the left toolbar."""
     renderer = Renderer(width=240, height=180)
