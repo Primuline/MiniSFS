@@ -195,40 +195,13 @@ def test_probe_visual_radius_floor_is_one_meter() -> None:
     assert larger > floor
 
 
-def test_probe_visual_radius_varies_below_one_thousand_kilometers() -> None:
-    """Sub-1000 km probes should not collapse to the same display size."""
+def test_probe_visual_radius_uses_camera_world_scale() -> None:
+    """Probe visual radius should follow true camera distance scaling."""
     renderer = Renderer(width=120, height=90)
-    camera = ScaledCamera()
+    camera = ScaledCamera(zoom=2.0)
+    radius_world = 1_600_000.0
 
-    one_meter = renderer._probe_screen_radius(1.0, camera)
-    one_kilometer = renderer._probe_screen_radius(1_000.0, camera)
-    one_hundred_kilometers = renderer._probe_screen_radius(100_000.0, camera)
-    below_one_thousand_kilometers = renderer._probe_screen_radius(999_000.0, camera)
-
-    assert one_meter < one_kilometer
-    assert one_kilometer < one_hundred_kilometers
-    assert one_hundred_kilometers < below_one_thousand_kilometers
-
-
-def test_rendered_probe_size_varies_below_one_thousand_kilometers() -> None:
-    """Rendered probe pixels should reflect sub-1000 km radius changes."""
-    renderer = Renderer(width=120, height=90)
-
-    def rendered_size(radius_world: float) -> Tuple[int, int]:
-        renderer.screen.fill((0, 0, 0))
-        screen_radius = renderer._probe_screen_radius(radius_world, ScaledCamera())
-        renderer._draw_probe(60, 45, screen_radius, vx=1.0, vy=0.0)
-        pixels = pygame.surfarray.array3d(renderer.screen)
-        filled = pixels.sum(axis=2) > 0
-        xs, ys = filled.nonzero()
-        return (int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1))
-
-    one_hundred_meters = rendered_size(100.0)
-    one_hundred_kilometers = rendered_size(100_000.0)
-    below_one_thousand_kilometers = rendered_size(999_000.0)
-
-    assert one_hundred_meters < one_hundred_kilometers
-    assert one_hundred_kilometers < below_one_thousand_kilometers
+    assert renderer._probe_screen_radius(radius_world, camera) == pytest.approx(4.0)
 
 
 def test_small_probe_preview_uses_world_scale() -> None:
