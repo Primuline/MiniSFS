@@ -195,13 +195,26 @@ def test_probe_visual_radius_floor_is_one_meter() -> None:
     assert larger > floor
 
 
-def test_probe_visual_radius_uses_camera_world_scale() -> None:
-    """Probe visual radius should follow true camera distance scaling."""
+def test_probe_visual_radius_keeps_physical_scale_when_larger() -> None:
+    """Probe visual compensation should never shrink true camera-scaled size."""
     renderer = Renderer(width=120, height=90)
     camera = ScaledCamera(zoom=2.0)
     radius_world = 1_600_000.0
 
     assert renderer._probe_screen_radius(radius_world, camera) == pytest.approx(4.0)
+
+
+def test_probe_visual_radius_compensates_small_radii() -> None:
+    """Small probes should receive render-only visibility compensation."""
+    renderer = Renderer(width=120, height=90)
+    camera = ScaledCamera()
+
+    one_meter = renderer._probe_screen_radius(1.0, camera)
+    one_hundred_meters = renderer._probe_screen_radius(100.0, camera)
+    one_hundred_kilometers = renderer._probe_screen_radius(100_000.0, camera)
+
+    assert one_meter < one_hundred_meters
+    assert one_hundred_meters < one_hundred_kilometers
 
 
 def test_small_probe_preview_uses_world_scale() -> None:

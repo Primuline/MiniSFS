@@ -53,6 +53,8 @@ from src.rendering.effects import (
 
 
 PROBE_MIN_VISIBLE_RADIUS_WORLD = 1.0
+PROBE_VISUAL_RADIUS_BASE_PX = 0.25
+PROBE_VISUAL_RADIUS_LOG_STEP_PX = 0.4
 
 
 class Renderer(IRenderer):
@@ -318,9 +320,15 @@ class Renderer(IRenderer):
                 self._draw_charged(sx, sy, screen_radius, charge)
 
     def _probe_screen_radius(self, radius_world: float, camera: ICamera) -> float:
-        """Return a probe visual inradius using true camera scale."""
+        """Return a probe visual inradius with render-only compensation."""
         scaled_radius = max(radius_world, PROBE_MIN_VISIBLE_RADIUS_WORLD)
-        return max(0.0, camera.world_distance_to_screen(scaled_radius))
+        physical_radius = max(0.0, camera.world_distance_to_screen(scaled_radius))
+        visual_radius = (
+            PROBE_VISUAL_RADIUS_BASE_PX
+            + math.log10(scaled_radius / PROBE_MIN_VISIBLE_RADIUS_WORLD)
+            * PROBE_VISUAL_RADIUS_LOG_STEP_PX
+        )
+        return max(physical_radius, visual_radius)
 
     def _draw_star(self, sx: int, sy: int, radius: float, mass: float) -> None:
         """Draw a star as a rotating regular 17-gon.
