@@ -275,6 +275,23 @@ class Renderer(IRenderer):
                 self._draw_planet(sx, sy, screen_radius, mass, is_static)
             elif body_type == BODY_TYPE_PROBE:
                 landing_normal = self._probe_landing_normal(bodies, i)
+                speed = math.sqrt(vx * vx + vy * vy)
+                if landing_normal is None and speed <= 1.0:
+                    # Fallback: orient away from nearest non-probe body
+                    probe_pos = bodies[i, [X, Y]]
+                    min_dist = float("inf")
+                    nearest_dir = None
+                    for j in range(bodies.shape[0]):
+                        if j == i or int(bodies[j, BODY_TYPE]) == BODY_TYPE_PROBE:
+                            continue
+                        if bodies[j, IS_ACTIVE] == 0.0:
+                            continue
+                        delta = probe_pos - bodies[j, [X, Y]]
+                        dist = float(np.linalg.norm(delta))
+                        if dist < min_dist and dist > 1e-12:
+                            min_dist = dist
+                            nearest_dir = (float(delta[0] / dist), float(delta[1] / dist))
+                    landing_normal = nearest_dir
                 self._draw_probe(sx, sy, screen_radius, vx, vy, landing_normal)
             elif body_type == BODY_TYPE_CHARGED:
                 self._draw_charged(sx, sy, screen_radius, charge)
@@ -359,9 +376,9 @@ class Renderer(IRenderer):
         if landing_normal is not None and speed <= 1.0:
             angle = math.atan2(landing_normal[1], landing_normal[0])
         else:
-            angle = math.atan2(vy, vx) if speed > 0.1 else -math.pi / 2.0
+            angle = math.atan2(vy, vx) if speed > 0.1 else 0.0
 
-        side = max(5.1, side_length)
+        side = max(5.1, side_length * 2.0 * math.sqrt(3.0))
         height = math.sqrt(3.0) * side / 2.0
         nose_dist = height * 2.0 / 3.0
         base_dist = height / 3.0

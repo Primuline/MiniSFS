@@ -110,7 +110,7 @@ BODY_TYPE_CHARGED: int = 3   # charged particle — affected by Coulomb force
 # Default body radii/size (pixels). Probe uses equilateral triangle side length.
 DEFAULT_RADIUS_STAR: float = 875.0     # 7e8 m = 7e5 km @ 800 km/px
 DEFAULT_RADIUS_PLANET: float = 8.0
-DEFAULT_RADIUS_PROBE: float = 5.1
+DEFAULT_RADIUS_PROBE: float = 0.6
 DEFAULT_RADIUS_CHARGED: float = 6.0
 
 # Default body masses (kg)

@@ -1653,7 +1653,16 @@ def main() -> None:
                     hud.clear_reference_frame()
                     continue
                 else:
-                    running = False
+                    game_state = GAME_STATE_MENU
+                    menu_screen = "mode"
+                    active_tool = None
+                    selected_body_id = None
+                    renderer.selected_body_id = None
+                    hud.set_tool_active(None)
+                    hud.set_selected_body(None, -1)
+                    hud.clear_probe_fuel_info()
+                    is_paused = False
+                    hud.set_play_pause_state(False)
 
         if game_state == GAME_STATE_MENU:
             renderer.screen.fill((0, 0, 0))
@@ -1759,23 +1768,32 @@ def main() -> None:
                 else:
                     pred_dt = physics_dt
                     pred_steps = 60
+                is_self_reference = (
+                    reference_body_id is not None
+                    and reference_body_id < bodies.shape[0]
+                    and int(bodies[reference_body_id, IS_ACTIVE]) == 1
+                    and reference_body_id == selected_body_id
+                )
                 if (
                     reference_body_id is not None
                     and reference_body_id < bodies.shape[0]
                     and int(bodies[reference_body_id, IS_ACTIVE]) == 1
+                    and reference_body_id != selected_body_id
                 ):
                     pred = physics_engine.predict_relative_trajectory(
                         bodies,
                         probe_body_id=selected_body_id,
                         reference_body_id=reference_body_id,
-                        steps=pred_steps,
+                        steps=min(pred_steps, 20),
                         dt=pred_dt,
                     )
                 else:
                     probe_data = bodies[selected_body_id:selected_body_id + 1].copy()
                     other_bodies = np.delete(bodies, selected_body_id, axis=0)
                     pred = physics_engine.predict_trajectory(
-                        probe_data, other_bodies, steps=pred_steps, dt=pred_dt
+                        probe_data, other_bodies,
+                        steps=min(pred_steps, 30),
+                        dt=pred_dt,
                     )
                 if pred.shape[0] > 0:
                     predicted_trajectory = pred

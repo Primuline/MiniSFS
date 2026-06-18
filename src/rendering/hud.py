@@ -811,7 +811,10 @@ class HUDManager:
             y = panel_y + 32 + i * 20
             label_surf = self._font_label.render(label + ":", True, LABEL_COLOR)
             surface.blit(label_surf, (panel_x + 10, y))
-            value_surf = self._font_value.render(value, True, TEXT_COLOR)
+            value_font = self._font_value
+            if value_font.size(value)[0] > panel_w - 92:
+                value_font = self._font_small
+            value_surf = value_font.render(value, True, TEXT_COLOR)
             surface.blit(value_surf, (panel_x + 80, y))
 
     def _draw_toolbar(self, surface: pygame.Surface) -> None:
@@ -824,9 +827,12 @@ class HUDManager:
         pygame.draw.rect(surface, UI_BLACK, tool_rect)
         pygame.draw.rect(surface, UI_WHITE, tool_rect, 1)
 
-        # Tool title
-        title_surf = self._font_title.render("Tools", True, LABEL_COLOR)
-        surface.blit(title_surf, (6, 70))
+        # Tool title (vertical letters to fit 44px width)
+        title_y = 54
+        for idx, letter in enumerate("TOOLS"):
+            title_surf = self._font_small.render(letter, True, LABEL_COLOR)
+            title_rect = title_surf.get_rect(center=(TOOLBAR_WIDTH // 2, title_y + idx * 12))
+            surface.blit(title_surf, title_rect)
 
         # Tool buttons
         for btn in self.tool_buttons:
@@ -937,12 +943,12 @@ class HUDManager:
 
         bg = pygame.Surface((max_w, total_h), pygame.SRCALPHA)
         bg.fill(PANEL_BG)
-        surface.blit(bg, (8, 8))
-        pygame.draw.rect(surface, PANEL_BORDER, (8, 8, max_w, total_h), 1)
+        surface.blit(bg, (TOOLBAR_WIDTH + 8, 8))
+        pygame.draw.rect(surface, PANEL_BORDER, (TOOLBAR_WIDTH + 8, 8, max_w, total_h), 1)
 
         for i, line in enumerate(lines):
             text_surf = self._font_small.render(line, True, TEXT_COLOR)
-            surface.blit(text_surf, (14, 12 + i * line_height))
+            surface.blit(text_surf, (TOOLBAR_WIDTH + 14, 12 + i * line_height))
 
     def _draw_probe_fuel_panel(self, surface: pygame.Surface) -> None:
         """Draw the right-side fuel panel for probe reference frame mode."""
