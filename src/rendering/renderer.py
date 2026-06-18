@@ -52,7 +52,9 @@ from src.rendering.effects import (
 )
 
 
-PROBE_MIN_VISIBLE_RADIUS_WORLD = 1_000.0
+PROBE_MIN_VISIBLE_RADIUS_WORLD = 1.0
+PROBE_VISUAL_RADIUS_BASE_PX = 1.0
+PROBE_VISUAL_RADIUS_LOG_STEP_PX = 0.75
 
 
 class Renderer(IRenderer):
@@ -318,10 +320,15 @@ class Renderer(IRenderer):
                 self._draw_charged(sx, sy, screen_radius, charge)
 
     def _probe_screen_radius(self, radius_world: float, camera: ICamera) -> float:
-        """Return a probe visual inradius with a 1 km physical floor."""
-        zoom = max(0.0, float(getattr(camera, "zoom", 1.0)))
+        """Return a probe visual inradius with a 1 m physical floor."""
         scaled_radius = max(radius_world, PROBE_MIN_VISIBLE_RADIUS_WORLD)
-        return max(1.0, scaled_radius / PROBE_MIN_VISIBLE_RADIUS_WORLD * zoom)
+        physical_radius = max(0.0, camera.world_distance_to_screen(scaled_radius))
+        visual_radius = (
+            PROBE_VISUAL_RADIUS_BASE_PX
+            + math.log10(scaled_radius / PROBE_MIN_VISIBLE_RADIUS_WORLD)
+            * PROBE_VISUAL_RADIUS_LOG_STEP_PX
+        )
+        return max(physical_radius, visual_radius)
 
     def _draw_star(self, sx: int, sy: int, radius: float, mass: float) -> None:
         """Draw a star as a rotating regular 17-gon.

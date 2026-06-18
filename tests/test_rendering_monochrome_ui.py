@@ -53,6 +53,19 @@ class StubCamera:
         return (0.0, 0.0, float(self.width), float(self.height))
 
 
+class ScaledCamera(StubCamera):
+    """Camera stub using the real project world scale conversion."""
+
+    world_scale: float = 8.0e5
+
+    def __init__(self, zoom: float = 1.0) -> None:
+        self.zoom = zoom
+
+    def world_distance_to_screen(self, distance: float) -> float:
+        """Convert world meters to pixels."""
+        return float(distance) / self.world_scale * self.zoom
+
+
 def setup_module() -> None:
     """Initialize pygame for headless rendering tests."""
     pygame.init()
@@ -169,17 +182,43 @@ def test_probe_render_size_scales_with_radius() -> None:
     assert large_count > small_count
 
 
-def test_probe_visual_radius_floor_is_one_kilometer() -> None:
-    """Probe visual radius should only clamp below the 1 km physical floor."""
+def test_probe_visual_radius_floor_is_one_meter() -> None:
+    """Probe visual radius should only clamp below the 1 m physical floor."""
     renderer = Renderer(width=120, height=90)
-    camera = StubCamera()
+    camera = ScaledCamera()
 
-    tiny = renderer._probe_screen_radius(100.0, camera)
-    floor = renderer._probe_screen_radius(1_000.0, camera)
-    larger = renderer._probe_screen_radius(2_000.0, camera)
+    tiny = renderer._probe_screen_radius(0.1, camera)
+    floor = renderer._probe_screen_radius(1.0, camera)
+    larger = renderer._probe_screen_radius(2.0, camera)
 
     assert tiny == pytest.approx(floor)
     assert larger > floor
+
+
+def test_probe_visual_radius_varies_below_one_thousand_kilometers() -> None:
+    """Sub-1000 km probes should not collapse to the same display size."""
+    renderer = Renderer(width=120, height=90)
+    camera = ScaledCamera()
+
+    one_meter = renderer._probe_screen_radius(1.0, camera)
+    one_kilometer = renderer._probe_screen_radius(1_000.0, camera)
+    one_hundred_kilometers = renderer._probe_screen_radius(100_000.0, camera)
+    below_one_thousand_kilometers = renderer._probe_screen_radius(999_000.0, camera)
+
+    assert one_meter < one_kilometer
+    assert one_kilometer < one_hundred_kilometers
+    assert one_hundred_kilometers < below_one_thousand_kilometers
+
+
+def test_small_probe_preview_uses_world_scale() -> None:
+    """A 0.1 km probe should not render larger than an Earth-sized planet."""
+    renderer = Renderer(width=120, height=90)
+    camera = ScaledCamera()
+
+    probe_radius = renderer._probe_screen_radius(100.0, camera)
+    planet_radius = camera.world_distance_to_screen(6.371e6)
+
+    assert probe_radius < planet_radius
 
 
 def test_probe_placement_preview_draws_triangle() -> None:
