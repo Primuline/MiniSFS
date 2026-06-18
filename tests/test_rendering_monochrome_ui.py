@@ -169,6 +169,19 @@ def test_probe_render_size_scales_with_radius() -> None:
     assert large_count > small_count
 
 
+def test_probe_visual_radius_floor_is_one_kilometer() -> None:
+    """Probe visual radius should only clamp below the 1 km physical floor."""
+    renderer = Renderer(width=120, height=90)
+    camera = StubCamera()
+
+    tiny = renderer._probe_screen_radius(100.0, camera)
+    floor = renderer._probe_screen_radius(1_000.0, camera)
+    larger = renderer._probe_screen_radius(2_000.0, camera)
+
+    assert tiny == pytest.approx(floor)
+    assert larger > floor
+
+
 def test_probe_placement_preview_draws_triangle() -> None:
     """Probe placement preview should render a triangle instead of a circle."""
     renderer = Renderer(width=120, height=90)

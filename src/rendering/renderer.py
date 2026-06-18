@@ -52,6 +52,9 @@ from src.rendering.effects import (
 )
 
 
+PROBE_MIN_VISIBLE_RADIUS_WORLD = 1_000.0
+
+
 class Renderer(IRenderer):
     """Pygame renderer.
 
@@ -280,6 +283,7 @@ class Renderer(IRenderer):
             elif body_type == BODY_TYPE_PLANET:
                 self._draw_planet(sx, sy, screen_radius, mass, is_static)
             elif body_type == BODY_TYPE_PROBE:
+                screen_radius = self._probe_screen_radius(radius, camera)
                 landing_normal = self._probe_landing_normal(bodies, i)
                 draw_vx = vx
                 draw_vy = vy
@@ -312,6 +316,12 @@ class Renderer(IRenderer):
                 self._draw_probe(sx, sy, screen_radius, draw_vx, draw_vy, landing_normal)
             elif body_type == BODY_TYPE_CHARGED:
                 self._draw_charged(sx, sy, screen_radius, charge)
+
+    def _probe_screen_radius(self, radius_world: float, camera: ICamera) -> float:
+        """Return a probe visual inradius with a 1 km physical floor."""
+        zoom = max(0.0, float(getattr(camera, "zoom", 1.0)))
+        scaled_radius = max(radius_world, PROBE_MIN_VISIBLE_RADIUS_WORLD)
+        return max(1.0, scaled_radius / PROBE_MIN_VISIBLE_RADIUS_WORLD * zoom)
 
     def _draw_star(self, sx: int, sy: int, radius: float, mass: float) -> None:
         """Draw a star as a rotating regular 17-gon.
@@ -544,7 +554,10 @@ class Renderer(IRenderer):
             body_type: Body type to preview.
         """
         sx, sy = camera.world_to_screen(world_x, world_y)
-        screen_radius = max(1.0, camera.world_distance_to_screen(radius_world))
+        if body_type == BODY_TYPE_PROBE:
+            screen_radius = self._probe_screen_radius(radius_world, camera)
+        else:
+            screen_radius = max(1.0, camera.world_distance_to_screen(radius_world))
         int_sr = int(screen_radius)
         isx, isy = int(sx), int(sy)
 
