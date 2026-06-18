@@ -338,14 +338,6 @@ class InputHandler(IInputHandler):
             return "TOOL_CUSTOM"
         elif event.key == pygame.K_DELETE or event.key == pygame.K_BACKSPACE:
             return "DELETE_SELECTED"
-        elif event.key == pygame.K_6:
-            return "FAST_2X"
-        elif event.key == pygame.K_7:
-            return "FAST_4X"
-        elif event.key == pygame.K_8:
-            return "FAST_8X"
-        elif event.key == pygame.K_5:
-            return "TIME_1X"
         elif event.key == pygame.K_g:
             return "TOGGLE_GRID"
         elif event.key == pygame.K_l:

@@ -6,6 +6,9 @@ This file holds all tunable game constants. Modules import them via
 within each group.
 """
 
+from pathlib import Path
+from typing import Any
+
 # ============================================================================
 # Physics Constants
 # ============================================================================
@@ -43,7 +46,22 @@ WINDOW_HEIGHT: int = 720
 TARGET_FPS: int = 60
 
 # Background color (RGB)
-BACKGROUND_COLOR: tuple[int, int, int] = (10, 10, 30)
+BACKGROUND_COLOR: tuple[int, int, int] = (0, 0, 0)
+
+# Monochrome UI palette (RGB / RGBA)
+UI_BLACK: tuple[int, int, int] = (0, 0, 0)
+UI_WHITE: tuple[int, int, int] = (255, 255, 255)
+UI_DIM: tuple[int, int, int] = (150, 150, 150)
+UI_DARK: tuple[int, int, int] = (16, 16, 16)
+UI_DISABLED: tuple[int, int, int] = (70, 70, 70)
+UI_PANEL_BG: tuple[int, int, int, int] = (0, 0, 0, 230)
+UI_OVERLAY_BG: tuple[int, int, int, int] = (0, 0, 0, 180)
+
+# Pixel font files. ``get_ui_font`` falls back to Pygame's default font if
+# these files are missing or pygame cannot load them.
+FONT_DIR: Path = Path(__file__).resolve().parent / "ttf"
+UI_FONT_LATIN_PATH: str = str(FONT_DIR / "ark-pixel-10px-monospaced-latin.ttf")
+UI_FONT_ZH_CN_PATH: str = str(FONT_DIR / "ark-pixel-10px-monospaced-zh_cn.ttf")
 
 # World scale factor (m per pixel) — depends on simulation scale
 WORLD_SCALE: float = 8.0e5  # 1 pixel = 800 km
@@ -72,8 +90,8 @@ QUADTREE_COLLISION_THRESHOLD: int = 50
 MAX_TRAIL_LENGTH: int = 300
 
 # Trail color gradient — slow to fast speed (RGB)
-TRAIL_COLOR_SLOW: tuple[int, int, int] = (50, 150, 255)    # cool
-TRAIL_COLOR_FAST: tuple[int, int, int] = (255, 150, 50)    # warm
+TRAIL_COLOR_SLOW: tuple[int, int, int] = (90, 90, 90)
+TRAIL_COLOR_FAST: tuple[int, int, int] = (255, 255, 255)
 
 # Trail alpha values (0-255)
 TRAIL_ALPHA_NEW: int = 200
@@ -89,10 +107,10 @@ BODY_TYPE_PLANET: int = 1    # planet — ordinary body
 BODY_TYPE_PROBE: int = 2     # probe — player-controlled
 BODY_TYPE_CHARGED: int = 3   # charged particle — affected by Coulomb force
 
-# Default body radii (pixels)
+# Default body radii/size (pixels). Probe uses equilateral triangle side length.
 DEFAULT_RADIUS_STAR: float = 875.0     # 7e8 m = 7e5 km @ 800 km/px
 DEFAULT_RADIUS_PLANET: float = 8.0
-DEFAULT_RADIUS_PROBE: float = 1.0
+DEFAULT_RADIUS_PROBE: float = 5.1
 DEFAULT_RADIUS_CHARGED: float = 6.0
 
 # Default body masses (kg)
@@ -164,6 +182,12 @@ TARGET_ZONE_RADIUS: float = 15.0
 # Probe fuel cap (seconds)
 PROBE_FUEL_MAX: float = 10.0
 
+# Probe rocket defaults
+PROBE_ROCKET_TOTAL_MASS_DEFAULT: float = 1.0e5
+PROBE_ROCKET_FUEL_MASS_DEFAULT: float = 7.0e4
+PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT: float = 3.0e3
+PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT: float = 50.0
+
 # Score weights
 SCORE_WEIGHT_TIME: float = 0.3
 SCORE_WEIGHT_FUEL: float = 0.3
@@ -191,7 +215,7 @@ CLICK_SELECTION_RADIUS: float = 10.0
 # ============================================================================
 
 # Grid overlay
-GRID_COLOR: tuple[int, int, int] = (40, 40, 80)     # Grid line color
+GRID_COLOR: tuple[int, int, int] = (80, 80, 80)        # Grid line color
 GRID_ALPHA: int = 120                                 # Grid transparency
 
 # Scale bar
@@ -214,3 +238,22 @@ LABEL_BG_ALPHA: int = 100                             # Label background transpa
 SHOW_FPS_DEFAULT: bool = True                         # Show FPS/info by default
 SHOW_GRID_DEFAULT: bool = False                       # Grid hidden by default
 SHOW_LABELS_DEFAULT: bool = False                     # Labels hidden by default
+
+
+def get_ui_font(size: int, prefer_zh: bool = False) -> Any:
+    """Load the project pixel font with a safe Pygame fallback.
+
+    Args:
+        size: Font size in pixels.
+        prefer_zh: Whether to prefer the Chinese font file.
+
+    Returns:
+        A ``pygame.font.Font`` instance.
+    """
+    import pygame
+
+    font_path = UI_FONT_ZH_CN_PATH if prefer_zh else UI_FONT_LATIN_PATH
+    try:
+        return pygame.font.Font(font_path, size)
+    except (FileNotFoundError, pygame.error):
+        return pygame.font.Font(None, size)

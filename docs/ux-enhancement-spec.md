@@ -292,13 +292,13 @@ hud.set_status_info(
 | `G` | `TOGGLE_GRID` | 切换网格显示 |
 | `L` | `TOGGLE_LABELS` | 切换天体标签 |
 | `H` | `TOGGLE_SHORTCUTS` | 切换快捷键面板 |
-| `6` | `FAST_4X` | 4x 加速（原 g） |
-| `7` | `FAST_8X` | 8x 加速（原 h） |
-| `F` | `FAST_2X` | 2x 加速（不变） |
-| `T` | `TOGGLE_TRAILS` | 尾迹开关（不变） |
+| `1` | `TOOL_STAR` | 选择恒星工具 |
+| `2` | `TOOL_PLANET` | 选择行星工具 |
+| `3` | `TOOL_PROBE` | 选择探测器工具 |
+| `4` | `TOOL_CUSTOM` | 选择自定义天体工具 |
 
-注意：`G` 原先没有绑定，`L` 原先没有绑定，`H` 原先绑定了 `FAST_8X` → 改为 `TOGGLE_SHORTCUTS`。  
-`FAST_4X` 从 `g` 移到 `6`，`FAST_8X` 从 `h` 移到 `7`。
+注意：旧的 `5/6/7/8` 倍速快捷键已移除。倍速只能通过底部三个按钮调整：
+放慢 2 倍、恢复原速、加速 2 倍，范围为 `1/64x` 到 `64x`。
 
 ---
 

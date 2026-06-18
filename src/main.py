@@ -7,8 +7,11 @@ Uses fixed time-step physics for stability; rendering frame rate is independent.
 Default scene: star + orbiting planet + probe launcher.
 """
 
+import json
 import math
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -33,7 +36,13 @@ from src.config import (
     DEFAULT_RADIUS_PROBE,
     DEFAULT_RADIUS_STAR,
     GRAVITATIONAL_CONSTANT,
+    GAME_STATE_MENU,
+    LEVEL_DIR,
     PLACEMENT_SPEED_PER_PX,
+    PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
+    PROBE_ROCKET_FUEL_MASS_DEFAULT,
+    PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
+    PROBE_ROCKET_TOTAL_MASS_DEFAULT,
     GAME_STATE_PAUSED,
     GAME_STATE_PLAYING,
     SOFTENING,
@@ -61,11 +70,16 @@ from src.core.utils.tools import normalize_angle_delta
 from src.input.handler import InputHandler
 from src.physics.engine import PhysicsEngine
 from src.physics.forces import find_nearest_star
+from src.physics.rocket import compute_rocket_burn
 from src.quadtree.trail import TrailBuffer
 from src.rendering.camera import Camera
 from src.rendering.effects import ParticleSystem
-from src.rendering.hud import HUDManager
+from src.rendering.hud import HUDManager, format_time_multiplier
 from src.rendering.renderer import Renderer
+
+INITIAL_CAMERA_ZOOM = 0.008
+MIN_TIME_MULTIPLIER = 1.0 / 64.0
+MAX_TIME_MULTIPLIER = 64.0
 
 # ============================================================================
 # Default scene creation
@@ -115,6 +129,36 @@ def create_default_scene() -> np.ndarray:
     return np.vstack(bodies_list)
 
 
+def create_level_1_scene() -> np.ndarray:
+    """Load Level 1: a simplified Earth-Moon system with a surface probe."""
+    level_path = Path(__file__).resolve().parents[1] / LEVEL_DIR / "level_1.json"
+    with level_path.open("r", encoding="utf-8") as level_file:
+        level_data = json.load(level_file)
+
+    body_types = {
+        "star": BODY_TYPE_STAR,
+        "planet": BODY_TYPE_PLANET,
+        "probe": BODY_TYPE_PROBE,
+        "charged": BODY_TYPE_CHARGED,
+    }
+    bodies_list = [
+        make_body(
+            x=float(body["x"]),
+            y=float(body["y"]),
+            vx=float(body["vx"]),
+            vy=float(body["vy"]),
+            mass=float(body["mass"]),
+            charge=float(body.get("charge", 0.0)),
+            radius=float(body["radius"]),
+            body_type=body_types[str(body["type"])],
+            is_static=bool(body.get("static", False)),
+        )
+        for body in level_data["bodies"]
+    ]
+
+    return np.vstack(bodies_list)
+
+
 def create_collision_scene() -> np.ndarray:
     """Create an optional collision demo scene (2 groups of colliding bodies).
 
@@ -151,6 +195,17 @@ def create_collision_scene() -> np.ndarray:
 # ============================================================================
 # Utility functions
 # ============================================================================
+
+
+@dataclass
+class ProbeRocketState:
+    """Sidecar rocket state for probe bodies."""
+
+    dry_mass: float
+    fuel_mass: float
+    initial_fuel_mass: float
+    exhaust_velocity: float
+    mass_flow_rate: float
 
 
 def add_body_to_array(
@@ -191,6 +246,100 @@ def remove_body_from_array(
     return active
 
 
+def adjust_time_multiplier(current: float, command: str) -> float:
+    """Apply the 2x slower/faster time controls within allowed bounds."""
+    if command == "SLOW_HALF":
+        return max(MIN_TIME_MULTIPLIER, current / 2.0)
+    if command == "FAST_DOUBLE":
+        return min(MAX_TIME_MULTIPLIER, current * 2.0)
+    if command == "TIME_1X":
+        return 1.0
+    return current
+
+
+def find_landed_probe_ids(bodies: np.ndarray) -> set[int]:
+    """Return probes resting on a non-probe body surface."""
+    landed: set[int] = set()
+    for probe_id in range(bodies.shape[0]):
+        if (
+            int(bodies[probe_id, IS_ACTIVE]) != 1
+            or int(bodies[probe_id, BODY_TYPE]) != BODY_TYPE_PROBE
+        ):
+            continue
+
+        probe_pos = bodies[probe_id, [X, Y]]
+        probe_vel = bodies[probe_id, [VX, VY]]
+        probe_side = float(bodies[probe_id, RADIUS])
+        for host_id in range(bodies.shape[0]):
+            if host_id == probe_id:
+                continue
+            if (
+                int(bodies[host_id, IS_ACTIVE]) != 1
+                or int(bodies[host_id, BODY_TYPE]) == BODY_TYPE_PROBE
+            ):
+                continue
+
+            delta = probe_pos - bodies[host_id, [X, Y]]
+            dist = float(np.linalg.norm(delta))
+            contact_dist = float(bodies[host_id, RADIUS] + probe_side)
+            tolerance = max(1.0, probe_side * 0.05)
+            relative_speed = float(np.linalg.norm(probe_vel - bodies[host_id, [VX, VY]]))
+            if abs(dist - contact_dist) <= tolerance and relative_speed <= 1.0:
+                landed.add(probe_id)
+                break
+
+    return landed
+
+
+def transform_trails_to_reference_frame(
+    trails: Dict[int, List[Tuple[float, float]]],
+    bodies: np.ndarray,
+    reference_body_id: Optional[int],
+) -> Dict[int, List[Tuple[float, float]]]:
+    """Return trail points displayed relative to the active reference body.
+
+    TrailBuffer stores absolute world positions. In a reference frame, each body
+    trail point is shifted by the reference body's trail point from the same
+    history frame and anchored at the reference body's current position.
+    """
+    if (
+        reference_body_id is None
+        or reference_body_id >= bodies.shape[0]
+        or bodies[reference_body_id, IS_ACTIVE] == 0.0
+    ):
+        return trails
+
+    reference_trail = trails.get(reference_body_id)
+    if not reference_trail:
+        return trails
+
+    ref_current_x = float(bodies[reference_body_id, X])
+    ref_current_y = float(bodies[reference_body_id, Y])
+    transformed: Dict[int, List[Tuple[float, float]]] = {}
+
+    for body_id, trail_points in trails.items():
+        if not trail_points:
+            transformed[body_id] = []
+            continue
+
+        count = min(len(trail_points), len(reference_trail))
+        if count <= 0:
+            transformed[body_id] = []
+            continue
+
+        body_tail = trail_points[-count:]
+        reference_tail = reference_trail[-count:]
+        transformed[body_id] = [
+            (
+                point_x - ref_x + ref_current_x,
+                point_y - ref_y + ref_current_y,
+            )
+            for (point_x, point_y), (ref_x, ref_y) in zip(body_tail, reference_tail)
+        ]
+
+    return transformed
+
+
 # ============================================================================
 # Main function
 # ============================================================================
@@ -206,7 +355,7 @@ def main() -> None:
     # Create module instances
     renderer = Renderer(WINDOW_WIDTH, WINDOW_HEIGHT)
     camera = Camera(WINDOW_WIDTH, WINDOW_HEIGHT, WORLD_SCALE)
-    camera.zoom_at(0.008, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+    camera.zoom_at(INITIAL_CAMERA_ZOOM, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
     physics_engine = PhysicsEngine(
         substeps=SUBSTEPS,
         use_quadtree=False,
@@ -218,9 +367,10 @@ def main() -> None:
 
     # Scene
     bodies = create_default_scene()
+    probe_rocket_states: Dict[int, ProbeRocketState] = {}
 
     # Game state
-    game_state: str = GAME_STATE_PLAYING
+    game_state: str = GAME_STATE_MENU
     clock = pygame.time.Clock()
     running = True
 
@@ -230,8 +380,10 @@ def main() -> None:
     # Base time speed
     BASE_TIME_SPEED = 3125.0
     time_speed = BASE_TIME_SPEED
-    time_multiplier = 1.0  # Ratio relative to base speed (1x, 2x, 4x, 8x)
+    time_multiplier = 1.0  # Ratio relative to base speed (1/64x..64x)
     is_paused = False
+    menu_screen = "mode"
+    level_mode_enabled = False
 
     # Tool state
     active_tool: Optional[str] = None
@@ -277,6 +429,9 @@ def main() -> None:
     simple_preview_pos: Optional[Tuple[float, float]] = None
     simple_arrow_start: Optional[Tuple[float, float]] = None
 
+    pending_probe_rocket_state: Optional[ProbeRocketState] = None
+    pending_probe_radius: float = DEFAULT_RADIUS_PROBE * WORLD_SCALE
+
     # Trajectory preview during placement speed setting
     placement_trajectory: Optional[Dict[str, object]] = None
 
@@ -307,16 +462,158 @@ def main() -> None:
         """Cancel simple placement flow (Star/Planet/Probe/Custom), restore time and tool state."""
         nonlocal simple_placement_stage, simple_placement_tool
         nonlocal simple_preview_pos, simple_arrow_start
-        nonlocal active_tool, is_paused
+        nonlocal active_tool, is_paused, pending_probe_rocket_state, pending_probe_radius
         simple_placement_stage = 0
         simple_placement_tool = None
         simple_preview_pos = None
         simple_arrow_start = None
+        pending_probe_rocket_state = None
+        pending_probe_radius = DEFAULT_RADIUS_PROBE * WORLD_SCALE
+        hud.hide_probe_dialog()
         if active_tool in ("TOOL_STAR", "TOOL_PLANET", "TOOL_PROBE"):
             active_tool = None
             hud.set_tool_active(None)
         is_paused = False
         hud.set_play_pause_state(False)
+
+    def _make_default_probe_rocket_state() -> ProbeRocketState:
+        """Create default sidecar rocket state for legacy/default probe placement."""
+        dry_mass = PROBE_ROCKET_TOTAL_MASS_DEFAULT - PROBE_ROCKET_FUEL_MASS_DEFAULT
+        return ProbeRocketState(
+            dry_mass=dry_mass,
+            fuel_mass=PROBE_ROCKET_FUEL_MASS_DEFAULT,
+            initial_fuel_mass=PROBE_ROCKET_FUEL_MASS_DEFAULT,
+            exhaust_velocity=PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
+            mass_flow_rate=PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
+        )
+
+    def _register_probe_rocket_state(body_id: int) -> None:
+        """Attach the pending/default rocket state to a newly created probe."""
+        nonlocal pending_probe_rocket_state
+        state = pending_probe_rocket_state or _make_default_probe_rocket_state()
+        probe_rocket_states[body_id] = ProbeRocketState(
+            dry_mass=state.dry_mass,
+            fuel_mass=state.fuel_mass,
+            initial_fuel_mass=state.initial_fuel_mass,
+            exhaust_velocity=state.exhaust_velocity,
+            mass_flow_rate=state.mass_flow_rate,
+        )
+        pending_probe_rocket_state = None
+
+    def _remap_probe_states_after_delete(
+        states: Dict[int, ProbeRocketState],
+        removed_id: int,
+    ) -> Dict[int, ProbeRocketState]:
+        """Shift sidecar keys after removing one body row."""
+        remapped: Dict[int, ProbeRocketState] = {}
+        for body_id, state in states.items():
+            if body_id == removed_id:
+                continue
+            remapped[body_id - 1 if body_id > removed_id else body_id] = state
+        return remapped
+
+    def _remap_probe_states_after_physics(
+        old_bodies: np.ndarray,
+        new_bodies: np.ndarray,
+        old_states: Dict[int, ProbeRocketState],
+    ) -> Dict[int, ProbeRocketState]:
+        """Best-effort sidecar remap after physics may remove inactive rows.
+
+        BodyState currently has no stable ID. Greedy nearest-position matching keeps
+        probe fuel attached across ordinary row compression and most collision removals.
+        """
+        remapped: Dict[int, ProbeRocketState] = {}
+        candidates = [
+            idx for idx in range(new_bodies.shape[0])
+            if int(new_bodies[idx, BODY_TYPE]) == BODY_TYPE_PROBE
+            and int(new_bodies[idx, IS_ACTIVE]) == 1
+        ]
+        used: set[int] = set()
+
+        for old_id, state in old_states.items():
+            if old_id >= old_bodies.shape[0]:
+                continue
+            if int(old_bodies[old_id, BODY_TYPE]) != BODY_TYPE_PROBE:
+                continue
+            old_pos = old_bodies[old_id, [X, Y]]
+            best_id: Optional[int] = None
+            best_dist = float("inf")
+            for new_id in candidates:
+                if new_id in used:
+                    continue
+                new_pos = new_bodies[new_id, [X, Y]]
+                dist = float(np.linalg.norm(new_pos - old_pos))
+                if dist < best_dist:
+                    best_dist = dist
+                    best_id = new_id
+            if best_id is not None:
+                remapped[best_id] = state
+                used.add(best_id)
+        return remapped
+
+    def _is_probe_reference_frame() -> bool:
+        """Return whether the current reference target is an active probe."""
+        return (
+            reference_body_id is not None
+            and reference_body_id < bodies.shape[0]
+            and int(bodies[reference_body_id, IS_ACTIVE]) == 1
+            and int(bodies[reference_body_id, BODY_TYPE]) == BODY_TYPE_PROBE
+        )
+
+    def _apply_probe_thrust(direction: Tuple[float, float], effective_dt: float) -> None:
+        """Apply manual probe thrust in reference frame mode."""
+        if not _is_probe_reference_frame() or reference_body_id is None:
+            return
+        state = probe_rocket_states.get(reference_body_id)
+        if state is None or state.fuel_mass <= 0.0 or state.mass_flow_rate <= 0.0:
+            return
+
+        result = compute_rocket_burn(
+            current_mass=float(bodies[reference_body_id, MASS]),
+            fuel_mass=state.fuel_mass,
+            dry_mass=state.dry_mass,
+            exhaust_velocity=state.exhaust_velocity,
+            mass_flow_rate=state.mass_flow_rate,
+            direction=direction,
+            dt=max(0.0, effective_dt),
+        )
+        if result.fuel_used <= 0.0:
+            return
+
+        bodies[reference_body_id, VX] += result.delta_v[0]
+        bodies[reference_body_id, VY] += result.delta_v[1]
+        state.fuel_mass = result.remaining_fuel_mass
+        bodies[reference_body_id, MASS] = result.new_mass
+
+    def _handle_direction_command(cmd: str) -> None:
+        """Route arrow keys to probe thrust in probe frame, otherwise camera pan."""
+        if _is_probe_reference_frame():
+            direction_map = {
+                "PAN_LEFT": (-1.0, 0.0),
+                "PAN_RIGHT": (1.0, 0.0),
+                "PAN_UP": (0.0, -1.0),
+                "PAN_DOWN": (0.0, 1.0),
+            }
+            _apply_probe_thrust(direction_map[cmd], frame_dt * time_speed)
+            return
+
+        if cmd == "PAN_LEFT":
+            camera.pan(-500.0 * frame_dt, 0)
+        elif cmd == "PAN_RIGHT":
+            camera.pan(500.0 * frame_dt, 0)
+        elif cmd == "PAN_UP":
+            camera.pan(0, -500.0 * frame_dt)
+        elif cmd == "PAN_DOWN":
+            camera.pan(0, 500.0 * frame_dt)
+
+    def _get_simple_body_params(tool: Optional[str]) -> Tuple[float, float, float, float]:
+        """Return placement parameters, honoring pending probe rocket settings."""
+        mass, radius_pixels, charge, body_type = hud.get_default_body_params(tool or "")
+        if tool == "TOOL_PROBE":
+            if pending_probe_rocket_state is not None:
+                mass = pending_probe_rocket_state.dry_mass + pending_probe_rocket_state.fuel_mass
+            radius_pixels = max(1.0, pending_probe_radius / WORLD_SCALE)
+        return mass, radius_pixels, charge, body_type
 
     # --- Trajectory preview helper functions ---
 
@@ -499,8 +796,23 @@ def main() -> None:
         commands: List[str] = []
 
         for event in pygame.event.get():
+            if game_state == GAME_STATE_MENU:
+                if event.type == pygame.QUIT:
+                    commands.append("QUIT")
+                    continue
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    commands.append("MENU_BACK" if menu_screen == "level_select" else "QUIT")
+                    continue
+                if menu_screen == "level_select":
+                    menu_cmd = hud.handle_level_select_event(event)
+                else:
+                    menu_cmd = hud.handle_mode_menu_event(event)
+                if menu_cmd is not None:
+                    commands.append(menu_cmd)
+                continue
+
             # Dialog stage: only dialog can receive events, skip InputHandler
-            if custom_placement_stage == 1:
+            if custom_placement_stage == 1 or hud.probe_dialog_visible:
                 hud_cmd = hud.handle_event(event)
                 if hud_cmd is not None:
                     commands.append(hud_cmd)
@@ -514,10 +826,13 @@ def main() -> None:
                 if hud_cmd.startswith("TOOL_"):
                     continue
                 # Time control events also skip InputHandler
-                if hud_cmd in ("PLAY_PAUSE", "FAST_2X", "FAST_4X", "REWIND"):
+                if hud_cmd in ("PLAY_PAUSE", "SLOW_HALF", "TIME_1X", "FAST_DOUBLE"):
                     continue
                 # Custom particle dialog commands skip InputHandler
                 if hud_cmd.startswith("CUSTOM_DIALOG_"):
+                    continue
+                # Probe rocket dialog commands skip InputHandler
+                if hud_cmd.startswith("PROBE_DIALOG_"):
                     continue
                 # Edit dialog commands skip InputHandler
                 if hud_cmd.startswith("EDIT_DIALOG_"):
@@ -534,14 +849,30 @@ def main() -> None:
 
         # Continuously held arrow keys
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT]:
-            commands.append("PAN_LEFT")
-        if keys[pygame.K_RIGHT]:
-            commands.append("PAN_RIGHT")
-        if keys[pygame.K_UP]:
-            commands.append("PAN_UP")
-        if keys[pygame.K_DOWN]:
-            commands.append("PAN_DOWN")
+        if game_state == GAME_STATE_MENU:
+            pass
+        elif _is_probe_reference_frame():
+            thrust_x = 0.0
+            thrust_y = 0.0
+            if keys[pygame.K_LEFT]:
+                thrust_x -= 1.0
+            if keys[pygame.K_RIGHT]:
+                thrust_x += 1.0
+            if keys[pygame.K_UP]:
+                thrust_y -= 1.0
+            if keys[pygame.K_DOWN]:
+                thrust_y += 1.0
+            if thrust_x != 0.0 or thrust_y != 0.0:
+                commands.append(f"PROBE_THRUST:{thrust_x},{thrust_y}")
+        else:
+            if keys[pygame.K_LEFT]:
+                commands.append("PAN_LEFT")
+            if keys[pygame.K_RIGHT]:
+                commands.append("PAN_RIGHT")
+            if keys[pygame.K_UP]:
+                commands.append("PAN_UP")
+            if keys[pygame.K_DOWN]:
+                commands.append("PAN_DOWN")
 
         # ================================================================
         # 2. Command processing
@@ -550,6 +881,68 @@ def main() -> None:
         for cmd in commands:
             if cmd == "QUIT":
                 running = False
+
+            elif game_state == GAME_STATE_MENU and cmd == "MENU_BACK":
+                menu_screen = "mode"
+
+            elif game_state == GAME_STATE_MENU and cmd == "LEVEL_MODE":
+                menu_screen = "level_select"
+
+            elif game_state == GAME_STATE_MENU and cmd == "START_SANDBOX":
+                bodies = create_default_scene()
+                probe_rocket_states.clear()
+                trail_buffer.clear_all()
+                camera.reset()
+                camera.zoom_at(INITIAL_CAMERA_ZOOM, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+                active_tool = None
+                selected_body_id = None
+                renderer.selected_body_id = None
+                hud.set_tool_active(None)
+                hud.set_selected_body(None, -1)
+                hud.clear_reference_frame()
+                hud.clear_probe_fuel_info()
+                hud.set_level_mode_enabled(False)
+                reference_body_id = None
+                predicted_trajectory = None
+                placement_trajectory = None
+                is_paused = False
+                time_multiplier = 1.0
+                time_speed = BASE_TIME_SPEED
+                level_mode_enabled = False
+                hud.set_play_pause_state(False)
+                hud.set_time_speed(time_multiplier)
+                game_state = GAME_STATE_PLAYING
+
+            elif game_state == GAME_STATE_MENU and cmd == "START_LEVEL_1":
+                bodies = create_level_1_scene()
+                probe_rocket_states.clear()
+                for body_id in range(bodies.shape[0]):
+                    if int(bodies[body_id, BODY_TYPE]) == BODY_TYPE_PROBE:
+                        probe_rocket_states[body_id] = _make_default_probe_rocket_state()
+                trail_buffer.clear_all()
+                camera.reset()
+                camera.zoom_at(INITIAL_CAMERA_ZOOM, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+                active_tool = None
+                selected_body_id = None
+                renderer.selected_body_id = None
+                hud.set_tool_active(None)
+                hud.set_selected_body(None, -1)
+                hud.clear_reference_frame()
+                hud.clear_probe_fuel_info()
+                hud.set_level_mode_enabled(True)
+                reference_body_id = None
+                predicted_trajectory = None
+                placement_trajectory = None
+                is_paused = False
+                time_multiplier = 1.0
+                time_speed = BASE_TIME_SPEED
+                level_mode_enabled = True
+                hud.set_play_pause_state(False)
+                hud.set_time_speed(time_multiplier)
+                game_state = GAME_STATE_PLAYING
+
+            elif game_state == GAME_STATE_MENU:
+                continue
 
             # --- Camera control ---
             elif cmd.startswith("PAN:"):
@@ -563,14 +956,16 @@ def main() -> None:
                         if abs(dx) + abs(dy) > 3:
                             camera.pan(-dx, -dy)
 
-            elif cmd == "PAN_LEFT":
-                camera.pan(-500.0 * frame_dt, 0)
-            elif cmd == "PAN_RIGHT":
-                camera.pan(500.0 * frame_dt, 0)
-            elif cmd == "PAN_UP":
-                camera.pan(0, -500.0 * frame_dt)
-            elif cmd == "PAN_DOWN":
-                camera.pan(0, 500.0 * frame_dt)
+            elif cmd in ("PAN_LEFT", "PAN_RIGHT", "PAN_UP", "PAN_DOWN"):
+                _handle_direction_command(cmd)
+
+            elif cmd.startswith("PROBE_THRUST:"):
+                parts = cmd.split(":")
+                coords = parts[1].split(",")
+                _apply_probe_thrust(
+                    (float(coords[0]), float(coords[1])),
+                    frame_dt * time_speed,
+                )
 
             elif cmd.startswith("ZOOM_IN"):
                 parts = cmd.split(":")
@@ -597,31 +992,10 @@ def main() -> None:
                 is_paused = not is_paused
                 hud.set_play_pause_state(is_paused)
 
-            elif cmd == "FAST_2X":
-                time_multiplier = 2.0 if time_multiplier != 2.0 else 1.0
+            elif cmd in ("SLOW_HALF", "TIME_1X", "FAST_DOUBLE"):
+                time_multiplier = adjust_time_multiplier(time_multiplier, cmd)
                 time_speed = BASE_TIME_SPEED * time_multiplier
                 hud.set_time_speed(time_multiplier)
-
-            elif cmd == "FAST_4X":
-                time_multiplier = 4.0 if time_multiplier != 4.0 else 1.0
-                time_speed = BASE_TIME_SPEED * time_multiplier
-                hud.set_time_speed(time_multiplier)
-
-            elif cmd == "FAST_8X":
-                time_multiplier = 8.0 if time_multiplier != 8.0 else 1.0
-                time_speed = BASE_TIME_SPEED * time_multiplier
-                hud.set_time_speed(time_multiplier)
-
-            elif cmd == "TIME_1X":
-                time_multiplier = 1.0
-                time_speed = BASE_TIME_SPEED
-                hud.set_time_speed(1.0)
-
-            elif cmd == "REWIND":
-                # REWIND resets to 1x
-                time_multiplier = 1.0
-                time_speed = BASE_TIME_SPEED
-                hud.set_time_speed(1.0)
 
             elif cmd == "TOGGLE_GRID":
                 show_grid = not show_grid
@@ -637,6 +1011,10 @@ def main() -> None:
 
             # --- Tool selection ---
             elif cmd.startswith("TOOL_"):
+                if level_mode_enabled:
+                    active_tool = None
+                    hud.set_tool_active(None)
+                    continue
                 if active_tool == cmd:
                     # Deselect tool
                     if simple_placement_stage > 0:
@@ -657,8 +1035,15 @@ def main() -> None:
                         hud.set_play_pause_state(True)
                         custom_placement_stage = 1
                         hud.show_custom_dialog()
-                    elif cmd in ("TOOL_STAR", "TOOL_PLANET", "TOOL_PROBE"):
-                        # Simple placement tool: freeze time + enter preview position stage
+                    elif cmd == "TOOL_PROBE":
+                        # Probe placement: freeze time + configure rocket parameters first.
+                        is_paused = True
+                        hud.set_play_pause_state(True)
+                        simple_placement_stage = 1
+                        simple_placement_tool = cmd
+                        hud.show_probe_dialog()
+                    elif cmd in ("TOOL_STAR", "TOOL_PLANET"):
+                        # Simple placement tool: freeze time + enter preview position stage.
                         is_paused = True
                         hud.set_play_pause_state(True)
                         simple_placement_stage = 1
@@ -679,6 +1064,23 @@ def main() -> None:
                 elif cmd == "CUSTOM_DIALOG_CANCEL":
                     # Cancel the entire operation
                     _cancel_custom_placement()
+
+            # --- Probe rocket dialog commands ---
+            elif cmd.startswith("PROBE_DIALOG_"):
+                if cmd == "PROBE_DIALOG_OK":
+                    pending_probe_rocket_state = ProbeRocketState(
+                        dry_mass=hud.probe_dry_mass,
+                        fuel_mass=hud.probe_fuel_mass,
+                        initial_fuel_mass=hud.probe_fuel_mass,
+                        exhaust_velocity=hud.probe_exhaust_velocity,
+                        mass_flow_rate=hud.probe_mass_flow_rate,
+                    )
+                    pending_probe_radius = hud.probe_radius
+                    hud.hide_probe_dialog()
+                    simple_placement_stage = 1
+                    simple_placement_tool = "TOOL_PROBE"
+                elif cmd == "PROBE_DIALOG_CANCEL":
+                    _cancel_simple_placement()
 
             # --- Edit body dialog commands ---
             elif cmd.startswith("EDIT_DIALOG_"):
@@ -716,7 +1118,7 @@ def main() -> None:
                         if simple_placement_tool == "TOOL_STAR":
                             # Star: place directly, skip speed setting step
                             mass, radius_pixels, charge, body_type = (
-                                hud.get_default_body_params(simple_placement_tool)
+                                _get_simple_body_params(simple_placement_tool)
                             )
                             new_body = make_body(
                                 x=world_x, y=world_y,
@@ -744,7 +1146,7 @@ def main() -> None:
                         if simple_preview_pos is not None:
                             px, py = simple_preview_pos
                             mass, radius_pixels, charge, body_type = (
-                                hud.get_default_body_params(simple_placement_tool)
+                                _get_simple_body_params(simple_placement_tool)
                             )
                             new_body = make_body(
                                 x=px, y=py,
@@ -776,6 +1178,7 @@ def main() -> None:
                             # If a probe was placed, select it
                             if int(body_type) == BODY_TYPE_PROBE:
                                 selected_body_id = bodies.shape[0] - 1
+                                _register_probe_rocket_state(selected_body_id)
                                 renderer.selected_body_id = selected_body_id
                                 hud.set_selected_body(bodies[selected_body_id], selected_body_id)
 
@@ -838,7 +1241,7 @@ def main() -> None:
                 if active_tool:
                     # Use tool to place body
                     world_x, world_y = camera.screen_to_world(sx, sy)
-                    mass, radius, charge, body_type = hud.get_default_body_params(active_tool)
+                    mass, radius, charge, body_type = _get_simple_body_params(active_tool)
 
                     new_body = make_body(
                         x=world_x, y=world_y,
@@ -859,6 +1262,7 @@ def main() -> None:
                     # If a probe was placed, select it and allow aiming
                     if int(body_type) == BODY_TYPE_PROBE:
                         selected_body_id = bodies.shape[0] - 1
+                        _register_probe_rocket_state(selected_body_id)
                         renderer.selected_body_id = selected_body_id
                         hud.set_selected_body(bodies[selected_body_id], selected_body_id)
 
@@ -883,6 +1287,13 @@ def main() -> None:
                 body_id = int(sx_str[0])
                 sx, sy = int(sx_str[1]), int(sx_str[2])
 
+                if level_mode_enabled:
+                    input_handler.reset_grab()
+                    selected_body_id = body_id
+                    renderer.selected_body_id = body_id
+                    hud.set_selected_body(bodies[body_id], body_id)
+                    continue
+
                 # Simple placement flow click handling (same logic as CLICK)
                 if simple_placement_stage > 0:
                     input_handler.reset_grab()
@@ -892,7 +1303,7 @@ def main() -> None:
                         if simple_placement_tool == "TOOL_STAR":
                             # Star: place directly, skip speed setting step
                             mass, radius_pixels, charge, body_type = (
-                                hud.get_default_body_params(simple_placement_tool)
+                                _get_simple_body_params(simple_placement_tool)
                             )
                             new_body = make_body(
                                 x=world_x, y=world_y,
@@ -918,7 +1329,7 @@ def main() -> None:
                         if simple_preview_pos is not None:
                             px, py = simple_preview_pos
                             mass, radius_pixels, charge, body_type = (
-                                hud.get_default_body_params(simple_placement_tool)
+                                _get_simple_body_params(simple_placement_tool)
                             )
                             new_body = make_body(
                                 x=px, y=py,
@@ -943,6 +1354,7 @@ def main() -> None:
 
                             if int(body_type) == BODY_TYPE_PROBE:
                                 selected_body_id = bodies.shape[0] - 1
+                                _register_probe_rocket_state(selected_body_id)
                                 renderer.selected_body_id = selected_body_id
                                 hud.set_selected_body(bodies[selected_body_id], selected_body_id)
 
@@ -997,7 +1409,7 @@ def main() -> None:
                     if sx < 50 or sy > WINDOW_HEIGHT - 50:
                         continue
                     world_x, world_y = camera.screen_to_world(sx, sy)
-                    mass, radius, charge, body_type = hud.get_default_body_params(active_tool)
+                    mass, radius, charge, body_type = _get_simple_body_params(active_tool)
                     new_body = make_body(
                         x=world_x, y=world_y,
                         vx=0.0, vy=0.0,
@@ -1014,6 +1426,7 @@ def main() -> None:
                             bodies[-1, VY] += bodies[reference_body_id, VY]
                     if int(body_type) == BODY_TYPE_PROBE:
                         selected_body_id = bodies.shape[0] - 1
+                        _register_probe_rocket_state(selected_body_id)
                         renderer.selected_body_id = selected_body_id
                         hud.set_selected_body(bodies[selected_body_id], selected_body_id)
                 else:
@@ -1106,6 +1519,11 @@ def main() -> None:
                     renderer.selected_body_id = found_id
                     hud.set_selected_body(bodies[found_id], found_id)
                 elif found_id is not None:
+                    if level_mode_enabled:
+                        selected_body_id = found_id
+                        renderer.selected_body_id = found_id
+                        hud.set_selected_body(bodies[found_id], found_id)
+                        continue
                     # Right-click on another body -> edit that body
                     selected_body_id = found_id
                     renderer.selected_body_id = found_id
@@ -1132,6 +1550,7 @@ def main() -> None:
                 found_id = input_handler.find_body_at_screen_pos(sx, sy, bodies, camera)
                 if found_id is not None:
                     _saved_zoom_before_frame = camera.zoom
+                    trail_buffer.clear_all()
                     reference_body_id = found_id
                     hud.set_reference_frame(found_id, int(bodies[found_id, BODY_TYPE]))
                     # Auto zoom to make target body about 50px size, and center on screen
@@ -1182,9 +1601,31 @@ def main() -> None:
                     is_aiming = False
 
             elif cmd == "DELETE_SELECTED":
+                if level_mode_enabled:
+                    continue
                 if selected_body_id is not None:
-                    trail_buffer.clear(selected_body_id)
+                    removed_id = selected_body_id
+                    if reference_body_id is not None:
+                        trail_buffer.clear_all()
+                    else:
+                        trail_buffer.clear(selected_body_id)
                     bodies = remove_body_from_array(bodies, selected_body_id)
+                    probe_rocket_states = _remap_probe_states_after_delete(
+                        probe_rocket_states,
+                        removed_id,
+                    )
+                    if reference_body_id == removed_id:
+                        trail_buffer.clear_all()
+                        reference_body_id = None
+                        hud.clear_reference_frame()
+                    elif reference_body_id is not None and reference_body_id > removed_id:
+                        trail_buffer.clear_all()
+                        reference_body_id -= 1
+                        if reference_body_id < bodies.shape[0]:
+                            hud.set_reference_frame(
+                                reference_body_id,
+                                int(bodies[reference_body_id, BODY_TYPE]),
+                            )
                     selected_body_id = None
                     renderer.selected_body_id = None
                     hud.set_selected_body(None, -1)
@@ -1207,17 +1648,31 @@ def main() -> None:
                     zoom_to_restore = _saved_zoom_before_frame
                     if abs(camera.zoom - zoom_to_restore) > 0.01:
                         camera.zoom_at(zoom_to_restore / camera.zoom, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+                    trail_buffer.clear_all()
                     reference_body_id = None
                     hud.clear_reference_frame()
                     continue
                 else:
                     running = False
 
+        if game_state == GAME_STATE_MENU:
+            renderer.screen.fill((0, 0, 0))
+            if menu_screen == "level_select":
+                hud.draw_level_select(renderer.screen)
+                pygame.display.set_caption("MiniSFS - Level Select")
+            else:
+                hud.draw_mode_menu(renderer.screen)
+                pygame.display.set_caption("MiniSFS - Mode Select")
+            pygame.display.flip()
+            continue
+
         # ================================================================
         # 3. Physics update (fixed time step)
         # ================================================================
 
         if not is_paused and not is_grabbing:
+            bodies_before_physics = bodies.copy()
+            states_before_physics = dict(probe_rocket_states)
             if time_speed > 100:
                 # High speed: scale dt directly (avoid millions of tiny steps)
                 # Physics engine uses SUBSTEPS=4, RK4 guarantees stability
@@ -1231,6 +1686,11 @@ def main() -> None:
                 while accumulator >= physics_dt:
                     bodies = physics_engine.update(bodies, physics_dt)
                     accumulator -= physics_dt
+            probe_rocket_states = _remap_probe_states_after_physics(
+                bodies_before_physics,
+                bodies,
+                states_before_physics,
+            )
         else:
             # Reset accumulator when paused
             accumulator = 0.0
@@ -1239,10 +1699,17 @@ def main() -> None:
         # 4. Trail recording
         # ================================================================
 
+        landed_probe_ids = find_landed_probe_ids(bodies)
+        for probe_id in landed_probe_ids:
+            trail_buffer.clear(probe_id)
+
         # When paused, no new trail frames and no fade progression
         if not is_paused:
+            trail_exclude = set(landed_probe_ids)
             if is_grabbing and grabbed_body_id is not None:
-                trail_buffer.push_all(bodies, exclude={grabbed_body_id})
+                trail_exclude.add(grabbed_body_id)
+            if trail_exclude:
+                trail_buffer.push_all(bodies, exclude=trail_exclude)
             else:
                 trail_buffer.push_all(bodies)
 
@@ -1266,7 +1733,7 @@ def main() -> None:
                 renderer.selected_body_id = None
                 hud.set_selected_body(None, -1)
 
-        # Predicted trajectory (recalculate every 3 frames for selected probe; skip while grabbing)
+        # Predicted trajectory (recalculate every frame for selected probe; skip while grabbing)
         _prediction_frame_counter += 1
         should_recalc = (
             selected_body_id is not None
@@ -1281,10 +1748,8 @@ def main() -> None:
         if not should_recalc:
             _last_predicted_body_id = None
 
-        if should_recalc and _prediction_frame_counter % 6 == 1:
-            probe_data = bodies[selected_body_id:selected_body_id + 1].copy()
-            other_bodies = np.delete(bodies, selected_body_id, axis=0)
-            if other_bodies.shape[0] > 0:
+        if should_recalc:
+            if bodies.shape[0] > 1:
                 # Use same dt as simulation, predict ~1 second visual time
                 if time_speed > 100:
                     pred_dt = physics_dt * time_speed  # Same dt as simulation
@@ -1294,9 +1759,24 @@ def main() -> None:
                 else:
                     pred_dt = physics_dt
                     pred_steps = 60
-                pred = physics_engine.predict_trajectory(
-                    probe_data, other_bodies, steps=pred_steps, dt=pred_dt
-                )
+                if (
+                    reference_body_id is not None
+                    and reference_body_id < bodies.shape[0]
+                    and int(bodies[reference_body_id, IS_ACTIVE]) == 1
+                ):
+                    pred = physics_engine.predict_relative_trajectory(
+                        bodies,
+                        probe_body_id=selected_body_id,
+                        reference_body_id=reference_body_id,
+                        steps=pred_steps,
+                        dt=pred_dt,
+                    )
+                else:
+                    probe_data = bodies[selected_body_id:selected_body_id + 1].copy()
+                    other_bodies = np.delete(bodies, selected_body_id, axis=0)
+                    pred = physics_engine.predict_trajectory(
+                        probe_data, other_bodies, steps=pred_steps, dt=pred_dt
+                    )
                 if pred.shape[0] > 0:
                     predicted_trajectory = pred
                 else:
@@ -1321,16 +1801,21 @@ def main() -> None:
                 zoom_to_restore = _saved_zoom_before_frame
                 if abs(camera.zoom - zoom_to_restore) > 0.01:
                     camera.zoom_at(zoom_to_restore / camera.zoom, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+                trail_buffer.clear_all()
                 reference_body_id = None
                 hud.clear_reference_frame()
             else:
                 # Follow reference body each frame (velocity feedforward + smooth lerp)
-                effective_dt = TIME_STEP * time_speed
+                effective_dt = 0.0 if is_paused or is_grabbing else TIME_STEP * time_speed
                 ref_vx = float(bodies[reference_body_id, VX])
                 ref_vy = float(bodies[reference_body_id, VY])
                 ref_wx = float(bodies[reference_body_id, X])
                 ref_wy = float(bodies[reference_body_id, Y])
                 camera.update_follow(ref_wx, ref_wy, ref_vx, ref_vy, effective_dt)
+
+        # Reference-frame exits can clear the buffer after the first snapshot.
+        trails = trail_buffer.get_all_trails()
+        fade_factors = trail_buffer.get_fade_factors()
 
         # ================================================================
         # 6. Rendering
@@ -1366,7 +1851,7 @@ def main() -> None:
                 )
         elif simple_placement_stage == 2 and simple_arrow_start is not None:
             px, py = simple_preview_pos
-            _, radius_pixels, _, body_type = hud.get_default_body_params(simple_placement_tool)
+            _, radius_pixels, _, body_type = _get_simple_body_params(simple_placement_tool)
             # Compute velocity vector (same logic as placement)
             spx, spy = camera.world_to_screen(px, py)
             mx, my = input_handler.mouse_screen_x, input_handler.mouse_screen_y
@@ -1386,7 +1871,12 @@ def main() -> None:
                 )
 
         # Render
-        renderer.render(bodies, trails, camera, fade_factors)
+        display_trails = transform_trails_to_reference_frame(
+            trails,
+            bodies,
+            reference_body_id,
+        )
+        renderer.render(bodies, display_trails, camera, fade_factors)
 
         # Custom particle placement preview
         if custom_placement_stage == 2:
@@ -1420,7 +1910,7 @@ def main() -> None:
         if simple_placement_stage == 1 and simple_placement_tool is not None:
             # Stage 1: preview circle follows mouse
             mouse_wx, mouse_wy = input_handler.get_mouse_world_pos(camera)
-            _, radius_pixels, _, _ = hud.get_default_body_params(simple_placement_tool)
+            _, radius_pixels, _, _ = _get_simple_body_params(simple_placement_tool)
             radius_world = radius_pixels * WORLD_SCALE
             renderer.draw_placement_preview(
                 mouse_wx, mouse_wy, radius_world, camera, renderer.screen
@@ -1428,7 +1918,7 @@ def main() -> None:
         elif simple_placement_stage == 2 and simple_preview_pos is not None:
             # Stage 2: fixed preview circle + velocity direction arrow (no length limit)
             px, py = simple_preview_pos
-            _, radius_pixels, _, _ = hud.get_default_body_params(simple_placement_tool)
+            _, radius_pixels, _, _ = _get_simple_body_params(simple_placement_tool)
             radius_world = radius_pixels * WORLD_SCALE
             renderer.draw_placement_preview(
                 px, py, radius_world, camera, renderer.screen
@@ -1497,6 +1987,18 @@ def main() -> None:
                 input_handler.mouse_world_y,
             ),
         )
+        if _is_probe_reference_frame() and reference_body_id is not None:
+            rocket_state = probe_rocket_states.get(reference_body_id)
+            if rocket_state is not None:
+                hud.set_probe_fuel_info(
+                    rocket_state.fuel_mass,
+                    rocket_state.dry_mass,
+                    rocket_state.initial_fuel_mass,
+                )
+            else:
+                hud.clear_probe_fuel_info()
+        else:
+            hud.clear_probe_fuel_info()
         hud.draw(renderer.screen, camera)
         renderer.render_hud(game_state)
 
@@ -1504,7 +2006,7 @@ def main() -> None:
         actual_fps = clock.get_fps()
         paused_indicator = " PAUSED" if is_paused else ""
         grabbing_indicator = " GRABBING" if is_grabbing else ""
-        speed_indicator = f" {time_multiplier:.0f}x" if time_multiplier > 1 else ""
+        speed_indicator = f" {format_time_multiplier(time_multiplier)}" if time_multiplier != 1.0 else ""
         pygame.display.set_caption(
             f"MiniSFS{grabbing_indicator}{paused_indicator}{speed_indicator}"
             f" - Bodies: {bodies.shape[0]}"

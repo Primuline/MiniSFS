@@ -26,12 +26,23 @@ from src.config import (
     DEFAULT_RADIUS_PLANET,
     DEFAULT_RADIUS_PROBE,
     DEFAULT_RADIUS_STAR,
+    UI_BLACK,
+    UI_DARK,
+    UI_DIM,
+    UI_DISABLED,
+    UI_PANEL_BG,
+    UI_WHITE,
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
     WORLD_SCALE,
+    get_ui_font,
 )
 from src.core.utils.tools import round_to_nice_number
-from src.rendering.input_dialog import EditBodyDialog, ScientificInputDialog
+from src.rendering.input_dialog import (
+    EditBodyDialog,
+    ProbeInputDialog,
+    ScientificInputDialog,
+)
 from src.core.types import (
     BODY_TYPE,
     CHARGE,
@@ -48,19 +59,29 @@ from src.core.types import (
 # Panel configuration
 # ============================================================================
 
-PANEL_BG = (20, 20, 40, 200)
-PANEL_BORDER = (60, 60, 100)
-TEXT_COLOR = (200, 200, 220)
-TEXT_HIGHLIGHT = (255, 255, 255)
-LABEL_COLOR = (150, 150, 180)
-BTN_NORMAL = (50, 50, 80)
-BTN_HOVER = (70, 70, 110)
-BTN_ACTIVE = (100, 120, 200)
-BTN_DISABLED = (30, 30, 50)
+PANEL_BG = UI_PANEL_BG
+PANEL_BORDER = UI_WHITE
+TEXT_COLOR = UI_WHITE
+TEXT_HIGHLIGHT = UI_WHITE
+LABEL_COLOR = UI_DIM
+BTN_NORMAL = UI_BLACK
+BTN_HOVER = UI_DARK
+BTN_ACTIVE = UI_WHITE
+BTN_DISABLED = UI_BLACK
 
 INFO_PANEL_WIDTH = 220
 TOOLBAR_WIDTH = 44
 CONTROL_BAR_HEIGHT = 36
+
+
+def format_time_multiplier(speed: float) -> str:
+    """Return a compact label for the current time multiplier."""
+    if speed <= 0.0:
+        return "0x"
+    if speed < 1.0:
+        denominator = int(round(1.0 / speed))
+        return f"1/{denominator}x"
+    return f"{speed:.0f}x"
 
 
 class Button:
@@ -94,7 +115,7 @@ class Button:
         self.action = action
         self.color = color
         self.hover_color = hover_color
-        self.font = pygame.font.Font(None, font_size)
+        self.font = get_ui_font(font_size)
         self.hovered = False
         self.active = False
         self.disabled = False
@@ -117,14 +138,15 @@ class Button:
         elif self.hovered:
             color = self.hover_color
 
-        # Background
-        pygame.draw.rect(surface, color, self.rect, border_radius=4)
-        pygame.draw.rect(surface, PANEL_BORDER, self.rect, 1, border_radius=4)
+        pygame.draw.rect(surface, color, self.rect)
+        pygame.draw.rect(surface, PANEL_BORDER, self.rect, 2 if self.active else 1)
 
         # Text
-        text_color = TEXT_HIGHLIGHT if (self.active or self.hovered) else TEXT_COLOR
+        text_color = UI_BLACK if self.active else TEXT_COLOR
+        if self.hovered and not self.active:
+            text_color = TEXT_HIGHLIGHT
         if self.disabled:
-            text_color = (80, 80, 80)
+            text_color = UI_DISABLED
         text_surf = self.font.render(self.text, True, text_color)
         tr = text_surf.get_rect(center=self.rect.center)
         surface.blit(text_surf, tr)
@@ -174,10 +196,10 @@ class HUDManager:
         self.height: int = WINDOW_HEIGHT
 
         # Fonts
-        self._font_title = pygame.font.Font(None, 20)
-        self._font_label = pygame.font.Font(None, 16)
-        self._font_value = pygame.font.Font(None, 16)
-        self._font_small = pygame.font.Font(None, 14)
+        self._font_title = get_ui_font(20)
+        self._font_label = get_ui_font(16)
+        self._font_value = get_ui_font(16)
+        self._font_small = get_ui_font(14)
 
         # ============ Toolbar ============
         tool_y = 100
@@ -201,14 +223,13 @@ class HUDManager:
 
         # ============ Time controls ============
         ctrl_y = self.height - CONTROL_BAR_HEIGHT - 5
-        ctrl_x = self.width // 2 - 96  # center 5 buttons
+        ctrl_x = self.width // 2 - 112
         self.time_buttons: List[Button] = []
         time_actions = [
-            ("|<", "REWIND"),
-            (">", "PLAY_PAUSE"),
-            (">>", "FAST_2X"),
-            (">>>", "FAST_4X"),
-            (">>>>", "FAST_8X"),
+            ("||", "PLAY_PAUSE"),
+            ("<<", "SLOW_HALF"),
+            ("1x", "TIME_1X"),
+            (">>", "FAST_DOUBLE"),
         ]
         for i, (label, action) in enumerate(time_actions):
             btn = Button(
@@ -237,6 +258,19 @@ class HUDManager:
         self.edit_radius: float = 6.0
         self._edit_dialog: EditBodyDialog = EditBodyDialog()
 
+        # Probe rocket parameter dialog
+        self.probe_total_mass: float = 0.0
+        self.probe_fuel_mass: float = 0.0
+        self.probe_dry_mass: float = 0.0
+        self.probe_exhaust_velocity: float = 0.0
+        self.probe_mass_flow_rate: float = 0.0
+        self.probe_radius: float = DEFAULT_RADIUS_PROBE * WORLD_SCALE
+        self.probe_dialog_visible: bool = False
+        self._probe_dialog: ProbeInputDialog = ProbeInputDialog()
+
+        # Probe fuel HUD, shown only in probe reference frame.
+        self._probe_fuel_info: Optional[Dict[str, float]] = None
+
         # Custom particle radius (read from dialog, in meters)
         self.custom_radius: float = CUSTOM_RADIUS_DEFAULT
 
@@ -258,6 +292,56 @@ class HUDManager:
         self._fps: float = 0.0
         self._mouse_world_pos: tuple[float, float] = (0.0, 0.0)
         self._has_mouse_pos: bool = False
+
+        # ============ Startup mode menu ============
+        menu_w = 260
+        menu_h = 48
+        menu_x = self.width // 2 - menu_w // 2
+        menu_y = self.height // 2 - 20
+        self.mode_menu_buttons: List[Button] = [
+            Button(
+                menu_x,
+                menu_y,
+                menu_w,
+                menu_h,
+                "Level Mode",
+                "LEVEL_MODE",
+                font_size=22,
+            ),
+            Button(
+                menu_x,
+                menu_y + 64,
+                menu_w,
+                menu_h,
+                "Sandbox Mode",
+                "START_SANDBOX",
+                font_size=22,
+            ),
+        ]
+        self.level_select_buttons: List[Button] = []
+        grid_w = 120
+        grid_h = 44
+        grid_gap_x = 18
+        grid_gap_y = 18
+        grid_total_w = 4 * grid_w + 3 * grid_gap_x
+        grid_x = self.width // 2 - grid_total_w // 2
+        grid_y = self.height // 2 - 70
+        for row in range(2):
+            for col in range(4):
+                level_number = row * 4 + col + 1
+                btn = Button(
+                    grid_x + col * (grid_w + grid_gap_x),
+                    grid_y + row * (grid_h + grid_gap_y),
+                    grid_w,
+                    grid_h,
+                    f"Level {level_number}",
+                    f"START_LEVEL_{level_number}",
+                    font_size=18,
+                )
+                if level_number != 1:
+                    btn.disabled = True
+                self.level_select_buttons.append(btn)
+        self.level_mode_enabled = False
 
     # ------------------------------------------------------------------
     # Update methods
@@ -428,6 +512,22 @@ class HUDManager:
             # Dialog consumed the event, do not propagate
             return None
 
+        # Probe rocket dialog has priority (when visible)
+        if self.probe_dialog_visible:
+            dlg_result = self._probe_dialog.handle_event(event)
+            if dlg_result is not None:
+                if isinstance(dlg_result, dict):
+                    self.probe_total_mass = dlg_result["total_mass"]
+                    self.probe_fuel_mass = dlg_result["fuel_mass"]
+                    self.probe_dry_mass = dlg_result["dry_mass"]
+                    self.probe_exhaust_velocity = dlg_result["exhaust_velocity"]
+                    self.probe_mass_flow_rate = dlg_result["mass_flow_rate"]
+                    self.probe_radius = dlg_result["radius"]
+                    return "PROBE_DIALOG_OK"
+                if dlg_result == "CANCEL":
+                    return "PROBE_DIALOG_CANCEL"
+            return None
+
         # Custom particle dialog has priority (when visible)
         if self.custom_dialog_visible:
             dlg_result = self._input_dialog.handle_event(event)
@@ -457,6 +557,29 @@ class HUDManager:
 
         return None
 
+    def handle_mode_menu_event(self, event: pygame.event.Event) -> Optional[str]:
+        """Handle startup mode menu events.
+
+        Args:
+            event: Pygame event
+
+        Returns:
+            Menu command string, or None.
+        """
+        for btn in self.mode_menu_buttons:
+            action = btn.handle_event(event)
+            if action:
+                return action
+        return None
+
+    def handle_level_select_event(self, event: pygame.event.Event) -> Optional[str]:
+        """Handle level selection menu events."""
+        for btn in self.level_select_buttons:
+            action = btn.handle_event(event)
+            if action:
+                return action
+        return None
+
     def set_tool_active(self, tool: Optional[str]) -> None:
         """Set the currently active tool.
 
@@ -467,6 +590,16 @@ class HUDManager:
         for btn in self.tool_buttons:
             btn.active = (btn.action == tool)
 
+    def set_level_mode_enabled(self, enabled: bool) -> None:
+        """Enable or disable sandbox editing tools while in a fixed level."""
+        self.level_mode_enabled = enabled
+        if enabled:
+            self.active_tool = None
+        for btn in self.tool_buttons:
+            btn.disabled = enabled
+            if enabled:
+                btn.active = False
+
     def set_play_pause_state(self, is_paused: bool) -> None:
         """Set the play/pause state.
 
@@ -474,8 +607,8 @@ class HUDManager:
             is_paused: Whether paused
         """
         self.is_paused = is_paused
-        if len(self.time_buttons) >= 2:
-            self.time_buttons[1].text = ">" if is_paused else "||"
+        if self.time_buttons:
+            self.time_buttons[0].text = ">" if is_paused else "||"
 
     def set_time_speed(self, speed: float) -> None:
         """Set the time speed.
@@ -484,14 +617,9 @@ class HUDManager:
             speed: Time speed multiplier
         """
         self.time_speed = speed
-        for i, btn in enumerate(self.time_buttons):
-            if i >= 2:  # fast-forward buttons
-                btn.active = False
-        if speed >= 8.0:
-            self.time_buttons[4].active = True
-        elif speed >= 4.0:
-            self.time_buttons[3].active = True
-        elif speed >= 2.0:
+        for btn in self.time_buttons:
+            btn.active = False
+        if len(self.time_buttons) >= 3 and abs(speed - 1.0) < 1e-9:
             self.time_buttons[2].active = True
 
     # ------------------------------------------------------------------
@@ -530,6 +658,46 @@ class HUDManager:
         for field in self._edit_dialog.fields:
             field["text"] = ""
 
+    def show_probe_dialog(self) -> None:
+        """Open the probe rocket parameter dialog."""
+        self._probe_dialog.prefill()
+        self.probe_dialog_visible = True
+        self._probe_dialog.visible = True
+
+    def hide_probe_dialog(self) -> None:
+        """Close the probe rocket parameter dialog and reset input state."""
+        self.probe_dialog_visible = False
+        self._probe_dialog.visible = False
+        self._probe_dialog.active_field_index = -1
+        self._probe_dialog.error_message = ""
+
+    def set_probe_fuel_info(
+        self,
+        fuel_mass: float,
+        dry_mass: float,
+        initial_fuel_mass: float,
+    ) -> None:
+        """Update the probe fuel HUD data.
+
+        Args:
+            fuel_mass: Current fuel mass in kg.
+            dry_mass: Dry mass in kg.
+            initial_fuel_mass: Initial fuel mass in kg.
+        """
+        fuel_pct = 0.0
+        if initial_fuel_mass > 0.0:
+            fuel_pct = max(0.0, min(100.0, fuel_mass / initial_fuel_mass * 100.0))
+        self._probe_fuel_info = {
+            "fuel_mass": max(0.0, fuel_mass),
+            "dry_mass": dry_mass,
+            "initial_fuel_mass": initial_fuel_mass,
+            "fuel_pct": fuel_pct,
+        }
+
+    def clear_probe_fuel_info(self) -> None:
+        """Hide the probe fuel HUD."""
+        self._probe_fuel_info = None
+
     # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
@@ -545,14 +713,55 @@ class HUDManager:
         self._draw_toolbar(surface)
         if self._edit_dialog.visible:
             self._edit_dialog.draw(surface)
+        if self.probe_dialog_visible:
+            self._probe_dialog.draw(surface)
         if self.custom_dialog_visible:
             self._draw_custom_dialog(surface)
         self._draw_time_controls(surface)
         self._draw_active_tool_indicator(surface)
         self._draw_selected_info_bar(surface)
         self._draw_status_info(surface)
+        self._draw_probe_fuel_panel(surface)
         if camera is not None:
             self._draw_scale_bar(surface, camera)
+
+    def draw_mode_menu(self, surface: pygame.Surface) -> None:
+        """Draw the startup mode selection menu.
+
+        Args:
+            surface: Target Surface
+        """
+        title = self._font_title.render("MiniSFS", True, TEXT_HIGHLIGHT)
+        title_rect = title.get_rect(center=(self.width // 2, self.height // 2 - 110))
+        surface.blit(title, title_rect)
+
+        subtitle = self._font_label.render("Select mode", True, TEXT_COLOR)
+        subtitle_rect = subtitle.get_rect(center=(self.width // 2, self.height // 2 - 82))
+        surface.blit(subtitle, subtitle_rect)
+
+        for btn in self.mode_menu_buttons:
+            btn.draw(surface)
+
+        esc_hint = self._font_small.render("Esc: quit", True, LABEL_COLOR)
+        esc_rect = esc_hint.get_rect(center=(self.width // 2, self.height // 2 + 130))
+        surface.blit(esc_hint, esc_rect)
+
+    def draw_level_select(self, surface: pygame.Surface) -> None:
+        """Draw the level selection grid."""
+        title = self._font_title.render("Level Mode", True, TEXT_HIGHLIGHT)
+        title_rect = title.get_rect(center=(self.width // 2, self.height // 2 - 150))
+        surface.blit(title, title_rect)
+
+        subtitle = self._font_label.render("Select level", True, TEXT_COLOR)
+        subtitle_rect = subtitle.get_rect(center=(self.width // 2, self.height // 2 - 122))
+        surface.blit(subtitle, subtitle_rect)
+
+        for btn in self.level_select_buttons:
+            btn.draw(surface)
+
+        esc_hint = self._font_small.render("Esc: back", True, LABEL_COLOR)
+        esc_rect = esc_hint.get_rect(center=(self.width // 2, self.height // 2 + 96))
+        surface.blit(esc_hint, esc_rect)
 
     def _draw_info_panel(self, surface: pygame.Surface) -> None:
         """Draw the info panel.
@@ -568,13 +777,12 @@ class HUDManager:
         panel_w = INFO_PANEL_WIDTH
         panel_h = 200
 
-        # Background
         panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         panel_surf.fill(PANEL_BG)
         surface.blit(panel_surf, (panel_x, panel_y))
         pygame.draw.rect(
             surface, PANEL_BORDER,
-            (panel_x, panel_y, panel_w, panel_h), 1, border_radius=4,
+            (panel_x, panel_y, panel_w, panel_h), 2,
         )
 
         # Title
@@ -612,10 +820,9 @@ class HUDManager:
         Args:
             surface: Target Surface
         """
-        # Toolbar background
-        tool_bg = pygame.Surface((TOOLBAR_WIDTH, self.height), pygame.SRCALPHA)
-        tool_bg.fill((15, 15, 35, 180))
-        surface.blit(tool_bg, (0, 0))
+        tool_rect = pygame.Rect(0, 0, TOOLBAR_WIDTH, self.height)
+        pygame.draw.rect(surface, UI_BLACK, tool_rect)
+        pygame.draw.rect(surface, UI_WHITE, tool_rect, 1)
 
         # Tool title
         title_surf = self._font_title.render("Tools", True, LABEL_COLOR)
@@ -646,16 +853,15 @@ class HUDManager:
             surface: Target Surface
         """
         bar_y = self.height - CONTROL_BAR_HEIGHT - 5
-        bar_w = 240
+        bar_w = 276
         bar_x = self.width // 2 - bar_w // 2
 
-        # Background
         bar_bg = pygame.Surface((bar_w, CONTROL_BAR_HEIGHT), pygame.SRCALPHA)
-        bar_bg.fill((15, 15, 35, 200))
+        bar_bg.fill(PANEL_BG)
         surface.blit(bar_bg, (bar_x, bar_y))
         pygame.draw.rect(
             surface, PANEL_BORDER,
-            (bar_x, bar_y, bar_w, CONTROL_BAR_HEIGHT), 1, border_radius=4,
+            (bar_x, bar_y, bar_w, CONTROL_BAR_HEIGHT), 2,
         )
 
         # Buttons
@@ -663,12 +869,12 @@ class HUDManager:
             btn.draw(surface)
 
         # Speed indicator
-        speed_text = f"{self.time_speed:.0f}x"
+        speed_text = format_time_multiplier(self.time_speed)
         if self.is_paused:
-            speed_text = "PAUSED"
+            speed_text = f"PAUSED {speed_text}"
         speed_surf = self._font_small.render(speed_text, True, TEXT_COLOR)
         sr = speed_surf.get_rect(
-            midtop=(self.width // 2, bar_y - 16)
+            midleft=(self.time_buttons[-1].rect.right + 10, bar_y + CONTROL_BAR_HEIGHT // 2)
         )
         surface.blit(speed_surf, sr)
 
@@ -681,7 +887,7 @@ class HUDManager:
         if self.active_tool:
             tool_name = self.get_tool_display_name(self.active_tool)
             text = f"Active: {tool_name}  (right-click to cancel)"
-            text_surf = self._font_small.render(text, True, (180, 180, 200))
+            text_surf = self._font_small.render(text, True, TEXT_COLOR)
             surface.blit(text_surf, (50, 5))
 
     def _draw_selected_info_bar(self, surface: pygame.Surface) -> None:
@@ -706,8 +912,9 @@ class HUDManager:
             text_surf = self._font_label.render(line, True, TEXT_HIGHLIGHT)
             tr = text_surf.get_rect(midtop=(self.width // 2, 5 + i * line_height))
             bg = pygame.Surface((tr.width + 16, tr.height + 6), pygame.SRCALPHA)
-            bg.fill((0, 0, 0, 160))
+            bg.fill(PANEL_BG)
             surface.blit(bg, (tr.x - 8, tr.y - 3))
+            pygame.draw.rect(surface, PANEL_BORDER, (tr.x - 8, tr.y - 3, tr.width + 16, tr.height + 6), 1)
             surface.blit(text_surf, tr)
 
     def _draw_status_info(self, surface: pygame.Surface) -> None:
@@ -717,7 +924,7 @@ class HUDManager:
             surface: Target Surface
         """
         lines = [
-            f"Bodies: {self._num_bodies}  |  Speed: {self._time_speed:.0f}x  |  FPS: {self._fps:.0f}",
+            f"Bodies: {self._num_bodies}  |  Speed: {format_time_multiplier(self._time_speed)}  |  FPS: {self._fps:.0f}",
         ]
         if self._has_mouse_pos:
             wx, wy = self._mouse_world_pos
@@ -729,12 +936,48 @@ class HUDManager:
         max_w = max(self._font_small.size(l)[0] for l in lines) + 12
 
         bg = pygame.Surface((max_w, total_h), pygame.SRCALPHA)
-        bg.fill((0, 0, 0, 120))
+        bg.fill(PANEL_BG)
         surface.blit(bg, (8, 8))
+        pygame.draw.rect(surface, PANEL_BORDER, (8, 8, max_w, total_h), 1)
 
         for i, line in enumerate(lines):
             text_surf = self._font_small.render(line, True, TEXT_COLOR)
             surface.blit(text_surf, (14, 12 + i * line_height))
+
+    def _draw_probe_fuel_panel(self, surface: pygame.Surface) -> None:
+        """Draw the right-side fuel panel for probe reference frame mode."""
+        if self._probe_fuel_info is None:
+            return
+
+        panel_w = 220
+        panel_h = 78
+        panel_x = self.width - panel_w - 10
+        panel_y = 220 if self.info_panel_visible else 10
+
+        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel_surf.fill(PANEL_BG)
+        surface.blit(panel_surf, (panel_x, panel_y))
+        pygame.draw.rect(
+            surface,
+            PANEL_BORDER,
+            (panel_x, panel_y, panel_w, panel_h),
+            2,
+        )
+
+        info = self._probe_fuel_info
+        title = self._font_title.render("Probe Fuel", True, TEXT_HIGHLIGHT)
+        surface.blit(title, (panel_x + 10, panel_y + 8))
+
+        pct = info["fuel_pct"]
+        pct_text = self._font_value.render(f"Fuel: {pct:.1f}%", True, TEXT_COLOR)
+        surface.blit(pct_text, (panel_x + 10, panel_y + 30))
+
+        mass_text = self._font_value.render(
+            f"Fuel Mass: {info['fuel_mass']:.3e} kg",
+            True,
+            TEXT_COLOR,
+        )
+        surface.blit(mass_text, (panel_x + 10, panel_y + 50))
 
     def _draw_scale_bar(self, surface: pygame.Surface, camera) -> None:
         """Draw the bottom-right scale bar.
@@ -757,7 +1000,7 @@ class HUDManager:
         y = self.height - SCALE_BAR_Y
 
         # Horizontal line
-        bar_color = (200, 200, 220)
+        bar_color = UI_WHITE
         pygame.draw.line(surface, bar_color, (x, y), (x + int_length, y), 2)
         # Vertical end lines
         pygame.draw.line(surface, bar_color, (x, y - 3), (x, y + 3), 2)
@@ -775,6 +1018,6 @@ class HUDManager:
         else:
             text = f"{scaled:.0f} m"
 
-        text_surf = self._font_small.render(text, True, (200, 200, 220))
+        text_surf = self._font_small.render(text, True, TEXT_COLOR)
         tr = text_surf.get_rect(midtop=(x + int_length // 2, y + 6))
         surface.blit(text_surf, tr)

@@ -398,6 +398,54 @@ class TestCollision:
 
         assert momentum_before == pytest.approx(momentum_after, rel=1e-10)
 
+    def test_probe_planet_collision_lands_probe(self):
+        """Probe collisions should place the probe on the host surface."""
+        probe = make_body(
+            x=9.0, y=0.0, vx=-5.0, vy=1.0,
+            mass=1.0, radius=1.0, body_type=BODY_TYPE_PROBE,
+        )
+        planet = make_body(
+            x=0.0, y=0.0, vx=2.0, vy=3.0,
+            mass=1.0e28, radius=10.0, body_type=BODY_TYPE_PLANET,
+        )
+        bodies = np.vstack([probe, planet])
+
+        result, events = handle_collisions(bodies)
+
+        assert result[0, IS_ACTIVE] == 1.0
+        assert result[1, IS_ACTIVE] == 1.0
+        assert result[0, X] == pytest.approx(11.0)
+        assert result[0, Y] == pytest.approx(0.0)
+        assert result[0, VX] == pytest.approx(result[1, VX])
+        assert result[0, VY] == pytest.approx(result[1, VY])
+        assert events[0]["type"] == "probe_landed"
+        assert events[0]["id_a"] == 0
+        assert events[0]["id_b"] == 1
+        assert events[0]["normal_x"] == pytest.approx(1.0)
+        assert events[0]["normal_y"] == pytest.approx(0.0)
+
+    def test_probe_star_collision_lands_probe_when_host_first(self):
+        """Probe landing should also work when the host has the lower row id."""
+        star = make_body(
+            x=0.0, y=0.0, vx=0.0, vy=0.0,
+            mass=1.0e30, radius=10.0, body_type=BODY_TYPE_STAR,
+        )
+        probe = make_body(
+            x=-9.0, y=0.0, vx=5.0, vy=0.0,
+            mass=1.0, radius=1.0, body_type=BODY_TYPE_PROBE,
+        )
+        bodies = np.vstack([star, probe])
+
+        result, events = handle_collisions(bodies)
+
+        assert result[1, IS_ACTIVE] == 1.0
+        assert result[1, X] == pytest.approx(-11.0)
+        assert result[1, Y] == pytest.approx(0.0)
+        assert events[0]["type"] == "probe_landed"
+        assert events[0]["id_a"] == 1
+        assert events[0]["id_b"] == 0
+        assert events[0]["normal_x"] == pytest.approx(-1.0)
+
 
 # ============================================================================
 # engine.py tests
@@ -498,6 +546,33 @@ class TestPhysicsEngine:
 
         # Should collide with the planet, trajectory ends early
         assert len(trajectory) < 1000
+
+    def test_predict_relative_trajectory_integrates_reference_body(self):
+        """Relative prediction should use the reference body's future path."""
+        engine = PhysicsEngine(substeps=1, softening=0.0)
+        star = make_body(
+            x=0.0, y=0.0, mass=1.0e30, radius=1.0e6,
+            body_type=BODY_TYPE_STAR, is_static=True,
+        )
+        reference = make_body(
+            x=1.0e9, y=0.0, vx=0.0, vy=8.0e3,
+            mass=1.0e24, radius=1.0e6, body_type=BODY_TYPE_PLANET,
+        )
+        probe = make_body(
+            x=1.1e9, y=0.0, vx=0.0, vy=8.0e3,
+            mass=1.0e3, radius=1.0, body_type=BODY_TYPE_PROBE,
+        )
+        bodies = np.vstack([star, reference, probe])
+
+        relative = engine.predict_relative_trajectory(
+            bodies, probe_body_id=2, reference_body_id=1, steps=3, dt=10.0
+        )
+        absolute_probe = engine.predict_trajectory(
+            probe.reshape(1, -1), bodies[:2], steps=3, dt=10.0
+        )
+
+        assert relative.shape == (3, 2)
+        assert not np.allclose(relative, absolute_probe)
 
     def test_compute_forces_returns_correct_shape(self):
         """compute_forces should return an array of the correct shape."""

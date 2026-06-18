@@ -1,0 +1,42 @@
+{
+  "id": "level_1",
+  "name": "Earth-Moon Launch",
+  "bodies": [
+    {
+      "name": "Earth",
+      "type": "star",
+      "x": 0.0,
+      "y": 0.0,
+      "vx": 0.0,
+      "vy": 0.0,
+      "mass": 5.972e24,
+      "charge": 0.0,
+      "radius": 6.371e6,
+      "static": true
+    },
+    {
+      "name": "Moon",
+      "type": "planet",
+      "x": 3.844e8,
+      "y": 0.0,
+      "vx": 0.0,
+      "vy": 1018.2890457258004,
+      "mass": 7.34767309e22,
+      "charge": 0.0,
+      "radius": 1.7374e6,
+      "static": false
+    },
+    {
+      "name": "Probe",
+      "type": "probe",
+      "x": 0.0,
+      "y": -7171001.0,
+      "vx": 0.0,
+      "vy": 0.0,
+      "mass": 1.0e5,
+      "charge": 0.0,
+      "radius": 8.0e5,
+      "static": false
+    }
+  ]
+}

@@ -395,28 +395,12 @@ class TestInputIntegration:
         cmd = handler.inject_key_press("K_h")
         assert cmd == "TOGGLE_SHORTCUTS", f"K_h should be TOGGLE_SHORTCUTS, got: {cmd}"
 
-        # 5 -> TIME_1X
-        cmd = handler.inject_key_press("K_5")
-        assert cmd == "TIME_1X", f"K_5 should be TIME_1X, got: {cmd}"
-
-        # 6 -> FAST_2X
-        cmd = handler.inject_key_press("K_6")
-        assert cmd == "FAST_2X", f"K_6 should be FAST_2X, got: {cmd}"
-
-        # 7 -> FAST_4X
-        cmd = handler.inject_key_press("K_7")
-        assert cmd == "FAST_4X", f"K_7 should be FAST_4X, got: {cmd}"
-
-        # 8 -> FAST_8X
-        cmd = handler.inject_key_press("K_8")
-        assert cmd == "FAST_8X", f"K_8 should be FAST_8X, got: {cmd}"
-
         # DELETE -> DELETE_SELECTED
         cmd = handler.inject_key_press("K_DELETE")
         assert cmd == "DELETE_SELECTED", f"K_DELETE should be DELETE_SELECTED, got: {cmd}"
 
-        # Old shortcuts R/F/T/0 have been removed -> None
-        for removed_key in ("K_r", "K_t", "K_f", "K_0"):
+        # Old shortcuts and numbered speed shortcuts have been removed -> None
+        for removed_key in ("K_r", "K_t", "K_f", "K_0", "K_5", "K_6", "K_7", "K_8"):
             cmd = handler.inject_key_press(removed_key)
             assert cmd == "", f"{removed_key} should be empty, got: {cmd}"
 

@@ -6,7 +6,6 @@ The renderer does **not** modify physics state — it only reads BodyState array
 
 import math
 from typing import Dict, List, Optional, Tuple
-import numpy as np
 
 import numpy as np
 import pygame
@@ -21,8 +20,13 @@ from src.config import (
     DEFAULT_RADIUS_PLANET,
     DEFAULT_RADIUS_PROBE,
     DEFAULT_RADIUS_STAR,
+    UI_BLACK,
+    UI_DARK,
+    UI_DIM,
+    UI_WHITE,
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
+    get_ui_font,
 )
 from src.core.interfaces import ICamera, IRenderer
 from src.core.types import (
@@ -38,7 +42,6 @@ from src.core.types import (
     Y,
 )
 from src.rendering.effects import (
-    StarField,
     draw_body_labels,
     draw_grid,
     draw_placement_trajectory,
@@ -58,7 +61,7 @@ class Renderer(IRenderer):
     Attributes:
         width: Window width (pixels)
         height: Window height (pixels)
-        star_field: Starfield background
+        star_field: Deprecated; monochrome mode uses a blank background.
     """
 
     def __init__(
@@ -81,18 +84,6 @@ class Renderer(IRenderer):
         )
         pygame.display.set_caption("MiniSFS")
 
-        # Star field background
-        self.star_field: StarField = StarField(
-            num_stars_far=200,
-            num_stars_near=100,
-            width=width,
-            height=height,
-        )
-
-        # Cached surface for starfield background
-        self._background_surface: Optional[pygame.Surface] = None
-        self._background_dirty: bool = True
-
         # Selected body ID
         self.selected_body_id: Optional[int] = None
 
@@ -109,13 +100,10 @@ class Renderer(IRenderer):
         # Accumulated time
         self._time: float = 0.0
 
-        # Glow effect cache
-        self._glow_cache: Dict[float, pygame.Surface] = {}
-
         # Fonts
-        self._font_small: pygame.font.Font = pygame.font.Font(None, 18)
-        self._font_medium: pygame.font.Font = pygame.font.Font(None, 24)
-        self._font_large: pygame.font.Font = pygame.font.Font(None, 36)
+        self._font_small: pygame.font.Font = get_ui_font(18)
+        self._font_medium: pygame.font.Font = get_ui_font(24)
+        self._font_large: pygame.font.Font = get_ui_font(36)
 
     # ------------------------------------------------------------------
     # IRenderer interface methods
@@ -140,13 +128,10 @@ class Renderer(IRenderer):
         """
         self._time += 1.0 / 60.0  # Approximate frame time
 
-        # Update background
-        self.star_field.update(1.0 / 60.0)
-
         # Clear screen
         self.screen.fill(BACKGROUND_COLOR)
 
-        # Render background
+        # Background is intentionally empty for the black/white geometry style.
         self.render_background()
 
         # Calculate speed for each body (used for trail color)
@@ -173,8 +158,11 @@ class Renderer(IRenderer):
             draw_body_labels(self.screen, bodies, camera)
 
     def render_background(self) -> None:
-        """Render static background (starfield, grid, etc.)."""
-        self.star_field.render(self.screen)
+        """Render static background.
+
+        The old starfield is intentionally removed; the screen clear in
+        ``render`` is the full background pass.
+        """
 
     def render_hud(
         self,
@@ -189,29 +177,25 @@ class Renderer(IRenderer):
         """
         # FPS is displayed in the window title, not drawn here
         if game_state == "PAUSED":
-            pause_text = self._font_large.render("PAUSED", True, (255, 255, 100))
+            pause_text = self._font_large.render("PAUSED", True, UI_WHITE)
             text_rect = pause_text.get_rect(center=(self.width // 2, 50))
-            # Semi-transparent background
-            bg_surf = pygame.Surface((text_rect.width + 20, text_rect.height + 10), pygame.SRCALPHA)
-            bg_surf.fill((0, 0, 0, 128))
-            self.screen.blit(bg_surf, (text_rect.x - 10, text_rect.y - 5))
+            bg_rect = pygame.Rect(
+                text_rect.x - 10,
+                text_rect.y - 5,
+                text_rect.width + 20,
+                text_rect.height + 10,
+            )
+            pygame.draw.rect(self.screen, UI_BLACK, bg_rect)
+            pygame.draw.rect(self.screen, UI_WHITE, bg_rect, 2)
             self.screen.blit(pause_text, text_rect)
 
         # Bottom status bar
-        state_colors = {
-            "PLAYING": (100, 220, 100),
-            "PAUSED": (255, 255, 100),
-            "WIN": (100, 255, 200),
-            "LOSE": (255, 100, 100),
-            "MENU": (200, 200, 200),
-        }
-        color = state_colors.get(game_state, (200, 200, 200))
-        state_text = self._font_small.render(f"State: {game_state}", True, color)
+        state_text = self._font_small.render(f"State: {game_state}", True, UI_WHITE)
         self.screen.blit(state_text, (10, self.height - 25))
 
         # Shortcut hints
         hint = "Space:Pause  R:Reset  Esc:Menu"
-        hint_text = self._font_small.render(hint, True, (150, 150, 150))
+        hint_text = self._font_small.render(hint, True, UI_DIM)
         hr = hint_text.get_rect(right=self.width - 10, bottom=self.height - 5)
         self.screen.blit(hint_text, hr)
 
@@ -290,108 +274,118 @@ class Renderer(IRenderer):
             elif body_type == BODY_TYPE_PLANET:
                 self._draw_planet(sx, sy, screen_radius, mass, is_static)
             elif body_type == BODY_TYPE_PROBE:
-                self._draw_probe(sx, sy, screen_radius, vx, vy)
+                landing_normal = self._probe_landing_normal(bodies, i)
+                self._draw_probe(sx, sy, screen_radius, vx, vy, landing_normal)
             elif body_type == BODY_TYPE_CHARGED:
                 self._draw_charged(sx, sy, screen_radius, charge)
 
     def _draw_star(self, sx: int, sy: int, radius: float, mass: float) -> None:
-        """Draw a star: radial gradient glow effect.
+        """Draw a star as a rotating regular 17-gon.
 
         Args:
             sx, sy: Screen center coordinates
             radius: Screen radius (pixels)
-            mass: Mass (used for color)
+            mass: Mass (unused, kept for interface symmetry)
         """
-        # Brightness varies with mass
-        intensity = min(1.0, mass / 1e31)
-        r = min(255, int(200 + 55 * intensity))
-        g = min(255, int(150 + 50 * intensity))
-        b = min(220, int(100 + 40 * intensity))
-
-        # Outer glow layer (large radius semi-transparent, max 200px to prevent OOM)
-        glow_radius = min(radius * 3.0, 200.0)
-        glow_surf = self._get_glow_surface(glow_radius, (r, g, b, 40))
-        self.screen.blit(glow_surf, (sx - glow_radius, sy - glow_radius))
-
-        # Mid glow layer (max 150px)
-        mid_radius = min(radius * 2.0, 150.0)
-        mid_surf = self._get_glow_surface(mid_radius, (r, g, b, 80))
-        self.screen.blit(mid_surf, (sx - mid_radius, sy - mid_radius))
-
-        # Core (brightest)
-        core_radius = radius
-        pygame.draw.circle(self.screen, (r, g, b), (sx, sy), int(core_radius))
-        pygame.draw.circle(self.screen, (255, 255, 255), (sx, sy), max(1, int(core_radius * 0.4)))
+        del mass
+        draw_radius = max(4.0, radius)
+        rotation = pygame.time.get_ticks() * 0.0012
+        points = self._regular_polygon_points(sx, sy, draw_radius, 17, rotation)
+        pygame.draw.polygon(self.screen, UI_BLACK, points)
+        pygame.draw.polygon(self.screen, UI_WHITE, points, 2)
+        pygame.draw.circle(self.screen, UI_WHITE, (sx, sy), max(2, int(draw_radius * 0.28)), 1)
 
     def _draw_planet(self, sx: int, sy: int, radius: float, mass: float, is_static: bool) -> None:
-        """Draw a planet: solid circle + shadow.
+        """Draw a planet as a monochrome circle.
 
         Args:
             sx, sy: Screen center coordinates
             radius: Screen radius (pixels)
-            mass: Mass (used for color)
+            mass: Mass (unused, kept for interface symmetry)
             is_static: Whether the body is static
         """
-        # Mass determines color
-        intensity = min(1.0, mass / 1e29)
-        base_color = (
-            int(100 + 100 * intensity),
-            int(80 + 120 * intensity),
-            int(180 + 50 * intensity),
-        )
+        del mass
+        draw_radius = max(2, int(radius))
+        fill = UI_DARK if is_static else UI_WHITE
+        pygame.draw.circle(self.screen, fill, (sx, sy), draw_radius)
+        pygame.draw.circle(self.screen, UI_WHITE, (sx, sy), draw_radius, 2)
+        if not is_static and draw_radius > 4:
+            pygame.draw.circle(self.screen, UI_BLACK, (sx, sy), max(1, draw_radius // 2), 1)
 
-        if is_static:
-            # Static bodies are darker
-            base_color = tuple(c // 2 for c in base_color)
+    def _probe_landing_normal(self, bodies: np.ndarray, probe_id: int) -> Optional[Tuple[float, float]]:
+        """Return the outward host normal when a probe is resting on a body."""
+        probe_pos = bodies[probe_id, [X, Y]]
+        probe_vel = bodies[probe_id, [VX, VY]]
+        probe_side = float(bodies[probe_id, RADIUS])
+        for host_id in range(bodies.shape[0]):
+            if host_id == probe_id:
+                continue
+            if (
+                bodies[host_id, IS_ACTIVE] == 0.0
+                or int(bodies[host_id, BODY_TYPE]) == BODY_TYPE_PROBE
+            ):
+                continue
 
-        # Main body
-        pygame.draw.circle(self.screen, base_color, (sx, sy), int(radius))
+            delta = probe_pos - bodies[host_id, [X, Y]]
+            dist = float(np.linalg.norm(delta))
+            if dist < 1e-12:
+                continue
+            contact_dist = float(bodies[host_id, RADIUS] + probe_side)
+            tolerance = max(1.0, probe_side * 0.05)
+            relative_speed = float(np.linalg.norm(probe_vel - bodies[host_id, [VX, VY]]))
+            if abs(dist - contact_dist) <= tolerance and relative_speed <= 1.0:
+                return (float(delta[0] / dist), float(delta[1] / dist))
 
-        # Shadow (bottom-right semicircle)
-        shadow_radius = int(radius)
-        if shadow_radius > 2:
-            shadow_surf = pygame.Surface((shadow_radius * 2, shadow_radius * 2), pygame.SRCALPHA)
-            shadow_surf.fill((0, 0, 0, 0))
-            pygame.draw.circle(
-                shadow_surf, (0, 0, 0, 60),
-                (shadow_radius, shadow_radius), shadow_radius,
-            )
-            # Keep only the bottom-right part
-            clip_surf = pygame.Surface((shadow_radius, shadow_radius), pygame.SRCALPHA)
-            clip_surf.fill((0, 0, 0, 0))
-            clip_surf.blit(shadow_surf, (0, 0), (shadow_radius, shadow_radius, shadow_radius, shadow_radius))
-            self.screen.blit(clip_surf, (sx, sy))
+        return None
 
-        # Highlight (small bright circle in top-left)
-        if radius > 4:
-            highlight_radius = max(1, int(radius * 0.3))
-            pygame.draw.circle(
-                self.screen, (255, 255, 255, 60),
-                (sx - int(radius * 0.25), sy - int(radius * 0.25)),
-                highlight_radius,
-            )
-
-    def _draw_probe(self, sx: int, sy: int, radius: float, vx: float, vy: float) -> None:
-        """Draw a probe: small circle + velocity direction indicator.
+    def _draw_probe(
+        self,
+        sx: int,
+        sy: int,
+        side_length: float,
+        vx: float,
+        vy: float,
+        landing_normal: Optional[Tuple[float, float]] = None,
+    ) -> None:
+        """Draw a probe as an equilateral triangle with a marked nose.
 
         Args:
             sx, sy: Screen center coordinates
-            radius: Screen radius (pixels)
+            side_length: Triangle side length in screen pixels
             vx, vy: Velocity components
+            landing_normal: Optional outward normal from a landed host body.
         """
-        # Main body
-        probe_color = (200, 220, 255)
-        pygame.draw.circle(self.screen, probe_color, (sx, sy), max(1, int(radius)))
-
-        # Velocity direction indicator line
         speed = math.sqrt(vx * vx + vy * vy)
-        if speed > 0.1:
-            dir_len = radius * 2.5
-            dx = vx / speed * dir_len
-            dy = vy / speed * dir_len
-            end_x = int(sx + dx)
-            end_y = int(sy + dy)
-            pygame.draw.line(self.screen, (100, 200, 255), (sx, sy), (end_x, end_y), 1)
+        if landing_normal is not None and speed <= 1.0:
+            angle = math.atan2(landing_normal[1], landing_normal[0])
+        else:
+            angle = math.atan2(vy, vx) if speed > 0.1 else -math.pi / 2.0
+
+        side = max(5.1, side_length)
+        height = math.sqrt(3.0) * side / 2.0
+        nose_dist = height * 2.0 / 3.0
+        base_dist = height / 3.0
+        half_side = side / 2.0
+        px = -math.sin(angle)
+        py = math.cos(angle)
+        nose = (
+            int(sx + math.cos(angle) * nose_dist),
+            int(sy + math.sin(angle) * nose_dist),
+        )
+        base_mid_x = sx - math.cos(angle) * base_dist
+        base_mid_y = sy - math.sin(angle) * base_dist
+        left = (
+            int(base_mid_x + px * half_side),
+            int(base_mid_y + py * half_side),
+        )
+        right = (
+            int(base_mid_x - px * half_side),
+            int(base_mid_y - py * half_side),
+        )
+        pygame.draw.polygon(self.screen, UI_WHITE, [nose, left, right])
+        pygame.draw.polygon(self.screen, UI_BLACK, [nose, left, right], 1)
+        pygame.draw.circle(self.screen, UI_BLACK, nose, max(2, int(side * 0.12)))
+        pygame.draw.circle(self.screen, UI_WHITE, nose, max(2, int(side * 0.12)), 1)
 
     def _draw_charged(self, sx: int, sy: int, radius: float, charge: float) -> None:
         """Draw a charged particle with +/- sign.
@@ -401,19 +395,16 @@ class Renderer(IRenderer):
             radius: Screen radius (pixels)
             charge: Charge amount
         """
-        # Color: positive charge red, negative charge blue
-        if charge > 0:
-            color = (255, 80, 80)
-            sign = "+"
-        else:
-            color = (80, 130, 255)
-            sign = "-"
+        sign = "+" if charge >= 0 else "-"
+        draw_radius = max(4, int(radius))
+        fill = UI_WHITE if charge >= 0 else UI_BLACK
+        sign_color = UI_BLACK if charge >= 0 else UI_WHITE
 
-        pygame.draw.circle(self.screen, color, (sx, sy), max(1, int(radius)))
-        pygame.draw.circle(self.screen, (255, 255, 255), (sx, sy), max(1, int(radius)), 1)
+        pygame.draw.circle(self.screen, fill, (sx, sy), draw_radius)
+        pygame.draw.circle(self.screen, UI_WHITE, (sx, sy), draw_radius, 2)
 
         # Sign character
-        sign_text = self._font_small.render(sign, True, (255, 255, 255))
+        sign_text = self._font_small.render(sign, True, sign_color)
         tr = sign_text.get_rect(center=(sx, sy))
         self.screen.blit(sign_text, tr)
 
@@ -444,68 +435,33 @@ class Renderer(IRenderer):
             sx, sy = camera.world_to_screen(wx, wy)
             screen_radius = camera.world_distance_to_screen(radius)
 
-            # Pulsing highlight
             pulse = 0.8 + 0.2 * math.sin(self._time * 4)
-            highlight_r = screen_radius * 1.5 * pulse
-            alpha = int(100 + 80 * (0.5 + 0.5 * math.sin(self._time * 4)))
+            highlight_r = max(6, int(screen_radius * 1.5 * pulse))
+            pygame.draw.circle(self.screen, UI_WHITE, (sx, sy), highlight_r, 1)
 
-            # Use temporary surface for alpha support
-            size = int(highlight_r * 2) + 10
-            hl_surf = pygame.Surface((size, size), pygame.SRCALPHA)
-            hl_surf.fill((0, 0, 0, 0))
-            pygame.draw.circle(
-                hl_surf, (0, 200, 255, alpha),
-                (size // 2, size // 2),
-                highlight_r, 2,
+    @staticmethod
+    def _regular_polygon_points(
+        sx: int,
+        sy: int,
+        radius: float,
+        sides: int,
+        rotation: float,
+    ) -> List[Tuple[int, int]]:
+        """Return screen points for a regular polygon."""
+        return [
+            (
+                int(sx + math.cos(rotation + math.tau * i / sides) * radius),
+                int(sy + math.sin(rotation + math.tau * i / sides) * radius),
             )
-            self.screen.blit(hl_surf, (sx - size // 2, sy - size // 2))
-
-    def _get_glow_surface(self, radius: float, color: Tuple[int, int, int, int]) -> pygame.Surface:
-        """Get a cached glow surface.
-
-        Uses cached radial gradient circles to avoid recreating every frame.
-
-        Args:
-            radius: Glow radius (pixels)
-            color: RGBA color
-
-        Returns:
-            Semi-transparent glow Surface
-        """
-        # Use radius as cache key (rounded to 1px precision)
-        cache_key = round(radius, 0)
-        if cache_key not in self._glow_cache:
-            safe_radius = min(radius, 200.0)  # Safety limit
-            size = int(safe_radius * 2)
-            surf = pygame.Surface((size, size), pygame.SRCALPHA)
-            surf.fill((0, 0, 0, 0))
-
-            r, g, b, a = color
-            cx, cy = size // 2, size // 2
-
-            # Draw multiple semi-transparent circles for gradient effect
-            layers = 8
-            for i in range(layers):
-                t = i / layers
-                layer_r = radius * (1.0 - t)
-                layer_a = int(a * (1.0 - t * 0.8))
-                if layer_a <= 0:
-                    continue
-                pygame.draw.circle(
-                    surf, (r, g, b, layer_a),
-                    (cx, cy), int(layer_r),
-                )
-
-            self._glow_cache[cache_key] = surf
-
-        return self._glow_cache[cache_key]
+            for i in range(sides)
+        ]
 
     # ------------------------------------------------------------------
     # Box selection drawing
     # ------------------------------------------------------------------
 
     def draw_box_selection(self) -> None:
-        """Draw a blue semi-transparent selection box.
+        """Draw a monochrome selection box.
 
         Uses box_select_start and box_select_end to determine the selection range.
         Uses min/max of both coordinates so the box can be dragged in any direction.
@@ -523,16 +479,7 @@ class Renderer(IRenderer):
         if (x2 - x1) < 10 and (y2 - y1) < 10:
             return
 
-        # Semi-transparent fill
-        s = pygame.Surface((x2 - x1, y2 - y1), pygame.SRCALPHA)
-        s.fill((0, 100, 255, 60))
-        self.screen.blit(s, (x1, y1))
-
-        # Border
-        pygame.draw.rect(
-            self.screen, (0, 150, 255),
-            (x1, y1, x2 - x1, y2 - y1), 1,
-        )
+        pygame.draw.rect(self.screen, UI_WHITE, (x1, y1, x2 - x1, y2 - y1), 1)
 
     # ------------------------------------------------------------------
     # Custom particle placement preview methods
@@ -557,7 +504,7 @@ class Renderer(IRenderer):
         int_sr = int(screen_radius)
         isx, isy = int(sx), int(sy)
 
-        color = (200, 200, 255)
+        color = UI_WHITE
 
         # Dashed circle: 32 segments, draw every other segment
         num_segments = 32
@@ -585,7 +532,7 @@ class Renderer(IRenderer):
         camera: ICamera,
         surface: pygame.Surface,
     ) -> None:
-        """Draw a velocity direction arrow (orange).
+        """Draw a monochrome velocity direction arrow.
 
         The arrow points from start_world toward the mouse screen position, capped at max_length pixels.
         If longer than max_length, it is truncated but maintains direction.
@@ -617,14 +564,12 @@ class Renderer(IRenderer):
         isx0, isy0 = int(sx0), int(sy0)
         iex, iey = int(ex), int(ey)
 
-        # Main line (orange, width 3)
-        arrow_color = (255, 180, 50)
+        arrow_color = UI_WHITE
         pygame.draw.line(surface, arrow_color, (isx0, isy0), (iex, iey), 3)
 
         # Arrowhead triangle
         arrow_size = 12
         angle = math.atan2(dy, dx)  # Direction from start to end
-        wing_angle = math.atan2(1.0, 1.0)  # ~45 degrees (actually math.pi/4)
         wing_offset = math.pi * 5.0 / 6.0  # 150 degrees, arrow wings spread backward
 
         wing1_x = iex + arrow_size * math.cos(angle + wing_offset)

@@ -10,29 +10,46 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import pygame
 
-from src.config import WINDOW_HEIGHT, WINDOW_WIDTH
+from src.config import (
+    DEFAULT_RADIUS_PROBE,
+    PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
+    PROBE_ROCKET_FUEL_MASS_DEFAULT,
+    PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
+    PROBE_ROCKET_TOTAL_MASS_DEFAULT,
+    UI_BLACK,
+    UI_DARK,
+    UI_DIM,
+    UI_DISABLED,
+    UI_OVERLAY_BG,
+    UI_PANEL_BG,
+    UI_WHITE,
+    WINDOW_HEIGHT,
+    WINDOW_WIDTH,
+    WORLD_SCALE,
+    get_ui_font,
+)
 
 # ============================================================================
 # Color constants
 # ============================================================================
 
-DIALOG_BG = (20, 20, 40, 220)
-DIALOG_BORDER = (60, 60, 100)
-TEXT_COLOR = (200, 200, 220)
-TEXT_HIGHLIGHT = (255, 255, 255)
-LABEL_COLOR = (150, 150, 180)
-PLACEHOLDER_COLOR = (100, 100, 120)
-FIELD_INACTIVE = (50, 50, 80)
-FIELD_ACTIVE = (60, 60, 100)
-FIELD_BORDER_INACTIVE = (80, 80, 110)
-FIELD_BORDER_ACTIVE = (200, 200, 255)
-CURSOR_COLOR = (200, 200, 255)
-BTN_OK_COLOR = (40, 80, 40)
-BTN_OK_HOVER = (60, 140, 60)
-BTN_CANCEL_COLOR = (80, 40, 40)
-BTN_CANCEL_HOVER = (140, 60, 60)
-BTN_TEXT_COLOR = (220, 220, 220)
-HINT_COLOR = (120, 120, 140)
+DIALOG_BG = UI_PANEL_BG
+DIALOG_BORDER = UI_WHITE
+TEXT_COLOR = UI_WHITE
+TEXT_HIGHLIGHT = UI_WHITE
+LABEL_COLOR = UI_DIM
+PLACEHOLDER_COLOR = UI_DISABLED
+FIELD_INACTIVE = UI_BLACK
+FIELD_ACTIVE = UI_DARK
+FIELD_BORDER_INACTIVE = UI_DIM
+FIELD_BORDER_ACTIVE = UI_WHITE
+CURSOR_COLOR = UI_WHITE
+BTN_OK_COLOR = UI_BLACK
+BTN_OK_HOVER = UI_DARK
+BTN_CANCEL_COLOR = UI_BLACK
+BTN_CANCEL_HOVER = UI_DARK
+BTN_TEXT_COLOR = UI_WHITE
+HINT_COLOR = UI_DIM
 
 # Shared layout constants
 FIELD_HEIGHT: int = 24
@@ -61,6 +78,28 @@ ROW_UNITS: List[str] = ["kg", "C", "km"]
 NUM_ROWS: int = 3
 NUM_FIELDS: int = 6  # 3 rows x 2 fields (coeff, exp)
 
+PROBE_FIELD_DEFS: List[Tuple[str, str, bool, bool]] = [
+    ("Total mass coeff", "1.0", True, False),
+    ("Total mass exp", "5", False, True),
+    ("Fuel mass coeff", "7.0", True, False),
+    ("Fuel mass exp", "4", False, True),
+    ("Exhaust velocity coeff", "3.0", True, False),
+    ("Exhaust velocity exp", "3", False, True),
+    ("Mass flow coeff", "5.0", True, False),
+    ("Mass flow exp", "1", False, True),
+    ("Radius coeff", "8.0", True, False),
+    ("Radius exp", "2", False, True),
+]
+
+PROBE_ROW_LABELS: List[str] = [
+    "Total mass",
+    "Fuel mass",
+    "Exhaust v",
+    "Mass flow",
+    "Radius",
+]
+PROBE_ROW_UNITS: List[str] = ["kg", "kg", "m/s", "kg/s", "km"]
+
 
 # ============================================================================
 # Utility functions
@@ -83,6 +122,52 @@ def _float_to_components(value: float) -> Tuple[str, str]:
     coeff = round(coeff, 6)
     coeff_str = str(coeff)
     return (coeff_str, str(exp))
+
+
+def validate_probe_parameters(
+    total_mass: float,
+    fuel_mass: float,
+    exhaust_velocity: float,
+    mass_flow_rate: float,
+    radius: float,
+) -> Dict[str, float]:
+    """Validate and normalize probe rocket parameters.
+
+    Args:
+        total_mass: Initial total mass in kg.
+        fuel_mass: Initial fuel mass in kg.
+        exhaust_velocity: Exhaust velocity in m/s.
+        mass_flow_rate: Fuel consumption rate in kg/s.
+        radius: Body radius in meters.
+
+    Returns:
+        Validated parameters including dry_mass.
+
+    Raises:
+        ValueError: If any parameter violates the probe rocket constraints.
+    """
+    values = (total_mass, fuel_mass, exhaust_velocity, mass_flow_rate, radius)
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("All values must be finite")
+    if total_mass <= 0.0:
+        raise ValueError("Total mass must be > 0")
+    if fuel_mass < 0.0 or fuel_mass >= total_mass:
+        raise ValueError("Fuel mass must be >= 0 and < total mass")
+    if exhaust_velocity <= 0.0:
+        raise ValueError("Exhaust velocity must be > 0")
+    if mass_flow_rate <= 0.0:
+        raise ValueError("Mass flow rate must be > 0")
+    if radius <= 0.0:
+        raise ValueError("Radius must be > 0")
+
+    return {
+        "total_mass": total_mass,
+        "fuel_mass": fuel_mass,
+        "dry_mass": total_mass - fuel_mass,
+        "exhaust_velocity": exhaust_velocity,
+        "mass_flow_rate": mass_flow_rate,
+        "radius": radius,
+    }
 
 
 # ============================================================================
@@ -109,17 +194,21 @@ class BaseInputDialog(ABC):
     # Layout constants (overridable)
     PANEL_HEIGHT: int = 235
     ROW_START_OFFSET: int = -30
+    FIELD_DEFS: List[Tuple[str, str, bool, bool]] = FIELD_DEFS
+    ROW_LABELS: List[str] = ROW_LABELS
+    ROW_UNITS: List[str] = ROW_UNITS
 
     def __init__(self) -> None:
         """Initialize the base dialog."""
         self.visible: bool = False
         self.active_field_index: int = -1  # -1 = no active field
         self.cursor_visible: bool = True
+        self.error_message: str = ""
 
         # Input fields
         self.fields: List[Dict] = []
-        for idx, (_, placeholder, allow_decimal, allow_negative) in enumerate(FIELD_DEFS):
-            coeff_field = idx in (0, 2, 4)
+        for idx, (_, placeholder, allow_decimal, allow_negative) in enumerate(self.FIELD_DEFS):
+            coeff_field = idx % 2 == 0
             width = COEFF_WIDTH if coeff_field else EXP_WIDTH
             self.fields.append({
                 "rect": pygame.Rect(0, 0, width, FIELD_HEIGHT),
@@ -138,10 +227,10 @@ class BaseInputDialog(ABC):
         self.cancel_hovered: bool = False
 
         # Fonts
-        self._font_title: pygame.font.Font = pygame.font.Font(None, 20)
-        self._font_field: pygame.font.Font = pygame.font.Font(None, 18)
-        self._font_label: pygame.font.Font = pygame.font.Font(None, 16)
-        self._font_small: pygame.font.Font = pygame.font.Font(None, 14)
+        self._font_title: pygame.font.Font = get_ui_font(20)
+        self._font_field: pygame.font.Font = get_ui_font(18)
+        self._font_label: pygame.font.Font = get_ui_font(16)
+        self._font_small: pygame.font.Font = get_ui_font(14)
 
         # Compute layout
         self._compute_layout()
@@ -169,7 +258,8 @@ class BaseInputDialog(ABC):
         coeff_x = cx - 55
         exp_x = cx + 60
 
-        for row in range(NUM_ROWS):
+        num_rows = len(self.ROW_LABELS)
+        for row in range(num_rows):
             coeff_idx = row * 2
             exp_idx = row * 2 + 1
             row_y = row_start_y + row * ROW_SPACING
@@ -185,7 +275,7 @@ class BaseInputDialog(ABC):
             ef["rect"].centery = row_y + FIELD_HEIGHT // 2
 
         # OK / Cancel buttons
-        btn_y = row_start_y + NUM_ROWS * ROW_SPACING + 5
+        btn_y = row_start_y + num_rows * ROW_SPACING + 5
         self.ok_rect.x = cx - 80
         self.ok_rect.y = btn_y
         self.cancel_rect.x = cx + 8
@@ -272,7 +362,7 @@ class BaseInputDialog(ABC):
                     self.cursor_visible = True
                     return None
             if self.ok_rect.collidepoint(event.pos):
-                return self.get_results()
+                return self._try_get_results()
             if self.cancel_rect.collidepoint(event.pos):
                 return "CANCEL"
             return None
@@ -281,7 +371,7 @@ class BaseInputDialog(ABC):
             if event.key == pygame.K_ESCAPE:
                 return "CANCEL"
             if event.key == pygame.K_RETURN:
-                return self.get_results()
+                return self._try_get_results()
             if self.active_field_index < 0:
                 return None
 
@@ -303,10 +393,20 @@ class BaseInputDialog(ABC):
 
             if char and self._is_valid_input(char, self.active_field_index):
                 field["text"] += char
+                self.error_message = ""
 
             return None
 
         return None
+
+    def _try_get_results(self) -> Optional[Dict[str, float]]:
+        """Return dialog results, keeping the dialog open on validation errors."""
+        try:
+            self.error_message = ""
+            return self.get_results()
+        except ValueError as exc:
+            self.error_message = str(exc)
+            return None
 
     @abstractmethod
     def get_results(self) -> Dict[str, float]:
@@ -338,16 +438,14 @@ class BaseInputDialog(ABC):
         px = cx - pw // 2
         py = cy - ph // 2
 
-        # Semi-transparent background overlay
         mask = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
-        mask.fill((0, 0, 0, 120))
+        mask.fill(UI_OVERLAY_BG)
         surface.blit(mask, (0, 0))
 
-        # Panel background
         panel_surf = pygame.Surface((pw, ph), pygame.SRCALPHA)
         panel_surf.fill(DIALOG_BG)
         surface.blit(panel_surf, (px, py))
-        pygame.draw.rect(surface, DIALOG_BORDER, (px, py, pw, ph), 2, border_radius=8)
+        pygame.draw.rect(surface, DIALOG_BORDER, (px, py, pw, ph), 2)
 
         # Title
         title_surf = self._font_title.render(self._title, True, TEXT_HIGHLIGHT)
@@ -361,13 +459,13 @@ class BaseInputDialog(ABC):
         row_start_y = cy + self.ROW_START_OFFSET
         label_x = px + 15
 
-        for row in range(NUM_ROWS):
+        for row in range(len(self.ROW_LABELS)):
             row_y = row_start_y + row * ROW_SPACING
             coeff_idx = row * 2
             exp_idx = row * 2 + 1
 
             # Row label
-            lbl_surf = self._font_label.render(ROW_LABELS[row], True, LABEL_COLOR)
+            lbl_surf = self._font_label.render(self.ROW_LABELS[row], True, LABEL_COLOR)
             surface.blit(lbl_surf, (label_x, row_y + 3))
 
             # Coefficient field
@@ -384,7 +482,7 @@ class BaseInputDialog(ABC):
             self._draw_field(surface, self.fields[exp_idx], exp_idx == self.active_field_index)
 
             # Unit
-            unit_surf = self._font_small.render(ROW_UNITS[row], True, LABEL_COLOR)
+            unit_surf = self._font_small.render(self.ROW_UNITS[row], True, LABEL_COLOR)
             unit_rect = unit_surf.get_rect(
                 midleft=(self.fields[exp_idx]["rect"].right + 4, row_y + FIELD_HEIGHT // 2)
             )
@@ -395,6 +493,11 @@ class BaseInputDialog(ABC):
                           BTN_OK_HOVER if self.ok_hovered else BTN_OK_COLOR)
         self._draw_button(surface, self.cancel_rect, "Cancel",
                           BTN_CANCEL_HOVER if self.cancel_hovered else BTN_CANCEL_COLOR)
+
+        if self.error_message:
+            err_surf = self._font_small.render(self.error_message, True, TEXT_HIGHLIGHT)
+            er = err_surf.get_rect(center=(cx, self.ok_rect.bottom + 12))
+            surface.blit(err_surf, er)
 
         # Bottom hint
         hint_surf = self._font_small.render("Esc to cancel  |  Enter to confirm", True, HINT_COLOR)
@@ -411,10 +514,10 @@ class BaseInputDialog(ABC):
         """
         rect = field["rect"]
         bg_color = FIELD_ACTIVE if is_active else FIELD_INACTIVE
-        pygame.draw.rect(surface, bg_color, rect, border_radius=3)
+        pygame.draw.rect(surface, bg_color, rect)
 
         border_color = FIELD_BORDER_ACTIVE if is_active else FIELD_BORDER_INACTIVE
-        pygame.draw.rect(surface, border_color, rect, 1, border_radius=3)
+        pygame.draw.rect(surface, border_color, rect, 1)
 
         if field["text"]:
             text_surf = self._font_field.render(field["text"], True, TEXT_HIGHLIGHT)
@@ -440,8 +543,8 @@ class BaseInputDialog(ABC):
             text: Button text
             color: Button color
         """
-        pygame.draw.rect(surface, color, rect, border_radius=4)
-        pygame.draw.rect(surface, DIALOG_BORDER, rect, 1, border_radius=4)
+        pygame.draw.rect(surface, color, rect)
+        pygame.draw.rect(surface, DIALOG_BORDER, rect, 1)
         text_surf = self._font_field.render(text, True, BTN_TEXT_COLOR)
         tr = text_surf.get_rect(center=rect.center)
         surface.blit(text_surf, tr)
@@ -548,3 +651,56 @@ class ScientificInputDialog(BaseInputDialog):
         charge = self._get_field_value(2, 3)
         radius = self._get_field_value(4, 5) * 1000.0  # km -> m
         return {"mass": mass, "charge": charge, "radius": radius}
+
+
+# ============================================================================
+# Probe rocket input dialog
+# ============================================================================
+
+
+class ProbeInputDialog(BaseInputDialog):
+    """Dialog for configuring a probe's rocket parameters."""
+
+    PANEL_HEIGHT: int = 330
+    ROW_START_OFFSET: int = -105
+    FIELD_DEFS = PROBE_FIELD_DEFS
+    ROW_LABELS = PROBE_ROW_LABELS
+    ROW_UNITS = PROBE_ROW_UNITS
+
+    @property
+    def _title(self) -> str:
+        return "Probe Rocket Config"
+
+    def prefill(self) -> None:
+        """Prefill fields with the configured probe rocket defaults."""
+        defaults = [
+            PROBE_ROCKET_TOTAL_MASS_DEFAULT,
+            PROBE_ROCKET_FUEL_MASS_DEFAULT,
+            PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
+            PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
+            DEFAULT_RADIUS_PROBE * WORLD_SCALE / 1000.0,
+        ]
+        for row, value in enumerate(defaults):
+            coeff, exp = _float_to_components(value)
+            self.fields[row * 2]["text"] = coeff
+            self.fields[row * 2 + 1]["text"] = exp
+        self.error_message = ""
+
+    def get_results(self) -> Dict[str, float]:
+        """Read and validate probe rocket parameters.
+
+        Returns:
+            Probe rocket settings with radius converted to meters.
+        """
+        total_mass = self._get_field_value(0, 1)
+        fuel_mass = self._get_field_value(2, 3)
+        exhaust_velocity = self._get_field_value(4, 5)
+        mass_flow_rate = self._get_field_value(6, 7)
+        radius = self._get_field_value(8, 9) * 1000.0
+        return validate_probe_parameters(
+            total_mass,
+            fuel_mass,
+            exhaust_velocity,
+            mass_flow_rate,
+            radius,
+        )

@@ -303,6 +303,73 @@ class PhysicsEngine(IPhysicsEngine):
 
         return np.array(trajectory)
 
+    def predict_relative_trajectory(
+        self,
+        bodies: np.ndarray,
+        probe_body_id: int,
+        reference_body_id: int,
+        steps: int,
+        dt: float,
+    ) -> np.ndarray:
+        """Predict probe display coordinates in a moving reference frame.
+
+        The copied full system is integrated at every prediction step, so the
+        reference body's future position comes from the same N-body dynamics as
+        the probe instead of a constant-velocity estimate.
+        """
+        if (
+            probe_body_id < 0
+            or reference_body_id < 0
+            or probe_body_id >= bodies.shape[0]
+            or reference_body_id >= bodies.shape[0]
+            or steps <= 0
+            or dt <= 0.0
+        ):
+            return np.empty((0, 2), dtype=np.float64)
+
+        sim_bodies = bodies.copy()
+        reference_current_pos = sim_bodies[reference_body_id, [X, Y]].copy()
+        static_indices = np.where(sim_bodies[:, IS_STATIC] == 1.0)[0]
+        saved_static_positions = sim_bodies[np.ix_(static_indices, [X, Y])].copy()
+
+        pos = sim_bodies[:, [X, Y]].copy()
+        vel = sim_bodies[:, [VX, VY]].copy()
+        trajectory: List[np.ndarray] = []
+
+        for _ in range(steps):
+            pos, vel, _ = rk4_step(
+                pos, vel, self._acceleration_fn, sim_bodies, dt
+            )
+
+            if len(static_indices) > 0:
+                pos[static_indices] = saved_static_positions
+                vel[static_indices] = 0.0
+
+            sim_bodies[:, X] = pos[:, 0]
+            sim_bodies[:, Y] = pos[:, 1]
+            sim_bodies[:, VX] = vel[:, 0]
+            sim_bodies[:, VY] = vel[:, 1]
+
+            probe_future_pos = pos[probe_body_id].copy()
+            reference_future_pos = pos[reference_body_id].copy()
+            trajectory.append(
+                reference_current_pos + (probe_future_pos - reference_future_pos)
+            )
+
+            probe_radius = float(sim_bodies[probe_body_id, RADIUS])
+            for body_id in range(sim_bodies.shape[0]):
+                if body_id == probe_body_id:
+                    continue
+                if sim_bodies[body_id, IS_ACTIVE] == 0.0:
+                    continue
+                delta = probe_future_pos - sim_bodies[body_id, [X, Y]]
+                dist = float(np.sqrt(np.dot(delta, delta)))
+                body_radius = float(sim_bodies[body_id, RADIUS])
+                if dist < probe_radius + body_radius:
+                    return np.array(trajectory)
+
+        return np.array(trajectory)
+
     def handle_collisions(self, bodies: np.ndarray) -> np.ndarray:
         """Detect and resolve collisions.
 

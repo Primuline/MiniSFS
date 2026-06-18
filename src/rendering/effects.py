@@ -1,4 +1,4 @@
-"""Effects module: trail rendering, predicted trajectories, collision particles, starfield background.
+"""Effects module: trail rendering, predicted trajectories, and particles.
 
 Provides standalone drawing functions for the Renderer.
 All functions read data and draw to a Pygame Surface without modifying physics state.
@@ -12,7 +12,6 @@ import numpy as np
 import pygame
 
 from src.config import (
-    BACKGROUND_COLOR,
     DASH_GAP,
     DASH_OFF,
     DASH_ON,
@@ -26,8 +25,13 @@ from src.config import (
     TRAIL_ALPHA_OLD,
     TRAIL_COLOR_FAST,
     TRAIL_COLOR_SLOW,
+    UI_BLACK,
+    UI_DIM,
+    UI_OVERLAY_BG,
+    UI_WHITE,
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
+    get_ui_font,
 )
 from src.core.types import BODY_TYPE, IS_ACTIVE, RADIUS, VX, VY, X, Y
 
@@ -59,39 +63,12 @@ class StarField:
             width: Viewport width (pixels)
             height: Viewport height (pixels)
         """
+        del num_stars_far, num_stars_near
         self.width: int = width
         self.height: int = height
-
-        # Far layer
         self.far_stars: List[dict] = []
-        for _ in range(num_stars_far):
-            self.far_stars.append({
-                "x": random.uniform(0, width),
-                "y": random.uniform(0, height),
-                "radius": random.uniform(0.3, 0.8),
-                "brightness": random.uniform(30, 100),
-                "drift_x": random.uniform(-0.02, 0.02),
-                "drift_y": random.uniform(-0.02, 0.02),
-            })
-
-        # Near layer
         self.near_stars: List[dict] = []
-        for _ in range(num_stars_near):
-            self.near_stars.append({
-                "x": random.uniform(0, width),
-                "y": random.uniform(0, height),
-                "radius": random.uniform(0.8, 2.0),
-                "brightness": random.uniform(100, 200),
-                "twinkle_speed": random.uniform(0.5, 2.0),
-                "twinkle_offset": random.uniform(0, 2 * math.pi),
-                "drift_x": random.uniform(-0.05, 0.05),
-                "drift_y": random.uniform(-0.05, 0.05),
-            })
-
-        # Used for twinkle animation accumulated time
         self._time: float = 0.0
-
-        # Background surface cache
         self._surface: Optional[pygame.Surface] = None
 
     def update(self, dt: float) -> None:
@@ -133,29 +110,7 @@ class StarField:
         Args:
             surface: Target Pygame Surface
         """
-        # Far layer
-        for star in self.far_stars:
-            b = int(star["brightness"])
-            color = (b, b, b + 10)
-            pygame.draw.circle(
-                surface, color,
-                (int(star["x"]), int(star["y"])),
-                star["radius"],
-            )
-
-        # Near layer (twinkling)
-        for star in self.near_stars:
-            twinkle = 0.5 + 0.5 * math.sin(
-                self._time * star["twinkle_speed"] + star["twinkle_offset"]
-            )
-            b = int(star["brightness"] * twinkle)
-            b = max(0, min(255, b))
-            color = (b, b, int(b * 1.2))
-            pygame.draw.circle(
-                surface, color,
-                (int(star["x"]), int(star["y"])),
-                star["radius"],
-            )
+        del surface
 
 
 # ============================================================================
@@ -309,7 +264,7 @@ def draw_predicted_trajectory(
         if (i // 3) % 2 == 0:
             alpha = 120 - int(80 * (i / total_segments))
             alpha = max(30, alpha)
-            color = (100, 200, 255, alpha)
+            color = (*UI_WHITE, alpha)
             _draw_alpha_line(
                 surface, color,
                 points_screen[i], points_screen[i + 1],
@@ -319,7 +274,7 @@ def draw_predicted_trajectory(
     # Endpoint marker (small circle)
     if len(points_screen) > 0:
         last = points_screen[-1]
-        pygame.draw.circle(surface, (100, 200, 255, 100), last, 3, 1)
+        pygame.draw.circle(surface, (*UI_WHITE, 100), last, 3, 1)
 
 
 def draw_placement_trajectory(
@@ -396,7 +351,7 @@ def draw_placement_trajectory(
 
         if draw_state == "on":
             _draw_alpha_line(
-                surface, (100, 180, 255, 150),
+                surface, (*UI_WHITE, 150),
                 (int(resampled[i - 1][0]), int(resampled[i - 1][1])),
                 (int(resampled[i][0]), int(resampled[i][1])),
                 2.0,
@@ -415,14 +370,24 @@ def draw_placement_trajectory(
     if len(resampled) > 0:
         last = (int(resampled[-1][0]), int(resampled[-1][1]))
         if collided:
-            pygame.draw.circle(surface, (255, 50, 50), last, 5)
-            pygame.draw.circle(surface, (255, 50, 50), last, 8, 1)
+            pygame.draw.line(
+                surface, UI_WHITE,
+                (last[0] - 5, last[1] - 5),
+                (last[0] + 5, last[1] + 5),
+                2,
+            )
+            pygame.draw.line(
+                surface, UI_WHITE,
+                (last[0] - 5, last[1] + 5),
+                (last[0] + 5, last[1] - 5),
+                2,
+            )
         elif orbited:
-            pygame.draw.circle(surface, (50, 255, 50), last, 4)
+            pygame.draw.circle(surface, UI_WHITE, last, 4)
         elif escaped:
-            pygame.draw.circle(surface, (100, 180, 255, 80), last, 3, 1)
+            pygame.draw.circle(surface, UI_WHITE, last, 3, 1)
         else:
-            pygame.draw.circle(surface, (100, 180, 255, 80), last, 3, 1)
+            pygame.draw.circle(surface, UI_WHITE, last, 3, 1)
 
 
 # ============================================================================
@@ -493,18 +458,16 @@ class Particle:
         alpha = int(255 * (self.lifetime / self.max_lifetime))
         alpha = max(0, min(255, alpha))
         r, g, b = self.color
-        # Dim over time
+        grey = int((r + g + b) / 3)
         fade = self.lifetime / self.max_lifetime
-        cr = int(r * fade)
-        cg = int(g * fade)
-        cb = int(b * fade)
+        c = int(grey * fade)
 
         # Use temporary surface for alpha support
         size = int(self.radius * 2) + 2
         particle_surf = pygame.Surface((size, size), pygame.SRCALPHA)
         particle_surf.fill((0, 0, 0, 0))
         pygame.draw.circle(
-            particle_surf, (cr, cg, cb, alpha),
+            particle_surf, (c, c, c, alpha),
             (size // 2, size // 2), self.radius,
         )
         surface.blit(particle_surf, (self.x - size // 2, self.y - size // 2))
@@ -578,15 +541,12 @@ class ParticleSystem:
             spd = random.uniform(50, 150)
             lifetime = random.uniform(0.1, 0.4)
             radius = random.uniform(1.0, 2.5)
-            # Orange flame color
-            r = random.randint(200, 255)
-            g = random.randint(100, 200)
-            b = random.randint(0, 50)
+            c = random.randint(180, 255)
             self.particles.append(Particle(
                 x=x, y=y,
                 vx=math.cos(dir_angle) * spd,
                 vy=math.sin(dir_angle) * spd,
-                color=(r, g, b),
+                color=(c, c, c),
                 lifetime=lifetime,
                 radius=radius,
             ))
@@ -651,8 +611,7 @@ def draw_target_zone(
         alpha = int(80 + 60 * (0.5 + 0.5 * math.sin(phase)))
         alpha = max(20, min(200, alpha))
 
-        # Color: green pulse
-        color = (0, 200 + int(55 * (0.5 + 0.5 * math.sin(phase))), 100, alpha)
+        color = (*UI_WHITE, alpha)
 
         # Draw ring (using a temporary surface)
         ring_size = int(r * 2) + 10
@@ -738,13 +697,7 @@ def draw_body_labels(
         camera: Camera object
     """
     type_names = {0: "Star", 1: "Planet", 2: "Probe", 3: "Charged"}
-    type_colors = {
-        0: (255, 220, 100),
-        1: (100, 200, 255),
-        2: (200, 220, 255),
-        3: (255, 100, 100),
-    }
-    font = pygame.font.Font(None, LABEL_FONT_SIZE)
+    font = get_ui_font(LABEL_FONT_SIZE)
 
     for i in range(bodies.shape[0]):
         if bodies[i, IS_ACTIVE] == 0.0:
@@ -758,14 +711,13 @@ def draw_body_labels(
 
         btype = int(bodies[i, BODY_TYPE])
         label = f"{type_names.get(btype, '?')} #{i}"
-        text_color = type_colors.get(btype, (200, 200, 200))
-
-        text_surf = font.render(label, True, text_color)
+        text_surf = font.render(label, True, UI_WHITE)
         tr = text_surf.get_rect(midbottom=(sx, sy + LABEL_OFFSET_Y))
 
         bg = pygame.Surface((tr.width + 4, tr.height + 4), pygame.SRCALPHA)
         bg.fill((0, 0, 0, LABEL_BG_ALPHA))
         surface.blit(bg, (tr.x - 2, tr.y - 2))
+        pygame.draw.rect(surface, UI_WHITE, (tr.x - 2, tr.y - 2, tr.width + 4, tr.height + 4), 1)
         surface.blit(text_surf, tr)
 
 
@@ -783,13 +735,16 @@ def draw_shortcuts_overlay(surface: pygame.Surface) -> None:
     Args:
         surface: Target Pygame Surface
     """
-    # Semi-transparent background
     overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 180))
+    overlay.fill(UI_OVERLAY_BG)
     surface.blit(overlay, (0, 0))
 
-    title_font = pygame.font.Font(None, 28)
-    font = pygame.font.Font(None, 18)
+    panel = pygame.Rect(WINDOW_WIDTH // 2 - 260, 48, 520, 330)
+    pygame.draw.rect(surface, UI_BLACK, panel)
+    pygame.draw.rect(surface, UI_WHITE, panel, 2)
+
+    title_font = get_ui_font(28)
+    font = get_ui_font(18)
 
     title = title_font.render("Shortcuts (H/Esc to close)", True, (255, 255, 255))
     tr = title.get_rect(midtop=(WINDOW_WIDTH // 2, 60))
@@ -816,7 +771,7 @@ def draw_shortcuts_overlay(surface: pygame.Surface) -> None:
         x = col1_x if col == 0 else col2_x
         y = start_y + row * 30
 
-        key_surf = font.render(key, True, (255, 220, 100))
+        key_surf = font.render(key, True, UI_WHITE)
         surface.blit(key_surf, (x, y))
-        desc_surf = font.render(desc, True, (200, 200, 220))
+        desc_surf = font.render(desc, True, UI_DIM)
         surface.blit(desc_surf, (x + 70, y))

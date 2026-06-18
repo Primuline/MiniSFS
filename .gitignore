@@ -12,5 +12,8 @@ __pycache__/
 # Claude
 .claude/
 
+# Codex local worktrees and runtime scratch
+.codex/worktrees/
+
 # IDE
 .vscode/

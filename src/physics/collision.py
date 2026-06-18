@@ -3,7 +3,7 @@
 Supports three collision handling strategies:
     - Star vs Planet: Star absorbs the planet (mass and charge sum)
     - Planet vs Planet: Merge into a new body (center-of-mass position, momentum conservation)
-    - Probe vs any body: Probe is destroyed
+    - Probe vs any body: Probe lands on the surface
 
 Collision events are returned to the caller for the renderer to produce effects (flashes, fragmentation).
 
@@ -108,6 +108,40 @@ def _is_star(body: np.ndarray) -> bool:
         True if the body type is BODY_TYPE_STAR (0), False otherwise.
     """
     return body[BODY_TYPE] == 0.0
+
+
+def _land_probe_on_host(
+    bodies: np.ndarray,
+    probe_id: int,
+    host_id: int,
+) -> CollisionEvent:
+    """Place a probe on the host surface without removing it."""
+    dx = float(bodies[probe_id, X] - bodies[host_id, X])
+    dy = float(bodies[probe_id, Y] - bodies[host_id, Y])
+    dist = float(np.sqrt(dx * dx + dy * dy))
+    if dist < 1e-12:
+        nx, ny = 0.0, -1.0
+    else:
+        nx, ny = dx / dist, dy / dist
+
+    offset = float(bodies[host_id, RADIUS] + bodies[probe_id, RADIUS])
+    bodies[probe_id, X] = bodies[host_id, X] + nx * offset
+    bodies[probe_id, Y] = bodies[host_id, Y] + ny * offset
+    bodies[probe_id, VX] = bodies[host_id, VX]
+    bodies[probe_id, VY] = bodies[host_id, VY]
+    bodies[probe_id, IS_ACTIVE] = 1.0
+
+    return {
+        "type": "probe_landed",
+        "id_a": int(probe_id),
+        "id_b": int(host_id),
+        "host_body_id": int(host_id),
+        "pos_x": float(bodies[probe_id, X]),
+        "pos_y": float(bodies[probe_id, Y]),
+        "normal_x": float(nx),
+        "normal_y": float(ny),
+        "offset_distance": offset,
+    }
 
 
 def resolve_elastic(
@@ -281,7 +315,7 @@ def handle_collisions(
         - Planet vs Planet: mass sum, charge sum, momentum sum; position at their
           center of mass; both original entities removed, merged result placed at
           the first entity's position
-        - Probe vs any body: only the probe is removed (IS_ACTIVE=0)
+        - Probe vs any non-probe body: probe lands on the surface
 
     Args:
         bodies: body state array of shape (N, NUM_FIELDS)
@@ -309,30 +343,16 @@ def handle_collisions(
         type_j = int(bodies[j, BODY_TYPE])
 
         # ================================================================
-        # Rule 1: Probe vs any body -> only delete the probe
+        # Rule 1: Probe vs any body -> place the probe on the host surface
         # ================================================================
         if type_i == BODY_TYPE_PROBE:
-            bodies[i, IS_ACTIVE] = 0.0
+            events.append(_land_probe_on_host(bodies, i, j))
             processed.add(i)
-            events.append({
-                "type": "probe_destroyed",
-                "id_a": int(i),
-                "id_b": int(j),
-                "pos_x": float(bodies[i, X]),
-                "pos_y": float(bodies[i, Y]),
-            })
             continue
 
         if type_j == BODY_TYPE_PROBE:
-            bodies[j, IS_ACTIVE] = 0.0
+            events.append(_land_probe_on_host(bodies, j, i))
             processed.add(j)
-            events.append({
-                "type": "probe_destroyed",
-                "id_a": int(j),
-                "id_b": int(i),
-                "pos_x": float(bodies[j, X]),
-                "pos_y": float(bodies[j, Y]),
-            })
             continue
 
         # ================================================================

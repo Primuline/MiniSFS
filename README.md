@@ -12,15 +12,18 @@ A **2D space sandbox simulator** based on real N-body physics gravity. Place sta
 - **Place bodies** — Star (S), Planet (P), Probe (D), Custom particle (C), supports scientific notation parameter input
 - **Grab and drag** — Left-click drag a body, time pauses, velocity resets on release
 - **Reference frame mode** — Double-click a body to enter reference frame view (smooth follow + auto-zoom), Esc to exit
-- **Trajectory preview** — Real-time predicted orbit display when setting placement velocity (RK4 + full gravity, ~10 seconds)
+- **Trajectory preview** — Real-time predicted orbit display; reference frames use true future relative trajectories
 - **Probe aiming** — Right-click probe, then drag to set launch direction and speed
+- **Probe rocket control** — Probe placement opens a rocket parameter dialog; probe radius is the equilateral triangle side length
 - **Edit body** — Right-click an existing body to edit mass/charge/radius (scientific notation)
-- **Trail system** — Auto-record trajectories, 300-frame fade-out effect
-- **Time control** — Pause / 1x / 2x / 4x / 8x speed
+- **Trail system** — Auto-record trajectories, with relative trails in reference frame mode
+- **Time control** — Slow 2x / restore 1x / speed up 2x buttons, bounded from 1/64x to 64x
 - **Coordinate grid** — Toggle with G key, adaptive spacing
 - **Body labels** — Toggle with L key, automatic fade-out at distance
 - **Shortcut panel** — Press H to view all shortcuts
 - **Scale bar + status info** — Real-time FPS, body count, mouse world coordinates
+- **Startup mode menu** — Choose Sandbox Mode or Level Mode; Level 1 provides a fixed Earth-Moon launch scene
+- **Monochrome geometry UI** — Blank black background, white pixel borders, Ark Pixel font, and geometric body glyphs
 
 ---
 
@@ -32,20 +35,17 @@ A **2D space sandbox simulator** based on real N-body physics gravity. Place sta
 | Scroll wheel | Zoom (centered on mouse) |
 | Left-click body | Grab and drag (time pauses) |
 | Double-click body | Enter reference frame follow mode |
+| Arrow keys in probe reference frame | Fire probe thrusters (diagonal input is combined) |
 | Right-click body | Edit parameters (mass/charge/radius) |
 | Right-click probe | Aim, then drag to launch |
 | Right-click empty | Cancel tool / deselect |
-| `Esc` | Exit reference frame / close shortcut panel / exit menu / quit game |
+| `Esc` | Mode menu: quit; Sandbox: close shortcut panel / cancel placement / exit reference frame / quit game |
 | `Space` | Pause/resume |
 | `R` | Reset camera |
 | `G` | Toggle coordinate grid |
 | `L` | Toggle body labels |
 | `H` | Toggle shortcut panel |
 | `T` | Toggle trail display |
-| `F` | 2x speed |
-| `6` | 4x speed |
-| `7` | 8x speed |
-| `0` | Restore 1x speed |
 | `Del` / `Backspace` | Delete selected body |
 
 ### Toolbar
@@ -54,18 +54,17 @@ A **2D space sandbox simulator** based on real N-body physics gravity. Place sta
 |:-------|:---------|:---------|
 | **S** | `1` | Place star (static, place directly) |
 | **P** | `2` | Place planet (click position, then drag to set velocity) |
-| **D** | `3` | Place probe |
+| **D** | `3` | Place probe (configure total mass, fuel, exhaust velocity, mass flow, radius first) |
 | **C** | `4` | Custom particle (scientific notation dialog) |
 
 ### Time Control
 
 | Button | Shortcut | Function |
 |:-------|:---------|:---------|
-| `|<` | — | Restore 1x speed |
-| `>` | `Space` | Play/pause |
-| `>>` | `F` | 2x speed |
-| `>>>` | `6` | 4x speed |
-| `>>>>` | `7` | 8x speed |
+| `||` / `>` | `Space` | Pause/resume |
+| `<<` | — | Slow time by 2x |
+| `1x` | — | Restore 1x speed |
+| `>>` | — | Speed up time by 2x |
 
 ---
 
@@ -90,7 +89,9 @@ Requires Python 3.10+.
 python -m src.main
 ```
 
-Default scene: one central star (mass 2x10^30 kg) + one orbiting planet (1 AU orbit).
+The app opens on the mode menu. Select **Sandbox Mode** to start the current default scene:
+one central star (mass 2x10^30 kg) + one orbiting planet (1 AU orbit).
+**Level Mode** is visible but disabled until level flow is implemented.
 
 ---
 
@@ -110,10 +111,10 @@ MiniSFS/
 │   │   ├── integrators.py      # RK4 / Euler / Velocity Verlet
 │   │   └── collision.py        # Collision detection and response rules
 │   ├── rendering/
-│   │   ├── renderer.py         # Renderer — body drawing, glow, highlight
+│   │   ├── renderer.py         # Renderer — geometric body drawing, highlight
 │   │   ├── camera.py           # Camera — viewport transformation, zoom, follow
 │   │   ├── hud.py              # HUD — toolbar, time control, info panel, scale bar
-│   │   ├── effects.py          # Trails, particle effects, nebula background, trajectory preview, grid, labels
+│   │   ├── effects.py          # Trails, particle effects, trajectory preview, grid, labels
 │   │   └── input_dialog.py     # Scientific notation input dialog
 │   ├── input/
 │   │   └── handler.py          # Events to commands (input layer separated from rendering layer)
