@@ -9,6 +9,10 @@
 *.pyo
 __pycache__/
 
+# PyInstaller artifacts
+build/
+dist/
+
 # Claude
 .claude/
 
