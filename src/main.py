@@ -1774,7 +1774,9 @@ def main() -> None:
                     and int(bodies[reference_body_id, IS_ACTIVE]) == 1
                     and reference_body_id == selected_body_id
                 )
-                if (
+                if is_self_reference:
+                    pred = np.empty((0, 2), dtype=np.float64)
+                elif (
                     reference_body_id is not None
                     and reference_body_id < bodies.shape[0]
                     and int(bodies[reference_body_id, IS_ACTIVE]) == 1

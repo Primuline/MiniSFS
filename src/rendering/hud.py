@@ -827,12 +827,12 @@ class HUDManager:
         pygame.draw.rect(surface, UI_BLACK, tool_rect)
         pygame.draw.rect(surface, UI_WHITE, tool_rect, 1)
 
-        # Tool title (vertical letters to fit 44px width)
-        title_y = 54
-        for idx, letter in enumerate("TOOLS"):
-            title_surf = self._font_small.render(letter, True, LABEL_COLOR)
-            title_rect = title_surf.get_rect(center=(TOOLBAR_WIDTH // 2, title_y + idx * 12))
-            surface.blit(title_surf, title_rect)
+        title_font = get_ui_font(11)
+        if title_font.size("TOOLS")[0] > TOOLBAR_WIDTH - 4:
+            title_font = get_ui_font(10)
+        title_surf = title_font.render("TOOLS", True, LABEL_COLOR)
+        title_rect = title_surf.get_rect(center=(TOOLBAR_WIDTH // 2, 70))
+        surface.blit(title_surf, title_rect)
 
         # Tool buttons
         for btn in self.tool_buttons:
@@ -842,7 +842,7 @@ class HUDManager:
         if self.active_tool:
             hint = self.get_tool_display_name(self.active_tool)
             hint_surf = self._font_small.render(hint, True, TEXT_HIGHLIGHT)
-            surface.blit(hint_surf, (5, 55))
+            surface.blit(hint_surf, (TOOLBAR_WIDTH + 8, 55))
 
     def _draw_custom_dialog(self, surface: pygame.Surface) -> None:
         """Draw the centered scientific notation input dialog.

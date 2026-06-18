@@ -191,7 +191,7 @@ class Renderer(IRenderer):
 
         # Bottom status bar
         state_text = self._font_small.render(f"State: {game_state}", True, UI_WHITE)
-        self.screen.blit(state_text, (10, self.height - 25))
+        self.screen.blit(state_text, (56, self.height - 25))
 
         # Shortcut hints
         hint = "Space:Pause  R:Reset  Esc:Menu"
@@ -373,7 +373,7 @@ class Renderer(IRenderer):
             landing_normal: Optional outward normal from a landed host body.
         """
         speed = math.sqrt(vx * vx + vy * vy)
-        if landing_normal is not None and speed <= 1.0:
+        if landing_normal is not None:
             angle = math.atan2(landing_normal[1], landing_normal[0])
         else:
             angle = math.atan2(vy, vx) if speed > 0.1 else 0.0

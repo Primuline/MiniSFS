@@ -119,3 +119,30 @@ def test_renderer_detects_landed_probe_normal() -> None:
     ]
 
     assert renderer._probe_landing_normal(bodies, 1) == (1.0, 0.0)
+
+
+def test_landed_probe_normal_ignores_absolute_host_velocity() -> None:
+    """A probe resting on a moving host should still orient away from the host."""
+    renderer = Renderer(width=240, height=180)
+    bodies = np.zeros((2, NUM_FIELDS), dtype=np.float64)
+    bodies[:, IS_ACTIVE] = 1.0
+    bodies[:, MASS] = 1.0
+    bodies[0, [X, Y, RADIUS, BODY_TYPE, VX, VY]] = [
+        0.0, 0.0, 10.0, BODY_TYPE_PLANET, 100.0, -50.0,
+    ]
+    bodies[1, [X, Y, RADIUS, BODY_TYPE, VX, VY]] = [
+        15.0, 0.0, 5.0, BODY_TYPE_PROBE, 100.0, -50.0,
+    ]
+
+    assert renderer._probe_landing_normal(bodies, 1) == (1.0, 0.0)
+
+
+def test_renderer_state_label_is_shifted_right_of_toolbar() -> None:
+    """The bottom State label should not overlap the left toolbar."""
+    renderer = Renderer(width=240, height=180)
+
+    renderer.render_hud("PLAYING")
+
+    toolbar_pixels = pygame.surfarray.array3d(renderer.screen)[:44, 150:180]
+    state_area_pixels = pygame.surfarray.array3d(renderer.screen)[56:130, 150:180]
+    assert np.count_nonzero(state_area_pixels) > np.count_nonzero(toolbar_pixels)
