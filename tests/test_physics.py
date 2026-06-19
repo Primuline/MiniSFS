@@ -39,7 +39,7 @@ from src.physics.forces import (
     compute_coulomb_forces,
     compute_gravitational_forces,
     compute_total_forces,
-    find_nearest_gravity_source,
+    find_dominant_placement_gravity_source,
 )
 from src.physics.integrators import euler_step, rk4_step, velocity_verlet_step
 
@@ -209,17 +209,18 @@ class TestGravitationalForces:
         assert forces[0, 0] == 0.0
         assert forces[0, 1] == 0.0
 
-    def test_nearest_gravity_source_uses_query_position_and_planets(self):
-        """Placement previews should use the nearest active massive body."""
-        star_near_origin = make_body(
+    def test_dominant_placement_source_accepts_clear_static_star(self):
+        """Placement previews should use a static star only when it dominates."""
+        dominant_star = make_body(
             x=0.0,
             y=0.0,
             mass=1.0e30,
             radius=1.0e6,
             body_type=BODY_TYPE_STAR,
+            is_static=True,
         )
-        local_planet = make_body(
-            x=1.0e12,
+        weak_planet = make_body(
+            x=2.0e12,
             y=0.0,
             vx=3.0e4,
             vy=-2.0e3,
@@ -227,25 +228,63 @@ class TestGravitationalForces:
             radius=1.0e6,
             body_type=BODY_TYPE_PLANET,
         )
-        inactive_closer_body = make_body(
-            x=1.0e12 + 1.0,
+        bodies = np.vstack([dominant_star, weak_planet])
+
+        source = find_dominant_placement_gravity_source(np.array([1.0e10, 0.0]), bodies)
+
+        assert source is not None
+        source_id, source_pos, source_vel, source_mass, source_radius = source
+        assert source_id == 0
+        assert np.allclose(source_pos, [0.0, 0.0])
+        assert np.allclose(source_vel, [0.0, 0.0])
+        assert source_mass == pytest.approx(1.0e30)
+        assert source_radius == pytest.approx(1.0e6)
+
+    def test_dominant_placement_source_rejects_competing_gravity(self):
+        """No preview source should be selected when the top source is not 10x stronger."""
+        star = make_body(
+            x=0.0,
             y=0.0,
             mass=1.0e30,
             radius=1.0e6,
             body_type=BODY_TYPE_STAR,
-            is_active=False,
+            is_static=True,
         )
-        bodies = np.vstack([star_near_origin, local_planet, inactive_closer_body])
+        competitor = make_body(
+            x=2.0e10,
+            y=0.0,
+            mass=5.0e29,
+            radius=1.0e6,
+            body_type=BODY_TYPE_PLANET,
+        )
+        bodies = np.vstack([star, competitor])
 
-        source = find_nearest_gravity_source(np.array([1.0e12 + 10.0, 0.0]), bodies)
+        source = find_dominant_placement_gravity_source(np.array([1.0e10, 0.0]), bodies)
 
-        assert source is not None
-        source_id, source_pos, source_vel, source_mass, source_radius = source
-        assert source_id == 1
-        assert np.allclose(source_pos, [1.0e12, 0.0])
-        assert np.allclose(source_vel, [3.0e4, -2.0e3])
-        assert source_mass == pytest.approx(1.0e24)
-        assert source_radius == pytest.approx(1.0e6)
+        assert source is None
+
+    def test_dominant_placement_source_rejects_non_star_maximum(self):
+        """A planet-dominated point should not show a placement trajectory preview."""
+        star = make_body(
+            x=0.0,
+            y=0.0,
+            mass=1.0e30,
+            radius=1.0e6,
+            body_type=BODY_TYPE_STAR,
+            is_static=True,
+        )
+        planet = make_body(
+            x=1.0e12,
+            y=0.0,
+            mass=1.0e25,
+            radius=1.0e6,
+            body_type=BODY_TYPE_PLANET,
+        )
+        bodies = np.vstack([star, planet])
+
+        source = find_dominant_placement_gravity_source(np.array([1.0e12 + 10.0, 0.0]), bodies)
+
+        assert source is None
 
 
 class TestCoulombForces:

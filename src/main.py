@@ -75,7 +75,7 @@ from src.core.types import (
 from src.core.utils.tools import normalize_angle_delta
 from src.input.handler import InputHandler
 from src.physics.engine import PhysicsEngine
-from src.physics.forces import find_nearest_gravity_source
+from src.physics.forces import find_dominant_placement_gravity_source
 from src.physics.rocket import compute_rocket_burn
 from src.quadtree.trail import TrailBuffer
 from src.rendering.camera import Camera
@@ -1146,7 +1146,7 @@ def main() -> None:
         Args:
             bodies_arr: Body state array
             ref_body_id: Reference frame body ID (may be None)
-            query_pos: Position used to choose the nearest source outside a reference frame
+            query_pos: Position used to choose a dominant source outside a reference frame
 
         Returns:
             (source_pos, source_vel, source_mass, source_radius) or None
@@ -1159,10 +1159,9 @@ def main() -> None:
                 star_radius = float(bodies_arr[ref_body_id, RADIUS])
                 return (star_pos, star_vel, star_mass, star_radius)
 
-        # Find nearest active massive source to the placement preview position.
-        nearest = find_nearest_gravity_source(query_pos, bodies_arr)
-        if nearest is not None:
-            _, star_pos, star_vel, star_mass, star_radius = nearest
+        dominant = find_dominant_placement_gravity_source(query_pos, bodies_arr)
+        if dominant is not None:
+            _, star_pos, star_vel, star_mass, star_radius = dominant
             return (star_pos, star_vel, star_mass, star_radius)
 
         return None
@@ -1198,18 +1197,7 @@ def main() -> None:
         # Find reference star (nearest star or reference frame body)
         ref_star = _get_gravity_source(bodies, reference_body_id, pos)
         if ref_star is None:
-            pts = 200
-            total_dist = speed * 1e7
-            pts_list = []
-            for i in range(pts):
-                t = i / (pts - 1)
-                pts_list.append(pos + vel * t * total_dist / speed)
-            return {
-                "trajectory": np.array(pts_list, dtype=np.float64),
-                "collided": False,
-                "escaped": False,
-                "orbited": False,
-            }
+            return None
 
         star_pos, star_vel, star_mass, star_radius = ref_star
         G = GRAVITATIONAL_CONSTANT

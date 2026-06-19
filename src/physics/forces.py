@@ -26,6 +26,7 @@ from src.config import ESCAPE_RATIO, MAX_TRAJECTORY_STEPS
 from src.core.utils.tools import normalize_angle_delta
 from src.core.types import (
     BODY_TYPE,
+    BODY_TYPE_STAR,
     CHARGE,
     IS_ACTIVE,
     IS_STATIC,
@@ -230,19 +231,18 @@ def find_nearest_star(
     return (idx, star_pos, star_mass, star_radius)
 
 
-def find_nearest_gravity_source(
+def find_dominant_placement_gravity_source(
     pos: np.ndarray,
     bodies: np.ndarray,
     *,
     exclude_body_id: Optional[int] = None,
 ) -> Optional[Tuple[int, np.ndarray, np.ndarray, float, float]]:
-    """Find the nearest active massive body to a query position.
+    """Find a dominant static star source for placement trajectory preview.
 
-    This is used by placement previews where the relevant local gravity source
-    may be a planet rather than a body typed as a star.
+    Outside an explicit reference frame, placement preview is shown only when
+    one static star dominates the local gravitational field clearly enough.
     """
-    best_idx: Optional[int] = None
-    best_dist_sq: float = float("inf")
+    strengths: list[Tuple[float, int]] = []
 
     for i in range(bodies.shape[0]):
         if exclude_body_id is not None and i == exclude_body_id:
@@ -254,14 +254,28 @@ def find_nearest_gravity_source(
         dx = float(bodies[i, X] - pos[0])
         dy = float(bodies[i, Y] - pos[1])
         dist_sq = dx * dx + dy * dy
-        if dist_sq < best_dist_sq:
-            best_dist_sq = dist_sq
-            best_idx = i
+        if dist_sq < 1.0:
+            strength = float("inf")
+        else:
+            strength = float(bodies[i, MASS]) / dist_sq
+        strengths.append((strength, i))
 
-    if best_idx is None:
+    if not strengths:
         return None
 
-    idx = best_idx
+    strengths.sort(reverse=True)
+    strongest, idx = strengths[0]
+    if (
+        int(bodies[idx, BODY_TYPE]) != BODY_TYPE_STAR
+        or int(bodies[idx, IS_STATIC]) != 1
+    ):
+        return None
+
+    if len(strengths) > 1:
+        second_strongest = strengths[1][0]
+        if strongest <= second_strongest * 10.0:
+            return None
+
     source_pos = bodies[idx, [X, Y]].copy()
     source_vel = bodies[idx, [VX, VY]].copy()
     source_mass = float(bodies[idx, MASS])
