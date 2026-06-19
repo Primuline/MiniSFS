@@ -28,6 +28,7 @@ Changes:
   measurement overlays, and restore previous pause state on exit.
 - H shortcut overlay has been updated to remove stale right-drag and old speed shortcuts.
 - README toolbar/control notes include the new measurement buttons.
+- `R` resets the current mode: sandbox returns to the default scene, while level mode restarts the current level.
 - Durable docs updated:
   - `.codex/docs/project-memory.md`
   - `.codex/docs/contracts.md`

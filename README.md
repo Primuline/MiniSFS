@@ -37,7 +37,7 @@ rocket model with finite fuel.
 | Cancel active measurement/placement | Right-click |
 | Cancel placement / deselect | Right-click empty space |
 | Pause/resume | `Space` or HUD pause button |
-| Reset camera | `R` |
+| Reset current mode | `R` |
 | Toggle grid | `G` |
 | Toggle labels | `L` |
 | Toggle shortcut panel | `H` |

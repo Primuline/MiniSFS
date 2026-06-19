@@ -346,6 +346,8 @@ class InputHandler(IInputHandler):
             return "TOGGLE_LABELS"
         elif event.key == pygame.K_h:
             return "TOGGLE_SHORTCUTS"
+        elif event.key == pygame.K_r:
+            return "RESET_SIMULATION"
 
         return None
 

@@ -458,8 +458,12 @@ class TestInputIntegration:
         cmd = handler.inject_key_press("K_DELETE")
         assert cmd == "DELETE_SELECTED", f"K_DELETE should be DELETE_SELECTED, got: {cmd}"
 
+        # R -> reset current mode
+        cmd = handler.inject_key_press("K_r")
+        assert cmd == "RESET_SIMULATION", f"K_r should be RESET_SIMULATION, got: {cmd}"
+
         # Old shortcuts and numbered speed shortcuts have been removed -> None
-        for removed_key in ("K_r", "K_t", "K_f", "K_0", "K_5", "K_6", "K_7", "K_8"):
+        for removed_key in ("K_t", "K_f", "K_0", "K_5", "K_6", "K_7", "K_8"):
             cmd = handler.inject_key_press(removed_key)
             assert cmd == "", f"{removed_key} should be empty, got: {cmd}"
 

@@ -753,9 +753,10 @@ def draw_shortcuts_overlay(surface: pygame.Surface) -> None:
     shortcuts = [
         ("Space", "Pause/Resume"), ("G", "Toggle Grid"),
         ("L", "Toggle Labels"), ("H", "Toggle Shortcuts"),
-        ("1~4", "Place Tools"), ("Del", "Delete Body"),
-        ("Ln/An", "Measure"), ("Right-Click", "Edit/Cancel"),
-        ("Scroll", "Zoom"), ("Dbl-Click", "Reference Frame"),
+        ("R", "Reset Mode"), ("Del", "Delete Body"),
+        ("1~4", "Place Tools"), ("Ln/An", "Measure"),
+        ("Right-Click", "Edit/Cancel"), ("Scroll", "Zoom"),
+        ("Dbl-Click", "Reference Frame"),
         ("Middle-Drag", "Pan/Grab"), ("Esc", "Back/Cancel"),
     ]
 

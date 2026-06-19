@@ -858,6 +858,47 @@ def main() -> None:
         hud.clear_probe_fuel_info()
         hud.set_level_mode_enabled(False)
 
+    def _start_sandbox() -> None:
+        """Start or reset sandbox mode to the default scene."""
+        nonlocal bodies, active_tool, selected_body_id, reference_body_id
+        nonlocal predicted_trajectory, placement_trajectory, is_paused, is_aiming
+        nonlocal time_multiplier, time_speed, level_mode_enabled
+        nonlocal current_level_id, level_completed, level_failed, game_state
+        nonlocal accumulator, measurement_points, measurement_history, measurement_previous_pause
+        bodies = create_default_scene()
+        probe_rocket_states.clear()
+        physics_engine.last_collision_events = []
+        physics_engine.probe_landing_speed_limits = {}
+        trail_buffer.clear_all()
+        camera.reset()
+        camera.zoom_at(INITIAL_CAMERA_ZOOM, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+        active_tool = None
+        selected_body_id = None
+        renderer.selected_body_id = None
+        hud.set_tool_active(None)
+        hud.set_selected_body(None, -1)
+        hud.clear_reference_frame()
+        hud.clear_probe_fuel_info()
+        hud.set_level_mode_enabled(False)
+        reference_body_id = None
+        predicted_trajectory = None
+        placement_trajectory = None
+        is_aiming = False
+        measurement_points = []
+        measurement_history = []
+        measurement_previous_pause = None
+        is_paused = False
+        accumulator = 0.0
+        time_multiplier = 1.0
+        time_speed = BASE_TIME_SPEED
+        level_mode_enabled = False
+        current_level_id = None
+        level_completed = False
+        level_failed = False
+        hud.set_play_pause_state(False)
+        hud.set_time_speed(time_multiplier)
+        game_state = GAME_STATE_PLAYING
+
     def _start_level(level_id: int) -> None:
         """Start or restart a fixed level."""
         nonlocal bodies, active_tool, selected_body_id, reference_body_id
@@ -1331,33 +1372,7 @@ def main() -> None:
                 menu_screen = "level_select"
 
             elif game_state == GAME_STATE_MENU and cmd == "START_SANDBOX":
-                bodies = create_default_scene()
-                probe_rocket_states.clear()
-                trail_buffer.clear_all()
-                camera.reset()
-                camera.zoom_at(INITIAL_CAMERA_ZOOM, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
-                active_tool = None
-                selected_body_id = None
-                renderer.selected_body_id = None
-                hud.set_tool_active(None)
-                hud.set_selected_body(None, -1)
-                hud.clear_reference_frame()
-                hud.clear_probe_fuel_info()
-                hud.set_level_mode_enabled(False)
-                reference_body_id = None
-                predicted_trajectory = None
-                placement_trajectory = None
-                is_paused = False
-                time_multiplier = 1.0
-                time_speed = BASE_TIME_SPEED
-                level_mode_enabled = False
-                current_level_id = None
-                level_completed = False
-                level_failed = False
-                physics_engine.probe_landing_speed_limits = {}
-                hud.set_play_pause_state(False)
-                hud.set_time_speed(time_multiplier)
-                game_state = GAME_STATE_PLAYING
+                _start_sandbox()
 
             elif game_state == GAME_STATE_MENU and cmd == "START_LEVEL_1":
                 _start_level(1)
@@ -1367,6 +1382,12 @@ def main() -> None:
 
             elif game_state == GAME_STATE_MENU:
                 continue
+
+            elif cmd == "RESET_SIMULATION":
+                if level_mode_enabled and current_level_id is not None:
+                    _start_level(current_level_id)
+                else:
+                    _start_sandbox()
 
             elif cmd == "LEVEL_MESSAGE_OK":
                 if level_mode_enabled and not level_completed and not level_failed:
