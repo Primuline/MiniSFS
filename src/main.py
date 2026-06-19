@@ -616,6 +616,7 @@ def main() -> None:
     # Tool state
     active_tool: Optional[str] = None
     measurement_points: List[Tuple[float, float]] = []
+    measurement_history: List[List[Tuple[float, float]]] = []
     measurement_previous_pause: Optional[bool] = None
 
     # Aiming state
@@ -718,8 +719,10 @@ def main() -> None:
 
     def _exit_measurement_tool() -> None:
         """Exit measurement mode and restore the previous pause state."""
-        nonlocal active_tool, measurement_previous_pause, measurement_points, is_paused
+        nonlocal active_tool, measurement_previous_pause, measurement_points
+        nonlocal measurement_history, is_paused
         measurement_points = []
+        measurement_history = []
         if measurement_previous_pause is not None:
             is_paused = measurement_previous_pause
             hud.set_play_pause_state(is_paused)
@@ -1457,6 +1460,7 @@ def main() -> None:
                     if custom_placement_stage > 0:
                         _cancel_custom_placement()
                     measurement_points = []
+                    measurement_history = []
                     measurement_previous_pause = is_paused
                     is_paused = True
                     hud.set_play_pause_state(True)
@@ -1592,6 +1596,9 @@ def main() -> None:
                     if len(measurement_points) >= required_points:
                         measurement_points = []
                     measurement_points.append(point)
+                    if len(measurement_points) == required_points:
+                        measurement_history.append(list(measurement_points))
+                        measurement_points = []
                     continue
 
                 # Simple placement flow click handling (Star/Planet/Probe)
@@ -2549,10 +2556,19 @@ def main() -> None:
                 input_handler.mouse_screen_x,
                 input_handler.mouse_screen_y,
             )
+            measurement_mode = "length" if active_tool == "TOOL_MEASURE_LENGTH" else "angle"
+            for completed_points in measurement_history:
+                draw_measurement_overlay(
+                    renderer.screen,
+                    camera,
+                    measurement_mode,
+                    completed_points,
+                    completed_points[-1],
+                )
             draw_measurement_overlay(
                 renderer.screen,
                 camera,
-                "length" if active_tool == "TOOL_MEASURE_LENGTH" else "angle",
+                measurement_mode,
                 measurement_points,
                 cursor_world,
             )
