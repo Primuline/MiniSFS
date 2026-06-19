@@ -8,6 +8,7 @@ from src.core.types import VX, VY, X, Y, make_body
 from src.main import (
     find_landed_probe_contacts,
     find_landed_probe_ids,
+    placement_velocity_in_source_frame,
     should_predict_probe_trajectory,
     transform_trails_to_reference_frame,
 )
@@ -134,6 +135,19 @@ def test_landed_probe_selection_does_not_predict_trajectory() -> None:
         landed_probe_ids=set(),
         is_grabbing=False,
     )
+
+
+def test_placement_prediction_velocity_uses_gravity_source_frame() -> None:
+    """Auto-source placement previews should use velocity relative to the source."""
+    placement_velocity = np.array([1200.0, -300.0], dtype=np.float64)
+    source_velocity = np.array([1000.0, 50.0], dtype=np.float64)
+
+    relative_velocity = placement_velocity_in_source_frame(
+        placement_velocity,
+        source_velocity,
+    )
+
+    assert np.allclose(relative_velocity, [200.0, -350.0])
 
 
 def test_find_landed_probe_contacts_returns_host_and_normal() -> None:

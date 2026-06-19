@@ -221,6 +221,8 @@ class TestGravitationalForces:
         local_planet = make_body(
             x=1.0e12,
             y=0.0,
+            vx=3.0e4,
+            vy=-2.0e3,
             mass=1.0e24,
             radius=1.0e6,
             body_type=BODY_TYPE_PLANET,
@@ -238,9 +240,10 @@ class TestGravitationalForces:
         source = find_nearest_gravity_source(np.array([1.0e12 + 10.0, 0.0]), bodies)
 
         assert source is not None
-        source_id, source_pos, source_mass, source_radius = source
+        source_id, source_pos, source_vel, source_mass, source_radius = source
         assert source_id == 1
         assert np.allclose(source_pos, [1.0e12, 0.0])
+        assert np.allclose(source_vel, [3.0e4, -2.0e3])
         assert source_mass == pytest.approx(1.0e24)
         assert source_radius == pytest.approx(1.0e6)
 

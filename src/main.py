@@ -540,6 +540,14 @@ def should_predict_probe_trajectory(
     )
 
 
+def placement_velocity_in_source_frame(
+    placement_velocity: np.ndarray,
+    source_velocity: np.ndarray,
+) -> np.ndarray:
+    """Return placement preview velocity relative to the selected gravity source."""
+    return placement_velocity - source_velocity
+
+
 def transform_trails_to_reference_frame(
     trails: Dict[int, List[Tuple[float, float]]],
     bodies: np.ndarray,
@@ -1122,7 +1130,7 @@ def main() -> None:
         bodies_arr: np.ndarray,
         ref_body_id: Optional[int],
         query_pos: np.ndarray,
-    ) -> Optional[Tuple[np.ndarray, float, float]]:
+    ) -> Optional[Tuple[np.ndarray, np.ndarray, float, float]]:
         """Get gravity source body information.
 
         Args:
@@ -1131,20 +1139,21 @@ def main() -> None:
             query_pos: Position used to choose the nearest source outside a reference frame
 
         Returns:
-            (star_pos, star_mass, star_radius) or None (when no gravity source)
+            (source_pos, source_vel, source_mass, source_radius) or None
         """
         if ref_body_id is not None and ref_body_id < bodies_arr.shape[0]:
             if int(bodies_arr[ref_body_id, IS_ACTIVE]) == 1:
                 star_pos = bodies_arr[ref_body_id, [X, Y]].copy()
+                star_vel = bodies_arr[ref_body_id, [VX, VY]].copy()
                 star_mass = float(bodies_arr[ref_body_id, MASS])
                 star_radius = float(bodies_arr[ref_body_id, RADIUS])
-                return (star_pos, star_mass, star_radius)
+                return (star_pos, star_vel, star_mass, star_radius)
 
         # Find nearest active massive source to the placement preview position.
         nearest = find_nearest_gravity_source(query_pos, bodies_arr)
         if nearest is not None:
-            _, star_pos, star_mass, star_radius = nearest
-            return (star_pos, star_mass, star_radius)
+            _, star_pos, star_vel, star_mass, star_radius = nearest
+            return (star_pos, star_vel, star_mass, star_radius)
 
         return None
 
@@ -1192,7 +1201,7 @@ def main() -> None:
                 "orbited": False,
             }
 
-        star_pos, star_mass, star_radius = ref_star
+        star_pos, star_vel, star_mass, star_radius = ref_star
         G = GRAVITATIONAL_CONSTANT
 
         initial_delta = pos - star_pos
@@ -1205,9 +1214,11 @@ def main() -> None:
         pred_dt = min(physics_dt * 3125.0, 20000.0)
         max_steps = 3000
 
-        # Only save probe position and velocity (two-body approximation, no full body array needed)
+        # Predict in the gravity source's local frame, then translate back to world space.
         p = pos.astype(np.float64).copy()
-        v = vel.astype(np.float64).copy()
+        v = placement_velocity_in_source_frame(vel, star_vel).astype(np.float64).copy()
+        if float(np.linalg.norm(v)) < 1.0:
+            return None
 
         trajectory = [p.copy()]
         collided = False
