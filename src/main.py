@@ -540,24 +540,6 @@ def should_predict_probe_trajectory(
     )
 
 
-def placement_velocity_in_source_frame(
-    placement_velocity: np.ndarray,
-    source_velocity: np.ndarray,
-) -> np.ndarray:
-    """Return placement preview velocity relative to the selected gravity source."""
-    return placement_velocity - source_velocity
-
-
-def placement_world_position_from_source_frame(
-    relative_position: np.ndarray,
-    source_position: np.ndarray,
-    source_velocity: np.ndarray,
-    elapsed: float,
-) -> np.ndarray:
-    """Translate source-frame placement prediction back to world coordinates."""
-    return source_position + source_velocity * elapsed + relative_position
-
-
 def transform_trails_to_reference_frame(
     trails: Dict[int, List[Tuple[float, float]]],
     bodies: np.ndarray,
@@ -1140,7 +1122,7 @@ def main() -> None:
         bodies_arr: np.ndarray,
         ref_body_id: Optional[int],
         query_pos: np.ndarray,
-    ) -> Optional[Tuple[np.ndarray, np.ndarray, float, float]]:
+    ) -> Optional[Tuple[np.ndarray, float, float]]:
         """Get gravity source body information.
 
         Args:
@@ -1149,27 +1131,26 @@ def main() -> None:
             query_pos: Position used to choose a dominant source outside a reference frame
 
         Returns:
-            (source_pos, source_vel, source_mass, source_radius) or None
+            (source_pos, source_mass, source_radius) or None
         """
         if ref_body_id is not None and ref_body_id < bodies_arr.shape[0]:
             if int(bodies_arr[ref_body_id, IS_ACTIVE]) == 1:
                 star_pos = bodies_arr[ref_body_id, [X, Y]].copy()
-                star_vel = bodies_arr[ref_body_id, [VX, VY]].copy()
                 star_mass = float(bodies_arr[ref_body_id, MASS])
                 star_radius = float(bodies_arr[ref_body_id, RADIUS])
-                return (star_pos, star_vel, star_mass, star_radius)
+                return (star_pos, star_mass, star_radius)
 
         dominant = find_dominant_placement_gravity_source(query_pos, bodies_arr)
         if dominant is not None:
-            _, star_pos, star_vel, star_mass, star_radius = dominant
-            return (star_pos, star_vel, star_mass, star_radius)
+            _, star_pos, star_mass, star_radius = dominant
+            return (star_pos, star_mass, star_radius)
 
         return None
 
     def _compute_placement_trajectory(
         pos: np.ndarray,
         vel: np.ndarray,
-        star_info: Optional[Tuple[np.ndarray, np.ndarray, float, float]],
+        star_info: Optional[Tuple[np.ndarray, float, float]],
         body_radius_world: float,
     ) -> Optional[Dict[str, object]]:
         """Compute placement preview trajectory (two-body Kepler approximation, RK4).
@@ -1199,47 +1180,38 @@ def main() -> None:
         if ref_star is None:
             return None
 
-        star_pos, star_vel, star_mass, star_radius = ref_star
+        star_pos, star_mass, star_radius = ref_star
         G = GRAVITATIONAL_CONSTANT
 
-        initial_relative_pos = pos - star_pos
-        initial_dist = float(np.linalg.norm(initial_relative_pos))
+        initial_delta = pos - star_pos
+        initial_dist = float(np.linalg.norm(initial_delta))
         escape_dist_threshold = initial_dist * 3.0
         collision_r = star_radius + body_radius_world
-        initial_angle = math.atan2(initial_relative_pos[1], initial_relative_pos[0])
+        initial_angle = math.atan2(initial_delta[1], initial_delta[0])
 
         # Fixed step size (not scaled with speed multiplier, because this is a visual preview)
         pred_dt = min(physics_dt * 3125.0, 20000.0)
         max_steps = 3000
 
-        # Predict in the gravity source's local frame, then translate back to world space.
-        relative_p = initial_relative_pos.astype(np.float64).copy()
-        v = placement_velocity_in_source_frame(vel, star_vel).astype(np.float64).copy()
-        if float(np.linalg.norm(v)) < 1.0:
-            return None
+        # Only save probe position and velocity (two-body approximation, no full body array needed)
+        p = pos.astype(np.float64).copy()
+        v = vel.astype(np.float64).copy()
 
-        elapsed = 0.0
-        trajectory = [
-            placement_world_position_from_source_frame(
-                relative_p,
-                star_pos,
-                star_vel,
-                elapsed,
-            )
-        ]
+        trajectory = [p.copy()]
         collided = False
         escaped = False
         orbited = False
         total_angle = 0.0
         prev_angle = initial_angle
-        def _two_body_acc(relative_pp: np.ndarray) -> np.ndarray:
+        def _two_body_acc(pp: np.ndarray) -> np.ndarray:
             """Gravitational acceleration of the reference star on the probe."""
-            r2 = float(relative_pp[0] * relative_pp[0] + relative_pp[1] * relative_pp[1])
+            delta = star_pos - pp
+            r2 = float(delta[0] * delta[0] + delta[1] * delta[1])
             if r2 < 1.0:
                 return np.array([0.0, 0.0], dtype=np.float64)
             r = math.sqrt(r2)
             a_mag = G * star_mass / r2
-            return -relative_pp * (a_mag / r)
+            return delta * (a_mag / r)
 
         def _rk4_step(pp: np.ndarray, vv: np.ndarray, dt: float) -> tuple:
             """Inline RK4 step (two-body gravity only)."""
@@ -1261,35 +1233,21 @@ def main() -> None:
             return p_new, v_new
 
         for _ in range(max_steps):
-            previous_relative_p = relative_p.copy()
-            relative_p, v = _rk4_step(relative_p, v, pred_dt)
-            elapsed += pred_dt
-            world_p = placement_world_position_from_source_frame(
-                relative_p,
-                star_pos,
-                star_vel,
-                elapsed,
-            )
-            trajectory.append(world_p.copy())
+            p, v = _rk4_step(p, v, pred_dt)
+            trajectory.append(p.copy())
 
             # 1. Collision detection (reference star only)
-            d = math.sqrt(float(relative_p[0] * relative_p[0] + relative_p[1] * relative_p[1]))
+            delta = p - star_pos
+            d = math.sqrt(float(delta[0] * delta[0] + delta[1] * delta[1]))
             if d < collision_r:
                 collided = True
                 if len(trajectory) >= 2:
                     last = trajectory[-2]
-                    d_last = float(np.linalg.norm(previous_relative_p))
+                    d_last = float(np.linalg.norm(last - star_pos))
                     if d_last > 0:
                         t_hit = (d_last - collision_r) / d_last
                         t_hit = max(0.0, min(t_hit, 1.0))
-                        hit_relative = previous_relative_p + (relative_p - previous_relative_p) * t_hit
-                        hit_elapsed = elapsed - pred_dt + pred_dt * t_hit
-                        trajectory[-1] = placement_world_position_from_source_frame(
-                            hit_relative,
-                            star_pos,
-                            star_vel,
-                            hit_elapsed,
-                        )
+                        trajectory[-1] = last + (p - last) * t_hit
                 break
 
             # 2. Escape detection
@@ -1298,7 +1256,7 @@ def main() -> None:
                 break
 
             # 3. Angle change detection
-            current_angle = math.atan2(relative_p[1], relative_p[0])
+            current_angle = math.atan2(delta[1], delta[0])
             da = normalize_angle_delta(current_angle - prev_angle)
             total_angle += abs(da)
             prev_angle = current_angle

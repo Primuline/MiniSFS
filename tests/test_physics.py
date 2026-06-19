@@ -233,10 +233,9 @@ class TestGravitationalForces:
         source = find_dominant_placement_gravity_source(np.array([1.0e10, 0.0]), bodies)
 
         assert source is not None
-        source_id, source_pos, source_vel, source_mass, source_radius = source
+        source_id, source_pos, source_mass, source_radius = source
         assert source_id == 0
         assert np.allclose(source_pos, [0.0, 0.0])
-        assert np.allclose(source_vel, [0.0, 0.0])
         assert source_mass == pytest.approx(1.0e30)
         assert source_radius == pytest.approx(1.0e6)
 

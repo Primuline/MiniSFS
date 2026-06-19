@@ -32,8 +32,6 @@ from src.core.types import (
     IS_STATIC,
     MASS,
     RADIUS,
-    VX,
-    VY,
     X,
     Y,
 )
@@ -236,7 +234,7 @@ def find_dominant_placement_gravity_source(
     bodies: np.ndarray,
     *,
     exclude_body_id: Optional[int] = None,
-) -> Optional[Tuple[int, np.ndarray, np.ndarray, float, float]]:
+) -> Optional[Tuple[int, np.ndarray, float, float]]:
     """Find a dominant static star source for placement trajectory preview.
 
     Outside an explicit reference frame, placement preview is shown only when
@@ -277,10 +275,9 @@ def find_dominant_placement_gravity_source(
             return None
 
     source_pos = bodies[idx, [X, Y]].copy()
-    source_vel = bodies[idx, [VX, VY]].copy()
     source_mass = float(bodies[idx, MASS])
     source_radius = float(bodies[idx, RADIUS])
-    return (idx, source_pos, source_vel, source_mass, source_radius)
+    return (idx, source_pos, source_mass, source_radius)
 
 
 def predict_single_star_trajectory(
