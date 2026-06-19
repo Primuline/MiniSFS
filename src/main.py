@@ -213,6 +213,35 @@ def probe_radius_to_tool_pixels(radius_meters: float) -> float:
     return max(1.0, radius_meters) / WORLD_SCALE
 
 
+def make_default_probe_rocket_state() -> ProbeRocketState:
+    """Create default sidecar rocket state for legacy/default probe placement."""
+    dry_mass = PROBE_ROCKET_TOTAL_MASS_DEFAULT - PROBE_ROCKET_FUEL_MASS_DEFAULT
+    return ProbeRocketState(
+        dry_mass=dry_mass,
+        fuel_mass=PROBE_ROCKET_FUEL_MASS_DEFAULT,
+        initial_fuel_mass=PROBE_ROCKET_FUEL_MASS_DEFAULT,
+        exhaust_velocity=PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
+        mass_flow_rate=PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
+    )
+
+
+def make_level_1_probe_rocket_state() -> ProbeRocketState:
+    """Create the tuned Level 1 probe rocket state."""
+    state = make_default_probe_rocket_state()
+    state.exhaust_velocity *= 50.0
+    state.mass_flow_rate = max(1.0, state.mass_flow_rate // 50.0)
+    return state
+
+
+def is_level_1_success(bodies: np.ndarray) -> bool:
+    """Return True when a landed probe is resting on a planet body."""
+    landed_contacts = find_landed_probe_contacts(bodies)
+    for host_id, _normal in landed_contacts.values():
+        if 0 <= host_id < bodies.shape[0] and int(bodies[host_id, BODY_TYPE]) == BODY_TYPE_PLANET:
+            return True
+    return False
+
+
 def add_body_to_array(
     bodies: np.ndarray,
     body_data: np.ndarray,
@@ -424,6 +453,7 @@ def main() -> None:
     is_paused = False
     menu_screen = "mode"
     level_mode_enabled = False
+    level_1_completed = False
 
     # Tool state
     active_tool: Optional[str] = None
@@ -518,13 +548,30 @@ def main() -> None:
 
     def _make_default_probe_rocket_state() -> ProbeRocketState:
         """Create default sidecar rocket state for legacy/default probe placement."""
-        dry_mass = PROBE_ROCKET_TOTAL_MASS_DEFAULT - PROBE_ROCKET_FUEL_MASS_DEFAULT
-        return ProbeRocketState(
-            dry_mass=dry_mass,
-            fuel_mass=PROBE_ROCKET_FUEL_MASS_DEFAULT,
-            initial_fuel_mass=PROBE_ROCKET_FUEL_MASS_DEFAULT,
-            exhaust_velocity=PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
-            mass_flow_rate=PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
+        return make_default_probe_rocket_state()
+
+    def _make_level_1_probe_rocket_state() -> ProbeRocketState:
+        """Create the tuned Level 1 probe rocket state."""
+        return make_level_1_probe_rocket_state()
+
+    def _show_level_1_objective() -> None:
+        """Display the Level 1 mission objective popup."""
+        hud.show_level_message(
+            "Level 1 Mission",
+            [
+                "Transfer the probe from the star",
+                "and land it on the planet.",
+            ],
+        )
+
+    def _show_level_1_success() -> None:
+        """Display the Level 1 success popup."""
+        hud.show_level_message(
+            "Mission Complete",
+            [
+                "Probe landed on the planet.",
+                "Level 1 cleared.",
+            ],
         )
 
     def _register_probe_rocket_state(body_id: int) -> None:
@@ -888,6 +935,12 @@ def main() -> None:
                     commands.append(menu_cmd)
                 continue
 
+            if hud.level_message_visible:
+                hud_cmd = hud.handle_level_message_event(event)
+                if hud_cmd is not None:
+                    commands.append(hud_cmd)
+                continue
+
             # Dialog stage: only dialog can receive events, skip InputHandler
             if custom_placement_stage == 1 or hud.probe_dialog_visible:
                 hud_cmd = hud.handle_event(event)
@@ -986,6 +1039,7 @@ def main() -> None:
                 time_multiplier = 1.0
                 time_speed = BASE_TIME_SPEED
                 level_mode_enabled = False
+                level_1_completed = False
                 hud.set_play_pause_state(False)
                 hud.set_time_speed(time_multiplier)
                 game_state = GAME_STATE_PLAYING
@@ -995,7 +1049,7 @@ def main() -> None:
                 probe_rocket_states.clear()
                 for body_id in range(bodies.shape[0]):
                     if int(bodies[body_id, BODY_TYPE]) == BODY_TYPE_PROBE:
-                        probe_rocket_states[body_id] = _make_default_probe_rocket_state()
+                        probe_rocket_states[body_id] = _make_level_1_probe_rocket_state()
                 trail_buffer.clear_all()
                 camera.reset()
                 camera.zoom_at(INITIAL_CAMERA_ZOOM, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
@@ -1010,16 +1064,23 @@ def main() -> None:
                 reference_body_id = None
                 predicted_trajectory = None
                 placement_trajectory = None
-                is_paused = False
+                is_paused = True
                 time_multiplier = 1.0
                 time_speed = BASE_TIME_SPEED
                 level_mode_enabled = True
-                hud.set_play_pause_state(False)
+                level_1_completed = False
+                hud.set_play_pause_state(True)
                 hud.set_time_speed(time_multiplier)
+                _show_level_1_objective()
                 game_state = GAME_STATE_PLAYING
 
             elif game_state == GAME_STATE_MENU:
                 continue
+
+            elif cmd == "LEVEL_MESSAGE_OK":
+                if level_mode_enabled and not level_1_completed:
+                    is_paused = False
+                    hud.set_play_pause_state(False)
 
             # --- Camera control ---
             elif cmd.startswith("PAN:"):
@@ -1788,6 +1849,13 @@ def main() -> None:
         landed_probe_ids = find_landed_probe_ids(bodies)
         for probe_id in landed_probe_ids:
             trail_buffer.clear(probe_id)
+
+        if level_mode_enabled and not level_1_completed:
+            if is_level_1_success(bodies):
+                level_1_completed = True
+                is_paused = True
+                hud.set_play_pause_state(True)
+                _show_level_1_success()
 
         # When paused, no new trail frames and no fade progression
         if not is_paused:

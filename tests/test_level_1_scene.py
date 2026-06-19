@@ -2,6 +2,7 @@
 
 import math
 
+import numpy as np
 import pytest
 
 from src.config import (
@@ -10,11 +11,18 @@ from src.config import (
     BODY_TYPE_STAR,
     DEFAULT_RADIUS_PROBE,
     GRAVITATIONAL_CONSTANT,
+    PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
+    PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
     PROBE_ROCKET_TOTAL_MASS_DEFAULT,
     WORLD_SCALE,
 )
-from src.core.types import BODY_TYPE, IS_STATIC, MASS, RADIUS, VX, VY, X, Y
-from src.main import create_level_1_scene, probe_radius_to_tool_pixels
+from src.core.types import BODY_TYPE, IS_STATIC, MASS, RADIUS, VX, VY, X, Y, make_body
+from src.main import (
+    create_level_1_scene,
+    make_level_1_probe_rocket_state,
+    is_level_1_success,
+    probe_radius_to_tool_pixels,
+)
 
 
 def test_level_1_contains_earth_moon_and_probe() -> None:
@@ -59,3 +67,37 @@ def test_probe_radius_tool_conversion_preserves_small_probe_radius() -> None:
     radius_pixels = probe_radius_to_tool_pixels(radius_meters)
 
     assert radius_pixels * WORLD_SCALE == pytest.approx(radius_meters)
+
+
+def test_level_1_probe_rocket_is_tuned_for_transfer() -> None:
+    """Level 1 should use the requested boosted probe engine settings."""
+    state = make_level_1_probe_rocket_state()
+
+    assert state.exhaust_velocity == pytest.approx(
+        PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT * 50.0
+    )
+    assert state.mass_flow_rate == pytest.approx(
+        PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT // 50.0
+    )
+
+
+def test_level_1_success_requires_probe_landed_on_planet() -> None:
+    """Landing on the planet body should clear Level 1."""
+    planet = make_body(
+        x=0.0,
+        y=0.0,
+        mass=1.0e24,
+        radius=10.0,
+        body_type=BODY_TYPE_PLANET,
+    )
+    probe = make_body(
+        x=15.0,
+        y=0.0,
+        vx=0.0,
+        vy=0.0,
+        mass=1.0,
+        radius=5.0,
+        body_type=BODY_TYPE_PROBE,
+    )
+
+    assert is_level_1_success(np.vstack([planet, probe])) is True

@@ -72,6 +72,22 @@ def test_level_select_level_1_button_starts_level(pygame_dummy) -> None:
     assert hud.handle_level_select_event(event) == "START_LEVEL_1"
 
 
+def test_level_message_popup_closes_with_ok(pygame_dummy) -> None:
+    """Level objective/result popup should block until acknowledged."""
+    import pygame
+
+    hud = HUDManager()
+    hud.show_level_message("Level 1 Mission", ["Transfer", "Land"])
+    event = pygame.event.Event(
+        pygame.MOUSEBUTTONDOWN,
+        {"pos": hud._level_message_button.rect.center, "button": 1},
+    )
+
+    assert hud.level_message_visible is True
+    assert hud.handle_level_message_event(event) == "LEVEL_MESSAGE_OK"
+    assert hud.level_message_visible is False
+
+
 def test_time_controls_include_pause_and_three_speed_buttons(pygame_dummy) -> None:
     """HUD should expose pause plus slow/reset/fast controls."""
     hud = HUDManager()

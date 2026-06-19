@@ -343,6 +343,23 @@ class HUDManager:
                 self.level_select_buttons.append(btn)
         self.level_mode_enabled = False
 
+        # ============ Level message dialog ============
+        dialog_w = 480
+        dialog_h = 230
+        dialog_y = self.height // 2 - dialog_h // 2
+        self.level_message_visible: bool = False
+        self._level_message_title: str = ""
+        self._level_message_lines: List[str] = []
+        self._level_message_button = Button(
+            self.width // 2 - 56,
+            dialog_y + dialog_h - 58,
+            112,
+            34,
+            "OK",
+            "LEVEL_MESSAGE_OK",
+            font_size=18,
+        )
+
     # ------------------------------------------------------------------
     # Update methods
     # ------------------------------------------------------------------
@@ -580,6 +597,19 @@ class HUDManager:
                 return action
         return None
 
+    def handle_level_message_event(self, event: pygame.event.Event) -> Optional[str]:
+        """Handle level objective/result popup events."""
+        if not self.level_message_visible:
+            return None
+        if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
+            self.hide_level_message()
+            return "LEVEL_MESSAGE_OK"
+        action = self._level_message_button.handle_event(event)
+        if action:
+            self.hide_level_message()
+            return action
+        return None
+
     def set_tool_active(self, tool: Optional[str]) -> None:
         """Set the currently active tool.
 
@@ -599,6 +629,17 @@ class HUDManager:
             btn.disabled = enabled
             if enabled:
                 btn.active = False
+
+    def show_level_message(self, title: str, lines: List[str]) -> None:
+        """Show a centered level objective/result popup."""
+        self._level_message_title = title
+        self._level_message_lines = lines
+        self.level_message_visible = True
+        self._level_message_button.hovered = False
+
+    def hide_level_message(self) -> None:
+        """Hide the centered level objective/result popup."""
+        self.level_message_visible = False
 
     def set_play_pause_state(self, is_paused: bool) -> None:
         """Set the play/pause state.
@@ -724,6 +765,8 @@ class HUDManager:
         self._draw_probe_fuel_panel(surface)
         if camera is not None:
             self._draw_scale_bar(surface, camera)
+        if self.level_message_visible:
+            self._draw_level_message(surface)
 
     def draw_mode_menu(self, surface: pygame.Surface) -> None:
         """Draw the startup mode selection menu.
@@ -762,6 +805,32 @@ class HUDManager:
         esc_hint = self._font_small.render("Esc: back", True, LABEL_COLOR)
         esc_rect = esc_hint.get_rect(center=(self.width // 2, self.height // 2 + 96))
         surface.blit(esc_hint, esc_rect)
+
+    def _draw_level_message(self, surface: pygame.Surface) -> None:
+        """Draw the centered level objective/result popup."""
+        mask = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        mask.fill((0, 0, 0, 160))
+        surface.blit(mask, (0, 0))
+
+        panel_w = 480
+        panel_h = 230
+        panel_x = self.width // 2 - panel_w // 2
+        panel_y = self.height // 2 - panel_h // 2
+        pygame.draw.rect(surface, UI_BLACK, (panel_x, panel_y, panel_w, panel_h))
+        pygame.draw.rect(surface, UI_WHITE, (panel_x, panel_y, panel_w, panel_h), 2)
+
+        title = self._font_medium.render(self._level_message_title, True, TEXT_HIGHLIGHT)
+        title_rect = title.get_rect(center=(self.width // 2, panel_y + 36))
+        surface.blit(title, title_rect)
+
+        line_y = panel_y + 78
+        for line in self._level_message_lines:
+            text = self._font_label.render(line, True, TEXT_COLOR)
+            text_rect = text.get_rect(center=(self.width // 2, line_y))
+            surface.blit(text, text_rect)
+            line_y += 28
+
+        self._level_message_button.draw(surface)
 
     def _draw_info_panel(self, surface: pygame.Surface) -> None:
         """Draw the info panel.
