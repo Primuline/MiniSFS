@@ -43,12 +43,14 @@ class ProbeRocketState:
         fuel_mass: Current fuel mass in kg.
         exhaust_velocity: Effective exhaust velocity in m/s.
         mass_flow_rate: Fuel consumption rate in kg/s.
+        landing_speed_limit: Maximum safe landing relative speed in m/s.
     """
 
     dry_mass: float
     fuel_mass: float
     exhaust_velocity: float
     mass_flow_rate: float
+    landing_speed_limit: float = float("inf")
 
     @property
     def current_mass(self) -> float:

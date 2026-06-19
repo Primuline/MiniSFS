@@ -1,0 +1,54 @@
+{
+  "id": "level_2",
+  "name": "Earth-Mars Transfer",
+  "bodies": [
+    {
+      "name": "Sun",
+      "type": "star",
+      "x": 0.0,
+      "y": 0.0,
+      "vx": 0.0,
+      "vy": 0.0,
+      "mass": 1.9891e30,
+      "charge": 0.0,
+      "radius": 6.957e8,
+      "static": true
+    },
+    {
+      "name": "Earth",
+      "type": "planet",
+      "x": 1.50196428e11,
+      "y": 0.0,
+      "vx": 0.0,
+      "vy": 29730.442170675255,
+      "mass": 5.9722e24,
+      "charge": 0.0,
+      "radius": 6.3781e6,
+      "static": false
+    },
+    {
+      "name": "Mars",
+      "type": "planet",
+      "x": 1.6363581537508754e11,
+      "y": 1.5867806238630753e11,
+      "vx": -16792.595617173354,
+      "vy": 17317.92803036874,
+      "mass": 6.4169e23,
+      "charge": 0.0,
+      "radius": 3.3899e6,
+      "static": false
+    },
+    {
+      "name": "Probe",
+      "type": "probe",
+      "x": 1.502028062e11,
+      "y": 0.0,
+      "vx": 0.0,
+      "vy": 32645.631823178475,
+      "mass": 2.8e6,
+      "charge": 0.0,
+      "radius": 100.0,
+      "static": false
+    }
+  ]
+}

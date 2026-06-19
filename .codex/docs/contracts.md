@@ -45,7 +45,13 @@ Body types:
   - `initial_fuel_mass`
   - `exhaust_velocity`
   - `mass_flow_rate`
+  - `landing_speed_limit`
 - Total mass in `BodyState[MASS]` should match dry mass + current fuel mass when thrust is applied.
+- Landing speed limit is in m/s. Sandbox default is effectively unbounded (`1.0e30 m/s`); fixed levels use `1000 m/s`.
+- Probe collision events use:
+  - `probe_landed` for safe impacts
+  - `probe_crashed` for above-limit impacts
+  - `relative_speed` and `landing_speed_limit` fields for both.
 - Rocket burn math lives in `src/physics/rocket.py`.
 - Default probe settings are stored in `src/config.py`.
 - Level-specific engine tuning should use helper functions such as `make_level_1_probe_rocket_state()` rather than mutating global defaults.
@@ -54,11 +60,17 @@ Body types:
 
 - Level files live under `assets/levels/`.
 - `assets/levels/level_1.json` defines physical state directly in meters, kg, m/s.
+- `assets/levels/level_2.json` defines a simplified Sun-Earth-Mars transfer scene directly in meters, kg, m/s.
 - Level mode disables sandbox editing tools.
 - Level 1:
   - central Earth-like body is currently typed as `BODY_TYPE_STAR`
   - target Moon-like body is `BODY_TYPE_PLANET`
   - probe starts on the central body
+  - success requires a landed probe on a planet body
+- Level 2:
+  - Sun is a static `BODY_TYPE_STAR`
+  - Earth and Mars are `BODY_TYPE_PLANET`
+  - Mars starts about `44 degrees` ahead for a circular Hohmann-like transfer approximation
   - success requires a landed probe on a planet body
 
 ## HUD/Dialog Contract
@@ -66,4 +78,3 @@ Body types:
 - HUD message dialogs should block underlying input until acknowledged.
 - Long-lived UI changes should have tests in `tests/test_mode_menu.py`, rendering tests, or focused HUD tests.
 - Avoid visible UI text that only explains controls unless it is a modal objective/result message or menu label.
-

@@ -421,8 +421,62 @@ class TestCollision:
         assert events[0]["type"] == "probe_landed"
         assert events[0]["id_a"] == 0
         assert events[0]["id_b"] == 1
+        assert events[0]["probe_body_id"] == 0
+        assert events[0]["host_body_id"] == 1
+        assert events[0]["relative_speed"] == pytest.approx(np.sqrt(53.0))
+        assert events[0]["landing_speed_limit"] == float("inf")
         assert events[0]["normal_x"] == pytest.approx(1.0)
         assert events[0]["normal_y"] == pytest.approx(0.0)
+
+    def test_probe_lands_when_relative_speed_is_within_limit(self):
+        """Probe impact at or below the configured limit should land."""
+        probe = make_body(
+            x=9.0, y=0.0, vx=10.0, vy=0.0,
+            mass=1.0, radius=1.0, body_type=BODY_TYPE_PROBE,
+        )
+        planet = make_body(
+            x=0.0, y=0.0, vx=2.0, vy=0.0,
+            mass=1.0e28, radius=10.0, body_type=BODY_TYPE_PLANET,
+        )
+        bodies = np.vstack([probe, planet])
+
+        result, events = handle_collisions(
+            bodies,
+            probe_landing_speed_limits={0: 8.0},
+        )
+
+        assert result[0, IS_ACTIVE] == 1.0
+        assert result[0, VX] == pytest.approx(result[1, VX])
+        assert events[0]["type"] == "probe_landed"
+        assert events[0]["probe_body_id"] == 0
+        assert events[0]["host_body_id"] == 1
+        assert events[0]["relative_speed"] == pytest.approx(8.0)
+        assert events[0]["landing_speed_limit"] == pytest.approx(8.0)
+
+    def test_probe_crashes_when_relative_speed_exceeds_limit(self):
+        """Probe impact above the configured limit should deactivate the probe."""
+        probe = make_body(
+            x=9.0, y=0.0, vx=-20.0, vy=0.0,
+            mass=1.0, radius=1.0, body_type=BODY_TYPE_PROBE,
+        )
+        planet = make_body(
+            x=0.0, y=0.0, vx=5.0, vy=0.0,
+            mass=1.0e28, radius=10.0, body_type=BODY_TYPE_PLANET,
+        )
+        bodies = np.vstack([probe, planet])
+
+        result, events = handle_collisions(
+            bodies,
+            probe_landing_speed_limits={0: 10.0},
+        )
+
+        assert result[0, IS_ACTIVE] == 0.0
+        assert result[1, IS_ACTIVE] == 1.0
+        assert events[0]["type"] == "probe_crashed"
+        assert events[0]["probe_body_id"] == 0
+        assert events[0]["host_body_id"] == 1
+        assert events[0]["relative_speed"] == pytest.approx(25.0)
+        assert events[0]["landing_speed_limit"] == pytest.approx(10.0)
 
     def test_probe_star_collision_lands_probe_when_host_first(self):
         """Probe landing should also work when the host has the lower row id."""
@@ -445,6 +499,49 @@ class TestCollision:
         assert events[0]["id_a"] == 1
         assert events[0]["id_b"] == 0
         assert events[0]["normal_x"] == pytest.approx(-1.0)
+
+    def test_probe_collision_above_landing_limit_crashes_probe(self):
+        """Probe impacts above its landing speed limit should remove the probe."""
+        probe = make_body(
+            x=9.0, y=0.0, vx=-1500.0, vy=0.0,
+            mass=1.0, radius=1.0, body_type=BODY_TYPE_PROBE,
+        )
+        planet = make_body(
+            x=0.0, y=0.0, vx=0.0, vy=0.0,
+            mass=1.0e28, radius=10.0, body_type=BODY_TYPE_PLANET,
+        )
+        bodies = np.vstack([probe, planet])
+
+        result, events = handle_collisions(
+            bodies,
+            probe_landing_speed_limits={0: 1000.0},
+        )
+
+        assert result[0, IS_ACTIVE] == 0.0
+        assert events[0]["type"] == "probe_crashed"
+        assert events[0]["relative_speed"] == pytest.approx(1500.0)
+        assert events[0]["landing_speed_limit"] == pytest.approx(1000.0)
+
+    def test_probe_collision_under_landing_limit_lands_probe(self):
+        """Probe impacts within its landing speed limit should land as before."""
+        probe = make_body(
+            x=9.0, y=0.0, vx=-500.0, vy=0.0,
+            mass=1.0, radius=1.0, body_type=BODY_TYPE_PROBE,
+        )
+        planet = make_body(
+            x=0.0, y=0.0, vx=0.0, vy=0.0,
+            mass=1.0e28, radius=10.0, body_type=BODY_TYPE_PLANET,
+        )
+        bodies = np.vstack([probe, planet])
+
+        result, events = handle_collisions(
+            bodies,
+            probe_landing_speed_limits={0: 1000.0},
+        )
+
+        assert result[0, IS_ACTIVE] == 1.0
+        assert events[0]["type"] == "probe_landed"
+        assert events[0]["relative_speed"] == pytest.approx(500.0)
 
 
 # ============================================================================

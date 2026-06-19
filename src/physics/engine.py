@@ -20,7 +20,7 @@ Usage::
     trajectory = engine.predict_trajectory(probe, bodies, 120, dt)
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
@@ -46,6 +46,7 @@ from src.core.types import (
     NUM_FIELDS,
 )
 from src.physics.collision import handle_collisions as resolve_collisions
+from src.physics.collision import CollisionEvent
 from src.physics.forces import compute_total_forces
 from src.physics.integrators import rk4_step
 
@@ -90,6 +91,8 @@ class PhysicsEngine(IPhysicsEngine):
         self.use_quadtree: bool = use_quadtree
         self.quadtree_threshold: int = quadtree_threshold
         self._quadtree: Optional[object] = None
+        self.probe_landing_speed_limits: Dict[int, float] = {}
+        self.last_collision_events: List[CollisionEvent] = []
 
         # Cache acceleration from the previous substep for Velocity Verlet
         self._last_acc: Optional[np.ndarray] = None
@@ -177,7 +180,12 @@ class PhysicsEngine(IPhysicsEngine):
         """
         return compute_total_forces(bodies, self.g, self.k, self.softening)
 
-    def update(self, bodies: np.ndarray, dt: float) -> np.ndarray:
+    def update(
+        self,
+        bodies: np.ndarray,
+        dt: float,
+        probe_landing_speed_limits: Optional[Mapping[int, float]] = None,
+    ) -> np.ndarray:
         """Update all body states by one time step.
 
         Split dt into self.substeps substeps, each substep executes:
@@ -188,6 +196,8 @@ class PhysicsEngine(IPhysicsEngine):
         Args:
             bodies: shape (N, NUM_FIELDS) body state array
             dt: time step (seconds)
+            probe_landing_speed_limits: optional sidecar map of probe row id
+                to maximum safe landing speed in m/s.
 
         Returns:
             Updated body state array (row count may decrease due to collision merging)
@@ -238,7 +248,15 @@ class PhysicsEngine(IPhysicsEngine):
                 collision_candidates = self._quadtree.query_collision_candidates()
 
         # Resolve collisions
-        bodies, _ = resolve_collisions(bodies, collision_pairs=collision_candidates)
+        bodies, self.last_collision_events = resolve_collisions(
+            bodies,
+            collision_pairs=collision_candidates,
+            probe_landing_speed_limits=(
+                probe_landing_speed_limits
+                if probe_landing_speed_limits is not None
+                else self.probe_landing_speed_limits
+            ),
+        )
 
         # Remove inactive bodies
         bodies = self._remove_inactive(bodies)
@@ -370,16 +388,29 @@ class PhysicsEngine(IPhysicsEngine):
 
         return np.array(trajectory)
 
-    def handle_collisions(self, bodies: np.ndarray) -> np.ndarray:
+    def handle_collisions(
+        self,
+        bodies: np.ndarray,
+        probe_landing_speed_limits: Optional[Mapping[int, float]] = None,
+    ) -> np.ndarray:
         """Detect and resolve collisions.
 
         Args:
             bodies: shape (N, NUM_FIELDS) body state array
+            probe_landing_speed_limits: optional sidecar map of probe row id
+                to maximum safe landing speed in m/s.
 
         Returns:
             Body state array after collision resolution
         """
-        bodies, _ = resolve_collisions(bodies)
+        bodies, self.last_collision_events = resolve_collisions(
+            bodies,
+            probe_landing_speed_limits=(
+                probe_landing_speed_limits
+                if probe_landing_speed_limits is not None
+                else self.probe_landing_speed_limits
+            ),
+        )
         return bodies
 
     def _remove_inactive(self, bodies: np.ndarray) -> np.ndarray:

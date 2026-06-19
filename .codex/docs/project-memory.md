@@ -6,8 +6,9 @@ This file stores durable product context and user preferences that should surviv
 
 - MiniSFS is a 2D space flight / orbital mechanics sandbox with level mode.
 - Current design direction favors a clean monochrome pixel UI: black background, white geometric bodies, pixel borders, and Ark Pixel fonts from `src/ttf/`.
-- The first screen is a mode menu. Sandbox mode enters the normal editable simulation. Level mode opens a 2 x 4 level grid; only Level 1 is implemented for now.
+- The first screen is a mode menu. Sandbox mode enters the normal editable simulation. Level mode opens a 2 x 4 level grid; Levels 1 and 2 are implemented for now.
 - Level 1 is an Earth-Moon-like transfer mission: the central Earth-like body is represented as a static `BODY_TYPE_STAR`; the Moon-like target is `BODY_TYPE_PLANET`; the default probe starts on the central body and clears the level when it lands on the planet.
+- Level 2 is a simplified Sun-Earth-Mars transfer mission using circular orbit approximations and a Hohmann-like initial probe speed.
 
 ## User Preferences
 
@@ -26,9 +27,11 @@ This file stores durable product context and user preferences that should surviv
   - exhaust velocity `2.5e3 m/s`
   - mass flow `1.4e4 kg/s`
   - radius `100 m`
+  - sandbox landing speed limit `1.0e30 m/s`
 - Level 1 probe tuning:
   - exhaust velocity is default `* 50`
   - mass flow is default `// 50`
+- Fixed levels use a probe landing speed limit of `1000 m/s`.
 - Default star/body parameters have been moved toward solar/Earth-like values. `WORLD_SCALE = 8.0e5` meters per pixel.
 - Probe visual size has render-only compensation. Real body radius must not be clamped to one screen pixel during placement.
-
+- Right-clicking a probe edits its current rocket/body parameters. The previous right-click probe aiming lines are no longer the right-click behavior.

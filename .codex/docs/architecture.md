@@ -24,13 +24,13 @@ This file records durable architecture choices and module boundaries. For older 
 ## Important Architecture Choices
 
 - `BodyState` is a NumPy `float64` array, shape `(N, 10)`, for all simulated bodies.
-- Probe rocket fuel/engine data is sidecar state keyed by body row id, not stored in `BodyState`.
+- Probe rocket fuel/engine/landing-limit data is sidecar state keyed by body row id, not stored in `BodyState`.
 - Row ids are not stable through collision removal. Main loop remaps probe rocket sidecar state after physics by nearest matching active probe.
 - Level JSON stores physical world units directly, not pixel units.
 - Probe visual size compensation is render-only. It must never change stored `RADIUS`.
 - Reference-frame behavior must compute true future relative trajectories, not assume reference body constant velocity.
-- Landed probes are not removed. Collision handling places probes on the host surface and emits `probe_landed` behavior; landed probes should not leave trails.
-- Level 1 win condition is "landed probe resting on a `BODY_TYPE_PLANET` host".
+- Landed probes are not removed when impact speed is within limit. Collision handling places probes on the host surface and emits `probe_landed`; above-limit impacts emit `probe_crashed` and deactivate the probe.
+- Level win condition is "landed probe resting on a `BODY_TYPE_PLANET` host".
 
 ## Packaging Architecture
 
@@ -39,4 +39,3 @@ This file records durable architecture choices and module boundaries. For older 
 - The spec collects pygame binaries/data and project resources:
   - `assets -> assets`
   - `src/ttf -> src/ttf`
-

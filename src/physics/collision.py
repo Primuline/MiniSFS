@@ -12,7 +12,7 @@ Usage::
     from src.physics.collision import detect_collisions, handle_collisions
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
@@ -114,6 +114,8 @@ def _land_probe_on_host(
     bodies: np.ndarray,
     probe_id: int,
     host_id: int,
+    relative_speed: float,
+    landing_speed_limit: float,
 ) -> CollisionEvent:
     """Place a probe on the host surface without removing it."""
     dx = float(bodies[probe_id, X] - bodies[host_id, X])
@@ -135,13 +137,72 @@ def _land_probe_on_host(
         "type": "probe_landed",
         "id_a": int(probe_id),
         "id_b": int(host_id),
+        "probe_body_id": int(probe_id),
         "host_body_id": int(host_id),
+        "relative_speed": float(relative_speed),
+        "landing_speed_limit": float(landing_speed_limit),
         "pos_x": float(bodies[probe_id, X]),
         "pos_y": float(bodies[probe_id, Y]),
         "normal_x": float(nx),
         "normal_y": float(ny),
         "offset_distance": offset,
     }
+
+
+def _crash_probe_on_host(
+    bodies: np.ndarray,
+    probe_id: int,
+    host_id: int,
+    relative_speed: float,
+    landing_speed_limit: float,
+) -> CollisionEvent:
+    """Remove a probe that impacted above its landing speed limit."""
+    bodies[probe_id, IS_ACTIVE] = 0.0
+    return {
+        "type": "probe_crashed",
+        "id_a": int(probe_id),
+        "id_b": int(host_id),
+        "probe_body_id": int(probe_id),
+        "host_body_id": int(host_id),
+        "pos_x": float(bodies[probe_id, X]),
+        "pos_y": float(bodies[probe_id, Y]),
+        "relative_speed": float(relative_speed),
+        "landing_speed_limit": float(landing_speed_limit),
+    }
+
+
+def _resolve_probe_host_collision(
+    bodies: np.ndarray,
+    probe_id: int,
+    host_id: int,
+    probe_landing_speed_limits: Optional[Mapping[int, float]],
+) -> CollisionEvent:
+    """Land or crash a probe depending on its impact speed limit."""
+    relative_vx = float(bodies[probe_id, VX] - bodies[host_id, VX])
+    relative_vy = float(bodies[probe_id, VY] - bodies[host_id, VY])
+    relative_speed = float(
+        np.sqrt(relative_vx * relative_vx + relative_vy * relative_vy)
+    )
+    landing_speed_limit = float("inf")
+    if probe_landing_speed_limits is not None:
+        landing_speed_limit = float(
+            probe_landing_speed_limits.get(probe_id, float("inf"))
+        )
+    if relative_speed > landing_speed_limit:
+        return _crash_probe_on_host(
+            bodies,
+            probe_id,
+            host_id,
+            relative_speed,
+            landing_speed_limit,
+        )
+    return _land_probe_on_host(
+        bodies,
+        probe_id,
+        host_id,
+        relative_speed,
+        landing_speed_limit,
+    )
 
 
 def resolve_elastic(
@@ -307,6 +368,7 @@ def handle_collisions(
     bodies: np.ndarray,
     merge_threshold: float = 10.0,
     collision_pairs: Optional[List[Tuple[int, int]]] = None,
+    probe_landing_speed_limits: Optional[Mapping[int, float]] = None,
 ) -> Tuple[np.ndarray, List[CollisionEvent]]:
     """Collision detection and automatic response (new rules).
 
@@ -315,12 +377,14 @@ def handle_collisions(
         - Planet vs Planet: mass sum, charge sum, momentum sum; position at their
           center of mass; both original entities removed, merged result placed at
           the first entity's position
-        - Probe vs any non-probe body: probe lands on the surface
+        - Probe vs any non-probe body: probe lands on the surface unless
+          its relative impact speed exceeds its configured landing limit.
 
     Args:
         bodies: body state array of shape (N, NUM_FIELDS)
         merge_threshold: retained parameter (no longer used), kept for API compatibility
         collision_pairs: list of candidate pairs from quadtree broadphase, optional
+        probe_landing_speed_limits: optional probe row id -> m/s landing speed limit
 
     Returns:
         (bodies, events) tuple: updated body states and list of collision events
@@ -346,12 +410,26 @@ def handle_collisions(
         # Rule 1: Probe vs any body -> place the probe on the host surface
         # ================================================================
         if type_i == BODY_TYPE_PROBE:
-            events.append(_land_probe_on_host(bodies, i, j))
+            events.append(
+                _resolve_probe_host_collision(
+                    bodies,
+                    i,
+                    j,
+                    probe_landing_speed_limits,
+                )
+            )
             processed.add(i)
             continue
 
         if type_j == BODY_TYPE_PROBE:
-            events.append(_land_probe_on_host(bodies, j, i))
+            events.append(
+                _resolve_probe_host_collision(
+                    bodies,
+                    j,
+                    i,
+                    probe_landing_speed_limits,
+                )
+            )
             processed.add(j)
             continue
 

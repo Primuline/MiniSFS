@@ -25,7 +25,12 @@ from src.config import (
     DEFAULT_RADIUS_CHARGED,
     DEFAULT_RADIUS_PLANET,
     DEFAULT_RADIUS_PROBE,
+    PROBE_LANDING_SPEED_LIMIT_DEFAULT,
     DEFAULT_RADIUS_STAR,
+    PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
+    PROBE_ROCKET_FUEL_MASS_DEFAULT,
+    PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
+    PROBE_ROCKET_TOTAL_MASS_DEFAULT,
     UI_BLACK,
     UI_DARK,
     UI_DIM,
@@ -266,6 +271,7 @@ class HUDManager:
         self.probe_exhaust_velocity: float = 0.0
         self.probe_mass_flow_rate: float = 0.0
         self.probe_radius: float = DEFAULT_RADIUS_PROBE * WORLD_SCALE
+        self.probe_landing_speed_limit: float = PROBE_LANDING_SPEED_LIMIT_DEFAULT
         self.probe_dialog_visible: bool = False
         self._probe_dialog: ProbeInputDialog = ProbeInputDialog()
 
@@ -339,7 +345,7 @@ class HUDManager:
                     f"START_LEVEL_{level_number}",
                     font_size=18,
                 )
-                if level_number != 1:
+                if level_number not in (1, 2):
                     btn.disabled = True
                 self.level_select_buttons.append(btn)
         self.level_mode_enabled = False
@@ -351,6 +357,8 @@ class HUDManager:
         self.level_message_visible: bool = False
         self._level_message_title: str = ""
         self._level_message_lines: List[str] = []
+        self._level_message_escape_action: str = "LEVEL_MESSAGE_OK"
+        self._level_message_buttons: List[Button] = []
         self._level_message_button = Button(
             self.width // 2 - 56,
             dialog_y + dialog_h - 58,
@@ -360,6 +368,7 @@ class HUDManager:
             "LEVEL_MESSAGE_OK",
             font_size=18,
         )
+        self._level_message_buttons = [self._level_message_button]
 
     # ------------------------------------------------------------------
     # Update methods
@@ -541,6 +550,7 @@ class HUDManager:
                     self.probe_exhaust_velocity = dlg_result["exhaust_velocity"]
                     self.probe_mass_flow_rate = dlg_result["mass_flow_rate"]
                     self.probe_radius = dlg_result["radius"]
+                    self.probe_landing_speed_limit = dlg_result["landing_speed_limit"]
                     return "PROBE_DIALOG_OK"
                 if dlg_result == "CANCEL":
                     return "PROBE_DIALOG_CANCEL"
@@ -604,11 +614,12 @@ class HUDManager:
             return None
         if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
             self.hide_level_message()
-            return "LEVEL_MESSAGE_OK"
-        action = self._level_message_button.handle_event(event)
-        if action:
-            self.hide_level_message()
-            return action
+            return self._level_message_escape_action
+        for button in self._level_message_buttons:
+            action = button.handle_event(event)
+            if action:
+                self.hide_level_message()
+                return action
         return None
 
     def set_tool_active(self, tool: Optional[str]) -> None:
@@ -631,12 +642,41 @@ class HUDManager:
             if enabled:
                 btn.active = False
 
-    def show_level_message(self, title: str, lines: List[str]) -> None:
+    def show_level_message(
+        self,
+        title: str,
+        lines: List[str],
+        buttons: Optional[List[Tuple[str, str]]] = None,
+        escape_action: str = "LEVEL_MESSAGE_OK",
+    ) -> None:
         """Show a centered level objective/result popup."""
         self._level_message_title = title
         self._level_message_lines = lines
+        self._level_message_escape_action = escape_action
+        if buttons is None:
+            buttons = [("OK", "LEVEL_MESSAGE_OK")]
+        dialog_w = 480
+        dialog_h = 230
+        dialog_y = self.height // 2 - dialog_h // 2
+        total_w = len(buttons) * 112 + max(0, len(buttons) - 1) * 16
+        start_x = self.width // 2 - total_w // 2
+        self._level_message_buttons = []
+        for idx, (label, action) in enumerate(buttons):
+            self._level_message_buttons.append(
+                Button(
+                    start_x + idx * (112 + 16),
+                    dialog_y + dialog_h - 58,
+                    112,
+                    34,
+                    label,
+                    action,
+                    font_size=18,
+                )
+            )
+        self._level_message_button = self._level_message_buttons[0]
         self.level_message_visible = True
-        self._level_message_button.hovered = False
+        for button in self._level_message_buttons:
+            button.hovered = False
 
     def hide_level_message(self) -> None:
         """Hide the centered level objective/result popup."""
@@ -700,9 +740,24 @@ class HUDManager:
         for field in self._edit_dialog.fields:
             field["text"] = ""
 
-    def show_probe_dialog(self) -> None:
+    def show_probe_dialog(
+        self,
+        total_mass: float = PROBE_ROCKET_TOTAL_MASS_DEFAULT,
+        fuel_mass: float = PROBE_ROCKET_FUEL_MASS_DEFAULT,
+        exhaust_velocity: float = PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
+        mass_flow_rate: float = PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
+        radius_meters: float = DEFAULT_RADIUS_PROBE * WORLD_SCALE,
+        landing_speed_limit: float = PROBE_LANDING_SPEED_LIMIT_DEFAULT,
+    ) -> None:
         """Open the probe rocket parameter dialog."""
-        self._probe_dialog.prefill()
+        self._probe_dialog.prefill(
+            total_mass=total_mass,
+            fuel_mass=fuel_mass,
+            exhaust_velocity=exhaust_velocity,
+            mass_flow_rate=mass_flow_rate,
+            radius_meters=radius_meters,
+            landing_speed_limit=landing_speed_limit,
+        )
         self.probe_dialog_visible = True
         self._probe_dialog.visible = True
 
@@ -831,7 +886,8 @@ class HUDManager:
             surface.blit(text, text_rect)
             line_y += 28
 
-        self._level_message_button.draw(surface)
+        for button in self._level_message_buttons:
+            button.draw(surface)
 
     def _draw_info_panel(self, surface: pygame.Surface) -> None:
         """Draw the info panel.

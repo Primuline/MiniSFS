@@ -39,6 +39,8 @@ from src.config import (
     GAME_STATE_MENU,
     LEVEL_DIR,
     PLACEMENT_SPEED_PER_PX,
+    LEVEL_PROBE_LANDING_SPEED_LIMIT,
+    PROBE_LANDING_SPEED_LIMIT_DEFAULT,
     PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
     PROBE_ROCKET_FUEL_MASS_DEFAULT,
     PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
@@ -131,7 +133,17 @@ def create_default_scene() -> np.ndarray:
 
 def create_level_1_scene() -> np.ndarray:
     """Load Level 1: a simplified Earth-Moon system with a surface probe."""
-    level_path = Path(__file__).resolve().parents[1] / LEVEL_DIR / "level_1.json"
+    return create_level_scene(1)
+
+
+def create_level_2_scene() -> np.ndarray:
+    """Load Level 2: a simplified Earth-Mars transfer setup."""
+    return create_level_scene(2)
+
+
+def create_level_scene(level_id: int) -> np.ndarray:
+    """Load a level body state from assets/levels."""
+    level_path = Path(__file__).resolve().parents[1] / LEVEL_DIR / f"level_{level_id}.json"
     with level_path.open("r", encoding="utf-8") as level_file:
         level_data = json.load(level_file)
 
@@ -206,6 +218,11 @@ class ProbeRocketState:
     initial_fuel_mass: float
     exhaust_velocity: float
     mass_flow_rate: float
+    landing_speed_limit: float = PROBE_LANDING_SPEED_LIMIT_DEFAULT
+
+    def total_mass(self) -> float:
+        """Return current total probe mass."""
+        return self.dry_mass + self.fuel_mass
 
 
 def probe_radius_to_tool_pixels(radius_meters: float) -> float:
@@ -222,6 +239,7 @@ def make_default_probe_rocket_state() -> ProbeRocketState:
         initial_fuel_mass=PROBE_ROCKET_FUEL_MASS_DEFAULT,
         exhaust_velocity=PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
         mass_flow_rate=PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
+        landing_speed_limit=PROBE_LANDING_SPEED_LIMIT_DEFAULT,
     )
 
 
@@ -230,11 +248,25 @@ def make_level_1_probe_rocket_state() -> ProbeRocketState:
     state = make_default_probe_rocket_state()
     state.exhaust_velocity *= 50.0
     state.mass_flow_rate = max(1.0, state.mass_flow_rate // 50.0)
+    state.landing_speed_limit = LEVEL_PROBE_LANDING_SPEED_LIMIT
+    return state
+
+
+def make_level_probe_rocket_state(level_id: int) -> ProbeRocketState:
+    """Create level-specific probe rocket state."""
+    state = make_level_1_probe_rocket_state()
+    if level_id == 2:
+        state.exhaust_velocity *= 2.0
     return state
 
 
 def is_level_1_success(bodies: np.ndarray) -> bool:
     """Return True when a landed probe is resting on a planet body."""
+    return is_level_success(bodies)
+
+
+def is_level_success(bodies: np.ndarray) -> bool:
+    """Return True when a landed probe is resting on a planet target."""
     landed_contacts = find_landed_probe_contacts(bodies)
     for host_id, _normal in landed_contacts.values():
         if 0 <= host_id < bodies.shape[0] and int(bodies[host_id, BODY_TYPE]) == BODY_TYPE_PLANET:
@@ -453,7 +485,9 @@ def main() -> None:
     is_paused = False
     menu_screen = "mode"
     level_mode_enabled = False
-    level_1_completed = False
+    current_level_id: Optional[int] = None
+    level_completed = False
+    level_failed = False
 
     # Tool state
     active_tool: Optional[str] = None
@@ -501,6 +535,7 @@ def main() -> None:
 
     pending_probe_rocket_state: Optional[ProbeRocketState] = None
     pending_probe_radius: float = DEFAULT_RADIUS_PROBE * WORLD_SCALE
+    probe_dialog_edit_body_id: Optional[int] = None
 
     # Trajectory preview during placement speed setting
     placement_trajectory: Optional[Dict[str, object]] = None
@@ -533,12 +568,14 @@ def main() -> None:
         nonlocal simple_placement_stage, simple_placement_tool
         nonlocal simple_preview_pos, simple_arrow_start
         nonlocal active_tool, is_paused, pending_probe_rocket_state, pending_probe_radius
+        nonlocal probe_dialog_edit_body_id
         simple_placement_stage = 0
         simple_placement_tool = None
         simple_preview_pos = None
         simple_arrow_start = None
         pending_probe_rocket_state = None
         pending_probe_radius = DEFAULT_RADIUS_PROBE * WORLD_SCALE
+        probe_dialog_edit_body_id = None
         hud.hide_probe_dialog()
         if active_tool in ("TOOL_STAR", "TOOL_PLANET", "TOOL_PROBE"):
             active_tool = None
@@ -550,28 +587,55 @@ def main() -> None:
         """Create default sidecar rocket state for legacy/default probe placement."""
         return make_default_probe_rocket_state()
 
-    def _make_level_1_probe_rocket_state() -> ProbeRocketState:
-        """Create the tuned Level 1 probe rocket state."""
-        return make_level_1_probe_rocket_state()
+    def _make_level_probe_rocket_state(level_id: int) -> ProbeRocketState:
+        """Create the tuned level probe rocket state."""
+        return make_level_probe_rocket_state(level_id)
 
-    def _show_level_1_objective() -> None:
-        """Display the Level 1 mission objective popup."""
-        hud.show_level_message(
-            "Level 1 Mission",
-            [
+    def _show_level_objective(level_id: int) -> None:
+        """Display the level mission objective popup."""
+        if level_id == 2:
+            title = "Level 2 Mission"
+            lines = [
+                "Transfer the probe from Earth",
+                "and land it on Mars.",
+                "Landing limit: 1 km/s.",
+            ]
+        else:
+            title = "Level 1 Mission"
+            lines = [
                 "Transfer the probe from the star",
                 "and land it on the planet.",
-            ],
+                "Landing limit: 1 km/s.",
+            ]
+        hud.show_level_message(
+            title,
+            lines,
+            buttons=[("OK", "LEVEL_MESSAGE_OK")],
+            escape_action="LEVEL_MESSAGE_OK",
         )
 
-    def _show_level_1_success() -> None:
-        """Display the Level 1 success popup."""
+    def _show_level_success(level_id: int) -> None:
+        """Display the level success popup."""
         hud.show_level_message(
             "Mission Complete",
             [
-                "Probe landed on the planet.",
-                "Level 1 cleared.",
+                "Probe landed safely.",
+                f"Level {level_id} cleared.",
             ],
+            buttons=[("Menu", "LEVEL_RETURN_MENU")],
+            escape_action="LEVEL_RETURN_MENU",
+        )
+
+    def _show_level_failure() -> None:
+        """Display the level failure popup."""
+        hud.show_level_message(
+            "Mission Failed",
+            [
+                "Probe crashed or was lost.",
+                "Retry the mission or return.",
+            ],
+            buttons=[("Retry", "LEVEL_RETRY"), ("Menu", "LEVEL_RETURN_MENU")],
+            escape_action="LEVEL_RETURN_MENU",
         )
 
     def _register_probe_rocket_state(body_id: int) -> None:
@@ -584,8 +648,107 @@ def main() -> None:
             initial_fuel_mass=state.initial_fuel_mass,
             exhaust_velocity=state.exhaust_velocity,
             mass_flow_rate=state.mass_flow_rate,
+            landing_speed_limit=state.landing_speed_limit,
         )
         pending_probe_rocket_state = None
+
+    def _probe_dialog_values_for_body(body_id: int) -> Tuple[float, float, float, float, float, float]:
+        """Return current probe dialog values for an existing probe."""
+        state = probe_rocket_states.get(body_id)
+        if state is None:
+            total_mass = float(bodies[body_id, MASS])
+            fuel_mass = 0.0
+            exhaust_velocity = PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT
+            mass_flow_rate = PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT
+            landing_speed_limit = PROBE_LANDING_SPEED_LIMIT_DEFAULT
+        else:
+            total_mass = state.total_mass()
+            fuel_mass = state.fuel_mass
+            exhaust_velocity = state.exhaust_velocity
+            mass_flow_rate = state.mass_flow_rate
+            landing_speed_limit = state.landing_speed_limit
+        return (
+            total_mass,
+            fuel_mass,
+            exhaust_velocity,
+            mass_flow_rate,
+            float(bodies[body_id, RADIUS]),
+            landing_speed_limit,
+        )
+
+    def _sync_physics_probe_limits() -> None:
+        """Expose probe landing limits to the physics engine by current row id."""
+        physics_engine.probe_landing_speed_limits = {
+            body_id: state.landing_speed_limit
+            for body_id, state in probe_rocket_states.items()
+            if 0 <= body_id < bodies.shape[0]
+            and int(bodies[body_id, BODY_TYPE]) == BODY_TYPE_PROBE
+        }
+
+    def _return_to_level_menu() -> None:
+        """Return from a level result popup to the level select screen."""
+        nonlocal game_state, menu_screen, level_mode_enabled, current_level_id
+        nonlocal level_completed, level_failed, selected_body_id, reference_body_id
+        nonlocal active_tool, predicted_trajectory, placement_trajectory, is_aiming
+        game_state = GAME_STATE_MENU
+        menu_screen = "level_select"
+        level_mode_enabled = False
+        current_level_id = None
+        level_completed = False
+        level_failed = False
+        selected_body_id = None
+        renderer.selected_body_id = None
+        reference_body_id = None
+        active_tool = None
+        predicted_trajectory = None
+        placement_trajectory = None
+        is_aiming = False
+        probe_rocket_states.clear()
+        trail_buffer.clear_all()
+        hud.set_tool_active(None)
+        hud.set_selected_body(None, -1)
+        hud.clear_reference_frame()
+        hud.clear_probe_fuel_info()
+        hud.set_level_mode_enabled(False)
+
+    def _start_level(level_id: int) -> None:
+        """Start or restart a fixed level."""
+        nonlocal bodies, active_tool, selected_body_id, reference_body_id
+        nonlocal predicted_trajectory, placement_trajectory, is_paused
+        nonlocal time_multiplier, time_speed, level_mode_enabled
+        nonlocal current_level_id, level_completed, level_failed, game_state
+        bodies = create_level_scene(level_id)
+        probe_rocket_states.clear()
+        for body_id in range(bodies.shape[0]):
+            if int(bodies[body_id, BODY_TYPE]) == BODY_TYPE_PROBE:
+                probe_rocket_states[body_id] = _make_level_probe_rocket_state(level_id)
+                bodies[body_id, MASS] = probe_rocket_states[body_id].total_mass()
+        _sync_physics_probe_limits()
+        trail_buffer.clear_all()
+        camera.reset()
+        camera.zoom_at(INITIAL_CAMERA_ZOOM, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+        active_tool = None
+        selected_body_id = None
+        renderer.selected_body_id = None
+        hud.set_tool_active(None)
+        hud.set_selected_body(None, -1)
+        hud.clear_reference_frame()
+        hud.clear_probe_fuel_info()
+        hud.set_level_mode_enabled(True)
+        reference_body_id = None
+        predicted_trajectory = None
+        placement_trajectory = None
+        is_paused = True
+        time_multiplier = 1.0
+        time_speed = BASE_TIME_SPEED
+        level_mode_enabled = True
+        current_level_id = level_id
+        level_completed = False
+        level_failed = False
+        hud.set_play_pause_state(True)
+        hud.set_time_speed(time_multiplier)
+        _show_level_objective(level_id)
+        game_state = GAME_STATE_PLAYING
 
     def _remap_probe_states_after_delete(
         states: Dict[int, ProbeRocketState],
@@ -1039,48 +1202,36 @@ def main() -> None:
                 time_multiplier = 1.0
                 time_speed = BASE_TIME_SPEED
                 level_mode_enabled = False
-                level_1_completed = False
+                current_level_id = None
+                level_completed = False
+                level_failed = False
+                physics_engine.probe_landing_speed_limits = {}
                 hud.set_play_pause_state(False)
                 hud.set_time_speed(time_multiplier)
                 game_state = GAME_STATE_PLAYING
 
             elif game_state == GAME_STATE_MENU and cmd == "START_LEVEL_1":
-                bodies = create_level_1_scene()
-                probe_rocket_states.clear()
-                for body_id in range(bodies.shape[0]):
-                    if int(bodies[body_id, BODY_TYPE]) == BODY_TYPE_PROBE:
-                        probe_rocket_states[body_id] = _make_level_1_probe_rocket_state()
-                trail_buffer.clear_all()
-                camera.reset()
-                camera.zoom_at(INITIAL_CAMERA_ZOOM, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
-                active_tool = None
-                selected_body_id = None
-                renderer.selected_body_id = None
-                hud.set_tool_active(None)
-                hud.set_selected_body(None, -1)
-                hud.clear_reference_frame()
-                hud.clear_probe_fuel_info()
-                hud.set_level_mode_enabled(True)
-                reference_body_id = None
-                predicted_trajectory = None
-                placement_trajectory = None
-                is_paused = True
-                time_multiplier = 1.0
-                time_speed = BASE_TIME_SPEED
-                level_mode_enabled = True
-                level_1_completed = False
-                hud.set_play_pause_state(True)
-                hud.set_time_speed(time_multiplier)
-                _show_level_1_objective()
-                game_state = GAME_STATE_PLAYING
+                _start_level(1)
+
+            elif game_state == GAME_STATE_MENU and cmd == "START_LEVEL_2":
+                _start_level(2)
 
             elif game_state == GAME_STATE_MENU:
                 continue
 
             elif cmd == "LEVEL_MESSAGE_OK":
-                if level_mode_enabled and not level_1_completed:
+                if level_mode_enabled and not level_completed and not level_failed:
                     is_paused = False
                     hud.set_play_pause_state(False)
+
+            elif cmd == "LEVEL_RETURN_MENU":
+                _return_to_level_menu()
+
+            elif cmd == "LEVEL_RETRY":
+                if current_level_id is not None:
+                    _start_level(current_level_id)
+                else:
+                    _return_to_level_menu()
 
             # --- Camera control ---
             elif cmd.startswith("PAN:"):
@@ -1206,19 +1357,42 @@ def main() -> None:
             # --- Probe rocket dialog commands ---
             elif cmd.startswith("PROBE_DIALOG_"):
                 if cmd == "PROBE_DIALOG_OK":
-                    pending_probe_rocket_state = ProbeRocketState(
+                    new_probe_state = ProbeRocketState(
                         dry_mass=hud.probe_dry_mass,
                         fuel_mass=hud.probe_fuel_mass,
                         initial_fuel_mass=hud.probe_fuel_mass,
                         exhaust_velocity=hud.probe_exhaust_velocity,
                         mass_flow_rate=hud.probe_mass_flow_rate,
+                        landing_speed_limit=hud.probe_landing_speed_limit,
                     )
-                    pending_probe_radius = hud.probe_radius
                     hud.hide_probe_dialog()
-                    simple_placement_stage = 1
-                    simple_placement_tool = "TOOL_PROBE"
+                    if (
+                        probe_dialog_edit_body_id is not None
+                        and 0 <= probe_dialog_edit_body_id < bodies.shape[0]
+                        and int(bodies[probe_dialog_edit_body_id, BODY_TYPE]) == BODY_TYPE_PROBE
+                    ):
+                        idx = probe_dialog_edit_body_id
+                        probe_rocket_states[idx] = new_probe_state
+                        bodies[idx, MASS] = new_probe_state.total_mass()
+                        bodies[idx, RADIUS] = hud.probe_radius
+                        hud.set_selected_body(bodies[idx], idx)
+                        _sync_physics_probe_limits()
+                        probe_dialog_edit_body_id = None
+                        is_paused = False
+                        hud.set_play_pause_state(False)
+                    else:
+                        pending_probe_rocket_state = new_probe_state
+                        pending_probe_radius = hud.probe_radius
+                        simple_placement_stage = 1
+                        simple_placement_tool = "TOOL_PROBE"
                 elif cmd == "PROBE_DIALOG_CANCEL":
-                    _cancel_simple_placement()
+                    if probe_dialog_edit_body_id is not None:
+                        probe_dialog_edit_body_id = None
+                        hud.hide_probe_dialog()
+                        is_paused = False
+                        hud.set_play_pause_state(False)
+                    else:
+                        _cancel_simple_placement()
 
             # --- Edit body dialog commands ---
             elif cmd.startswith("EDIT_DIALOG_"):
@@ -1647,15 +1821,35 @@ def main() -> None:
                 # Check if clicking on an existing probe
                 found_id = input_handler.find_body_at_screen_pos(sx, sy, bodies, camera)
                 if found_id is not None and int(bodies[found_id, BODY_TYPE]) == BODY_TYPE_PROBE:
-                    # Start aiming
-                    is_aiming = True
-                    input_handler.start_aiming()
-                    aim_start_screen = (sx, sy)
-                    world_x, world_y = camera.screen_to_world(sx, sy)
-                    aim_start_world = (world_x, world_y)
+                    if level_mode_enabled:
+                        selected_body_id = found_id
+                        renderer.selected_body_id = found_id
+                        hud.set_selected_body(bodies[found_id], found_id)
+                        continue
+                    # Right-click probe -> edit current rocket/body parameters.
+                    is_aiming = False
+                    probe_dialog_edit_body_id = found_id
                     selected_body_id = found_id
                     renderer.selected_body_id = found_id
                     hud.set_selected_body(bodies[found_id], found_id)
+                    (
+                        total_mass,
+                        fuel_mass,
+                        exhaust_velocity,
+                        mass_flow_rate,
+                        radius_meters,
+                        landing_speed_limit,
+                    ) = _probe_dialog_values_for_body(found_id)
+                    is_paused = True
+                    hud.set_play_pause_state(True)
+                    hud.show_probe_dialog(
+                        total_mass=total_mass,
+                        fuel_mass=fuel_mass,
+                        exhaust_velocity=exhaust_velocity,
+                        mass_flow_rate=mass_flow_rate,
+                        radius_meters=radius_meters,
+                        landing_speed_limit=landing_speed_limit,
+                    )
                 elif found_id is not None:
                     if level_mode_enabled:
                         selected_body_id = found_id
@@ -1820,24 +2014,34 @@ def main() -> None:
         if not is_paused and not is_grabbing:
             bodies_before_physics = bodies.copy()
             states_before_physics = dict(probe_rocket_states)
+            _sync_physics_probe_limits()
             if time_speed > 100:
                 # High speed: scale dt directly (avoid millions of tiny steps)
                 # Physics engine uses SUBSTEPS=4, RK4 guarantees stability
                 big_dt = physics_dt * time_speed
-                bodies = physics_engine.update(bodies, big_dt)
+                bodies = physics_engine.update(
+                    bodies,
+                    big_dt,
+                    probe_landing_speed_limits=physics_engine.probe_landing_speed_limits,
+                )
             else:
                 accumulator += frame_dt * time_speed
                 max_accumulate = physics_dt * 10
                 if accumulator > max_accumulate:
                     accumulator = max_accumulate
                 while accumulator >= physics_dt:
-                    bodies = physics_engine.update(bodies, physics_dt)
+                    bodies = physics_engine.update(
+                        bodies,
+                        physics_dt,
+                        probe_landing_speed_limits=physics_engine.probe_landing_speed_limits,
+                    )
                     accumulator -= physics_dt
             probe_rocket_states = _remap_probe_states_after_physics(
                 bodies_before_physics,
                 bodies,
                 states_before_physics,
             )
+            _sync_physics_probe_limits()
         else:
             # Reset accumulator when paused
             accumulator = 0.0
@@ -1850,12 +2054,26 @@ def main() -> None:
         for probe_id in landed_probe_ids:
             trail_buffer.clear(probe_id)
 
-        if level_mode_enabled and not level_1_completed:
-            if is_level_1_success(bodies):
-                level_1_completed = True
+        if level_mode_enabled and not level_completed and not level_failed:
+            crashed = any(
+                event.get("type") == "probe_crashed"
+                for event in physics_engine.last_collision_events
+            )
+            has_active_probe = any(
+                int(bodies[body_id, BODY_TYPE]) == BODY_TYPE_PROBE
+                and int(bodies[body_id, IS_ACTIVE]) == 1
+                for body_id in range(bodies.shape[0])
+            )
+            if crashed or not has_active_probe:
+                level_failed = True
                 is_paused = True
                 hud.set_play_pause_state(True)
-                _show_level_1_success()
+                _show_level_failure()
+            elif is_level_success(bodies):
+                level_completed = True
+                is_paused = True
+                hud.set_play_pause_state(True)
+                _show_level_success(current_level_id or 1)
 
         # When paused, no new trail frames and no fade progression
         if not is_paused:

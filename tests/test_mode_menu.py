@@ -48,14 +48,16 @@ def test_mode_menu_level_button_opens_level_select(pygame_dummy) -> None:
     assert hud.handle_mode_menu_event(event) == "LEVEL_MODE"
 
 
-def test_level_select_has_two_by_four_grid_with_only_level_1_enabled(pygame_dummy) -> None:
-    """Level selection exposes 8 slots, with Level 1 playable for now."""
+def test_level_select_has_two_by_four_grid_with_levels_1_and_2_enabled(pygame_dummy) -> None:
+    """Level selection exposes 8 slots, with Levels 1 and 2 playable for now."""
     hud = HUDManager()
 
     assert len(hud.level_select_buttons) == 8
     assert hud.level_select_buttons[0].text == "Level 1"
+    assert hud.level_select_buttons[1].text == "Level 2"
     assert hud.level_select_buttons[0].disabled is False
-    assert all(btn.disabled for btn in hud.level_select_buttons[1:])
+    assert hud.level_select_buttons[1].disabled is False
+    assert all(btn.disabled for btn in hud.level_select_buttons[2:])
 
 
 def test_level_select_level_1_button_starts_level(pygame_dummy) -> None:
@@ -70,6 +72,20 @@ def test_level_select_level_1_button_starts_level(pygame_dummy) -> None:
     )
 
     assert hud.handle_level_select_event(event) == "START_LEVEL_1"
+
+
+def test_level_select_level_2_button_starts_level(pygame_dummy) -> None:
+    """Clicking Level 2 should emit the start command."""
+    import pygame
+
+    hud = HUDManager()
+    level_2_button = hud.level_select_buttons[1]
+    event = pygame.event.Event(
+        pygame.MOUSEBUTTONDOWN,
+        {"pos": level_2_button.rect.center, "button": 1},
+    )
+
+    assert hud.handle_level_select_event(event) == "START_LEVEL_2"
 
 
 def test_level_message_popup_closes_with_ok(pygame_dummy) -> None:

@@ -19,7 +19,9 @@ from src.config import (
 from src.core.types import BODY_TYPE, IS_STATIC, MASS, RADIUS, VX, VY, X, Y, make_body
 from src.main import (
     create_level_1_scene,
+    create_level_2_scene,
     make_level_1_probe_rocket_state,
+    make_level_probe_rocket_state,
     is_level_1_success,
     probe_radius_to_tool_pixels,
 )
@@ -79,6 +81,43 @@ def test_level_1_probe_rocket_is_tuned_for_transfer() -> None:
     assert state.mass_flow_rate == pytest.approx(
         PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT // 50.0
     )
+    assert state.landing_speed_limit == pytest.approx(1000.0)
+
+
+def test_level_2_contains_sun_earth_mars_and_probe() -> None:
+    """Level 2 should load a simplified Earth-Mars transfer setup."""
+    bodies = create_level_2_scene()
+
+    assert bodies.shape == (4, 10)
+    assert int(bodies[0, BODY_TYPE]) == BODY_TYPE_STAR
+    assert int(bodies[1, BODY_TYPE]) == BODY_TYPE_PLANET
+    assert int(bodies[2, BODY_TYPE]) == BODY_TYPE_PLANET
+    assert int(bodies[3, BODY_TYPE]) == BODY_TYPE_PROBE
+    assert bodies[0, IS_STATIC] == 1.0
+    assert bodies[3, MASS] == pytest.approx(PROBE_ROCKET_TOTAL_MASS_DEFAULT)
+    assert bodies[3, RADIUS] == pytest.approx(DEFAULT_RADIUS_PROBE * WORLD_SCALE)
+
+
+def test_level_2_uses_earth_mars_transfer_like_initial_speed() -> None:
+    """Level 2 probe should start near Earth with a Hohmann-like injection speed."""
+    bodies = create_level_2_scene()
+    sun_mass = float(bodies[0, MASS])
+    earth_radius = math.hypot(float(bodies[1, X]), float(bodies[1, Y]))
+    mars_radius = math.hypot(float(bodies[2, X]), float(bodies[2, Y]))
+    transfer_a = 0.5 * (earth_radius + mars_radius)
+    expected_probe_speed = math.sqrt(
+        GRAVITATIONAL_CONSTANT * sun_mass * (2.0 / earth_radius - 1.0 / transfer_a)
+    )
+
+    assert bodies[3, VX] == pytest.approx(0.0)
+    assert bodies[3, VY] == pytest.approx(expected_probe_speed, rel=2e-3)
+    assert mars_radius > earth_radius
+
+
+def test_level_probe_rocket_has_level_landing_limit() -> None:
+    """Fixed levels should use the requested 1 km/s landing speed limit."""
+    assert make_level_probe_rocket_state(1).landing_speed_limit == pytest.approx(1000.0)
+    assert make_level_probe_rocket_state(2).landing_speed_limit == pytest.approx(1000.0)
 
 
 def test_level_1_success_requires_probe_landed_on_planet() -> None:

@@ -10,10 +10,11 @@ Run before committing broad or cross-module work:
 pytest tests -q
 ```
 
-Current recent baseline after Level 1 objective/result work:
+Current recent baseline after Level 2 / landing speed work:
 
 ```text
-158 passed, 1 warning
+pytest tests -q
+167 passed, 1 warning
 ```
 
 The warning is from pygame/pkg_resources deprecation and is not currently treated as failure.
@@ -24,6 +25,12 @@ Level 1 and menu/HUD flow:
 
 ```powershell
 pytest tests\test_level_1_scene.py tests\test_mode_menu.py -q
+```
+
+Level/probe landing speed and probe edit focused flow:
+
+```powershell
+pytest tests\test_physics.py tests\test_mode_menu.py tests\test_level_1_scene.py tests\test_rendering_probe_ui.py -q
 ```
 
 Rendering/probe UI:
@@ -58,4 +65,3 @@ if ($p.HasExited) { Write-Host "EXIT:$($p.ExitCode)" } else { Stop-Process -Id $
 - Add focused regression tests for every fixed bug that has a stable assertion.
 - For UI visual changes, prefer testing geometry/state helpers where possible; use Pygame dummy video driver for render smoke tests.
 - Do not rely only on formula tests when the bug is about rendered pixels; add an actual rendered-surface test when practical.
-

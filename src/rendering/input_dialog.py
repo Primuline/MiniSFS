@@ -14,6 +14,7 @@ from src.config import (
     DEFAULT_RADIUS_PROBE,
     PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
     PROBE_ROCKET_FUEL_MASS_DEFAULT,
+    PROBE_LANDING_SPEED_LIMIT_DEFAULT,
     PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
     PROBE_ROCKET_TOTAL_MASS_DEFAULT,
     UI_BLACK,
@@ -89,6 +90,8 @@ PROBE_FIELD_DEFS: List[Tuple[str, str, bool, bool]] = [
     ("Mass flow exp", "1", False, True),
     ("Radius coeff", "8.0", True, False),
     ("Radius exp", "2", False, True),
+    ("Landing limit coeff", "1.0", True, False),
+    ("Landing limit exp", "30", False, True),
 ]
 
 PROBE_ROW_LABELS: List[str] = [
@@ -97,8 +100,9 @@ PROBE_ROW_LABELS: List[str] = [
     "Exhaust v",
     "Mass flow",
     "Radius",
+    "Landing limit",
 ]
-PROBE_ROW_UNITS: List[str] = ["kg", "kg", "m/s", "kg/s", "km"]
+PROBE_ROW_UNITS: List[str] = ["kg", "kg", "m/s", "kg/s", "km", "m/s"]
 
 
 # ============================================================================
@@ -130,6 +134,7 @@ def validate_probe_parameters(
     exhaust_velocity: float,
     mass_flow_rate: float,
     radius: float,
+    landing_speed_limit: float = PROBE_LANDING_SPEED_LIMIT_DEFAULT,
 ) -> Dict[str, float]:
     """Validate and normalize probe rocket parameters.
 
@@ -139,6 +144,7 @@ def validate_probe_parameters(
         exhaust_velocity: Exhaust velocity in m/s.
         mass_flow_rate: Fuel consumption rate in kg/s.
         radius: Body radius in meters.
+        landing_speed_limit: Safe landing relative speed limit in m/s.
 
     Returns:
         Validated parameters including dry_mass.
@@ -146,7 +152,14 @@ def validate_probe_parameters(
     Raises:
         ValueError: If any parameter violates the probe rocket constraints.
     """
-    values = (total_mass, fuel_mass, exhaust_velocity, mass_flow_rate, radius)
+    values = (
+        total_mass,
+        fuel_mass,
+        exhaust_velocity,
+        mass_flow_rate,
+        radius,
+        landing_speed_limit,
+    )
     if not all(math.isfinite(value) for value in values):
         raise ValueError("All values must be finite")
     if total_mass <= 0.0:
@@ -159,6 +172,8 @@ def validate_probe_parameters(
         raise ValueError("Mass flow rate must be > 0")
     if radius <= 0.0:
         raise ValueError("Radius must be > 0")
+    if landing_speed_limit <= 0.0:
+        raise ValueError("Landing limit must be > 0")
 
     return {
         "total_mass": total_mass,
@@ -167,6 +182,7 @@ def validate_probe_parameters(
         "exhaust_velocity": exhaust_velocity,
         "mass_flow_rate": mass_flow_rate,
         "radius": radius,
+        "landing_speed_limit": landing_speed_limit,
     }
 
 
@@ -661,8 +677,8 @@ class ScientificInputDialog(BaseInputDialog):
 class ProbeInputDialog(BaseInputDialog):
     """Dialog for configuring a probe's rocket parameters."""
 
-    PANEL_HEIGHT: int = 330
-    ROW_START_OFFSET: int = -105
+    PANEL_HEIGHT: int = 365
+    ROW_START_OFFSET: int = -122
     FIELD_DEFS = PROBE_FIELD_DEFS
     ROW_LABELS = PROBE_ROW_LABELS
     ROW_UNITS = PROBE_ROW_UNITS
@@ -671,14 +687,23 @@ class ProbeInputDialog(BaseInputDialog):
     def _title(self) -> str:
         return "Probe Rocket Config"
 
-    def prefill(self) -> None:
-        """Prefill fields with the configured probe rocket defaults."""
+    def prefill(
+        self,
+        total_mass: float = PROBE_ROCKET_TOTAL_MASS_DEFAULT,
+        fuel_mass: float = PROBE_ROCKET_FUEL_MASS_DEFAULT,
+        exhaust_velocity: float = PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
+        mass_flow_rate: float = PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
+        radius_meters: float = DEFAULT_RADIUS_PROBE * WORLD_SCALE,
+        landing_speed_limit: float = PROBE_LANDING_SPEED_LIMIT_DEFAULT,
+    ) -> None:
+        """Prefill fields with probe rocket settings."""
         defaults = [
-            PROBE_ROCKET_TOTAL_MASS_DEFAULT,
-            PROBE_ROCKET_FUEL_MASS_DEFAULT,
-            PROBE_ROCKET_EXHAUST_VELOCITY_DEFAULT,
-            PROBE_ROCKET_MASS_FLOW_RATE_DEFAULT,
-            DEFAULT_RADIUS_PROBE * WORLD_SCALE / 1000.0,
+            total_mass,
+            fuel_mass,
+            exhaust_velocity,
+            mass_flow_rate,
+            radius_meters / 1000.0,
+            landing_speed_limit,
         ]
         for row, value in enumerate(defaults):
             coeff, exp = _float_to_components(value)
@@ -697,10 +722,12 @@ class ProbeInputDialog(BaseInputDialog):
         exhaust_velocity = self._get_field_value(4, 5)
         mass_flow_rate = self._get_field_value(6, 7)
         radius = self._get_field_value(8, 9) * 1000.0
+        landing_speed_limit = self._get_field_value(10, 11)
         return validate_probe_parameters(
             total_mass,
             fuel_mass,
             exhaust_velocity,
             mass_flow_rate,
             radius,
+            landing_speed_limit,
         )

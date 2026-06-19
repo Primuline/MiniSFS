@@ -4,10 +4,11 @@ This file records durable unfinished work and follow-up candidates. Keep it shor
 
 ## Product Backlog
 
-- Level system beyond Level 1:
+- Level system beyond Level 2:
   - more levels in the 2 x 4 selector
   - scoring rules
-  - restart/next-level controls in result popup
+  - next-level controls in result popup
+- Clarify and implement debug mode. User requested "debug mode" but the behavior sentence was incomplete.
 - Move more level/game state out of `src/main.py` once behavior stabilizes.
 - Revisit README and MAIN.md; parts are stale after mode menu, Level 1, probe rocket, and packaging changes.
 - Consider a stable body id in `BodyState` or sidecar mapping to avoid nearest-neighbor remap after row removal.
@@ -22,6 +23,5 @@ This file records durable unfinished work and follow-up candidates. Keep it shor
 
 ## Current Known State
 
-- Branch `feat/ux-optimization` is ahead of `origin/feat/ux-optimization` by at least one commit after `ed18fee`.
-- Last full test run after Level 1 objective/result work: `pytest tests -q` -> `158 passed, 1 warning`.
-
+- Branch `feat/ux-optimization` has local commits ahead of `origin/feat/ux-optimization`.
+- Latest full test after Level 2 / landing speed work: `pytest tests -q` -> `167 passed, 1 warning`.

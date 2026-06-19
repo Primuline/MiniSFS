@@ -6,9 +6,9 @@ Update this file before compacting if the current task state changes. A future C
 
 - Current branch: `feat/ux-optimization`.
 - Remote tracking branch: `origin/feat/ux-optimization`.
-- Latest completed feature commit before these documentation updates:
-  - `ed18fee feat: add level 1 mission objective and clear dialog`
-- At the time this file was created, the branch was ahead of remote by 1 commit.
+- Latest completed commit before the current uncommitted feature work:
+  - `86b6d79 fix: initialize level message font`
+- Current work adds Level 2, probe landing speed limits, right-click probe editing, and level success/failure routing.
 
 ## Recently Completed Work
 
@@ -23,24 +23,31 @@ Update this file before compacting if the current task state changes. A future C
   - exhaust velocity `* 50`
   - mass flow `// 50`
 - Level 1 clears when a probe lands on a `BODY_TYPE_PLANET`.
+- Current uncommitted feature work:
+  - `assets/levels/level_2.json`
+  - fixed-level probe landing speed limit of `1000 m/s`
+  - sandbox probe landing speed limit default of `1.0e30 m/s`
+  - `probe_crashed` collision events for above-limit impacts
+  - Level failure dialog with Retry/Menu actions
+  - Level success Esc/Menu returns to Level Select
+  - right-click probe opens parameter editing instead of aim lines
 
 ## Tests Last Run
 
 ```powershell
 pytest tests\test_level_1_scene.py tests\test_mode_menu.py -q
+pytest tests\test_physics.py tests\test_mode_menu.py tests\test_level_1_scene.py tests\test_rendering_probe_ui.py -q
 pytest tests -q
 ```
 
 Result:
 
 ```text
-158 passed, 1 warning
+167 passed, 1 warning
 ```
 
 ## Next Recommended Actions
 
-1. Commit these long-term documentation updates.
-2. Push `feat/ux-optimization` if the user asks or if this is intended as a remote handoff.
-3. Before further feature work, update README/MAIN.md if user-facing behavior docs matter.
-4. For non-trivial next tasks, resume strict Chief Agent flow: task packet first, subagent worktree under `.codex/worktrees/`, then merge and test.
-
+1. Commit the Level 2 / landing speed / probe edit work.
+2. Push `feat/ux-optimization` only if the user asks.
+3. Clarify debug mode behavior before implementing more than minimal scaffolding.
