@@ -254,10 +254,29 @@ def make_level_1_probe_rocket_state() -> ProbeRocketState:
 
 def make_level_probe_rocket_state(level_id: int) -> ProbeRocketState:
     """Create level-specific probe rocket state."""
-    state = make_level_1_probe_rocket_state()
     if level_id == 2:
-        state.exhaust_velocity *= 2.0
-    return state
+        return ProbeRocketState(
+            dry_mass=1500.0,
+            fuel_mass=1000.0,
+            initial_fuel_mass=1000.0,
+            exhaust_velocity=300000.0,
+            mass_flow_rate=1.0e-6,
+            landing_speed_limit=LEVEL_PROBE_LANDING_SPEED_LIMIT,
+        )
+    return make_level_1_probe_rocket_state()
+
+
+def reset_level_entry_runtime_state(
+    physics_engine: PhysicsEngine,
+    hud: HUDManager,
+    probe_rocket_states: Dict[int, ProbeRocketState],
+) -> None:
+    """Clear transient level state before entering or leaving a fixed level."""
+    probe_rocket_states.clear()
+    physics_engine.last_collision_events = []
+    physics_engine.probe_landing_speed_limits = {}
+    hud.hide_level_message()
+    hud.hide_probe_dialog()
 
 
 def is_level_1_success(bodies: np.ndarray) -> bool:
@@ -703,7 +722,7 @@ def main() -> None:
         predicted_trajectory = None
         placement_trajectory = None
         is_aiming = False
-        probe_rocket_states.clear()
+        reset_level_entry_runtime_state(physics_engine, hud, probe_rocket_states)
         trail_buffer.clear_all()
         hud.set_tool_active(None)
         hud.set_selected_body(None, -1)
@@ -714,11 +733,11 @@ def main() -> None:
     def _start_level(level_id: int) -> None:
         """Start or restart a fixed level."""
         nonlocal bodies, active_tool, selected_body_id, reference_body_id
-        nonlocal predicted_trajectory, placement_trajectory, is_paused
+        nonlocal predicted_trajectory, placement_trajectory, is_paused, is_aiming
         nonlocal time_multiplier, time_speed, level_mode_enabled
-        nonlocal current_level_id, level_completed, level_failed, game_state
+        nonlocal current_level_id, level_completed, level_failed, game_state, accumulator
         bodies = create_level_scene(level_id)
-        probe_rocket_states.clear()
+        reset_level_entry_runtime_state(physics_engine, hud, probe_rocket_states)
         for body_id in range(bodies.shape[0]):
             if int(bodies[body_id, BODY_TYPE]) == BODY_TYPE_PROBE:
                 probe_rocket_states[body_id] = _make_level_probe_rocket_state(level_id)
@@ -738,7 +757,9 @@ def main() -> None:
         reference_body_id = None
         predicted_trajectory = None
         placement_trajectory = None
+        is_aiming = False
         is_paused = True
+        accumulator = 0.0
         time_multiplier = 1.0
         time_speed = BASE_TIME_SPEED
         level_mode_enabled = True

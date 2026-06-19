@@ -4,6 +4,11 @@ import os
 
 import pytest
 
+from src.main import (
+    make_default_probe_rocket_state,
+    reset_level_entry_runtime_state,
+)
+from src.physics.engine import PhysicsEngine
 from src.rendering.hud import HUDManager
 
 
@@ -102,6 +107,32 @@ def test_level_message_popup_closes_with_ok(pygame_dummy) -> None:
     assert hud.level_message_visible is True
     assert hud.handle_level_message_event(event) == "LEVEL_MESSAGE_OK"
     assert hud.level_message_visible is False
+
+
+def test_level_entry_runtime_reset_clears_stale_failure_state(pygame_dummy) -> None:
+    """Starting a level should not inherit old collision events or dialogs."""
+    hud = HUDManager()
+    physics_engine = PhysicsEngine()
+    probe_rocket_states = {2: make_default_probe_rocket_state()}
+    physics_engine.last_collision_events = [
+        {"type": "probe_crashed", "id_a": 2, "id_b": 0}
+    ]
+    physics_engine.probe_landing_speed_limits = {2: 1000.0}
+    hud.show_level_message(
+        "Mission Failed",
+        ["Probe crashed or was lost."],
+        buttons=[("Retry", "LEVEL_RETRY"), ("Menu", "LEVEL_RETURN_MENU")],
+        escape_action="LEVEL_RETURN_MENU",
+    )
+    hud.show_probe_dialog()
+
+    reset_level_entry_runtime_state(physics_engine, hud, probe_rocket_states)
+
+    assert probe_rocket_states == {}
+    assert physics_engine.last_collision_events == []
+    assert physics_engine.probe_landing_speed_limits == {}
+    assert hud.level_message_visible is False
+    assert hud.probe_dialog_visible is False
 
 
 def test_level_message_draws_without_error(pygame_dummy) -> None:

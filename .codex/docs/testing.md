@@ -10,11 +10,10 @@ Run before committing broad or cross-module work:
 pytest tests -q
 ```
 
-Current recent baseline after Level 2 / landing speed work:
+Current recent baseline after level re-entry and Level 2 probe tuning work:
 
 ```text
-pytest tests -q
-167 passed, 1 warning
+pytest tests -q -> 169 passed, 1 warning
 ```
 
 The warning is from pygame/pkg_resources deprecation and is not currently treated as failure.

@@ -1,181 +1,170 @@
-# MiniSFS — Mini Space Flight Simulator 🚀
+# MiniSFS - Mini Space Flight Simulator
 
-A **2D space sandbox simulator** based on real N-body physics gravity. Place stars, planets, probes, and watch their trajectories under gravitational and Coulomb forces.
-> Think of it as a 2D version of Universe Sandbox, but lighter and more focused on physics experimentation and interaction.
+MiniSFS is a 2D space flight sandbox and level-based orbital mechanics game.
+It uses SI-unit N-body physics, geometric monochrome rendering, and a probe
+rocket model with finite fuel.
 
----
+## Features
 
-## ✨ Features
+- N-body gravity and Coulomb force simulation with RK4 integration.
+- Optional Barnes-Hut quadtree acceleration.
+- Sandbox mode for placing stars, planets, probes, and charged/custom bodies.
+- Level mode with a 2 x 4 selector. Levels 1 and 2 are implemented.
+- Reference-frame camera mode by double-clicking a body.
+- True relative trajectory prediction in reference frames.
+- Relative trails in reference frames; trails clear when switching frames.
+- Probe rocket controls with fuel, exhaust velocity, mass flow, radius, and
+  landing speed limit.
+- Probe landing: safe impacts leave the probe on the surface; impacts above
+  the landing speed limit crash/remove the probe.
+- Right-click editing for existing bodies and probes.
+- Monochrome pixel UI: black background, white geometric glyphs, pixel borders,
+  and project font files under `src/ttf/`.
+- PyInstaller spec for Windows executable builds.
 
-- **N-body gravity + Coulomb force simulation** — Full O(n^2) force calculation, RK4 integrator, 4 sub-steps/frame
-- **Quadtree acceleration** (optional) — Barnes-Hut approximation, O(N log N) performance
-- **Place bodies** — Star (S), Planet (P), Probe (D), Custom particle (C), supports scientific notation parameter input
-- **Grab and drag** — Left-click drag a body, time pauses, velocity resets on release
-- **Reference frame mode** — Double-click a body to enter reference frame view (smooth follow + auto-zoom), Esc to exit
-- **Trajectory preview** — Real-time predicted orbit display; reference frames use true future relative trajectories
-- **Probe aiming** — Right-click probe, then drag to set launch direction and speed
-- **Probe rocket control** — Probe placement opens a rocket parameter dialog; probe radius is the equilateral triangle center-to-edge distance
-- **Edit body** — Right-click an existing body to edit mass/charge/radius (scientific notation)
-- **Trail system** — Auto-record trajectories, with relative trails in reference frame mode
-- **Time control** — Slow 2x / restore 1x / speed up 2x buttons, bounded from 1/64x to 64x
-- **Coordinate grid** — Toggle with G key, adaptive spacing
-- **Body labels** — Toggle with L key, automatic fade-out at distance
-- **Shortcut panel** — Press H to view all shortcuts
-- **Scale bar + status info** — Real-time FPS, body count, mouse world coordinates
-- **Startup mode menu** — Choose Sandbox Mode or Level Mode; Level 1 provides a fixed Earth-Moon launch scene
-- **Monochrome geometry UI** — Blank black background, white pixel borders, Ark Pixel font, and geometric body glyphs
+## Controls
 
----
+| Action | Control |
+|:--|:--|
+| Pan camera | Middle-click drag |
+| Zoom | Mouse wheel |
+| Grab/move body in sandbox | Left-click drag body |
+| Select body/probe | Left-click body |
+| Enter reference frame | Double-click body |
+| Probe thrust | Arrow keys when a probe is selected or in probe reference frame |
+| Edit body parameters | Right-click body |
+| Edit probe rocket/body parameters | Right-click probe |
+| Cancel placement / deselect | Right-click empty space |
+| Pause/resume | `Space` or HUD pause button |
+| Reset camera | `R` |
+| Toggle grid | `G` |
+| Toggle labels | `L` |
+| Toggle shortcut panel | `H` |
+| Toggle trails | `T` |
+| Delete selected body | `Del` / `Backspace` |
 
-## 🎮 Controls
-
-| Action | Key |
-|:-------|:----|
-| Middle-click drag | Pan view |
-| Scroll wheel | Zoom (centered on mouse) |
-| Left-click body | Grab and drag (time pauses) |
-| Double-click body | Enter reference frame follow mode |
-| Arrow keys in probe reference frame | Fire probe thrusters (diagonal input is combined) |
-| Right-click body | Edit parameters (mass/charge/radius) |
-| Right-click probe | Aim, then drag to launch |
-| Right-click empty | Cancel tool / deselect |
-| `Esc` | Mode menu: quit; Sandbox: close shortcut panel / cancel placement / exit reference frame / quit game |
-| `Space` | Pause/resume |
-| `R` | Reset camera |
-| `G` | Toggle coordinate grid |
-| `L` | Toggle body labels |
-| `H` | Toggle shortcut panel |
-| `T` | Toggle trail display |
-| `Del` / `Backspace` | Delete selected body |
-
-### Toolbar
+## Toolbar
 
 | Button | Shortcut | Function |
-|:-------|:---------|:---------|
-| **S** | `1` | Place star (static, place directly) |
-| **P** | `2` | Place planet (click position, then drag to set velocity) |
-| **D** | `3` | Place probe (configure total mass, fuel, exhaust velocity, mass flow, radius first) |
-| **C** | `4` | Custom particle (scientific notation dialog) |
+|:--|:--|:--|
+| `S` | `1` | Place static star |
+| `P` | `2` | Place planet, then drag to set initial velocity |
+| `D` | `3` | Configure and place probe |
+| `C` | `4` | Configure and place custom charged body |
 
-### Time Control
+Level mode disables sandbox editing tools.
 
-| Button | Shortcut | Function |
-|:-------|:---------|:---------|
-| `||` / `>` | `Space` | Pause/resume |
-| `<<` | — | Slow time by 2x |
-| `1x` | — | Restore 1x speed |
-| `>>` | — | Speed up time by 2x |
+## Time Control
 
----
+| Button | Function |
+|:--|:--|
+| `||` / `>` | Pause/resume |
+| `<<` | Slow time by 2x |
+| `1x` | Restore 1x |
+| `>>` | Speed time by 2x |
 
-## 📦 Installation
+The time multiplier is bounded from `1/64x` to `64x`.
+
+## Levels
+
+- **Level 1**: Earth-Moon-like transfer. The probe starts on the central body
+  and must land on the planet. Level 1 probe engine tuning is stronger and
+  lower-flow than the sandbox default.
+- **Level 2**: Simplified Sun-Earth-Mars transfer. The probe starts near Earth
+  on a Hohmann-like injection path and must land on Mars.
+
+Fixed levels use a probe landing speed limit of `1 km/s`. If the probe crashes
+or disappears in a level, the failure popup offers Retry and Menu.
+
+Level 2 probe defaults:
+
+| Parameter | Value |
+|:--|:--|
+| Total mass | `2.5 t` |
+| Fuel mass | `1 t` |
+| Exhaust velocity | `300 km/s` |
+| Mass flow | `1 mg/s` |
+| Landing speed limit | `1 km/s` |
+
+## Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/Primuline/MiniSFS.git
-cd MiniSFS
-
-# Install dependencies (conda or venv recommended)
-pip install pygame numpy
+pip install pygame numpy pytest
 ```
 
-Requires Python 3.10+.
+Python 3.10+ is recommended.
 
----
-
-## 🚀 Running
+## Running
 
 ```bash
 python -m src.main
 ```
 
-The app opens on the mode menu. Select **Sandbox Mode** to start the current default scene:
-one central star (mass 2x10^30 kg) + one orbiting planet (1 AU orbit).
-**Level Mode** is visible but disabled until level flow is implemented.
+The app opens on the mode menu. Choose Sandbox Mode for the editable simulation
+or Level Mode for the level selector.
 
----
-
-## 🗂 Project Structure
-
-```
-MiniSFS/
-├── src/
-│   ├── main.py                 # Main entry point and main loop
-│   ├── config.py               # Global constants (scales, default parameters, etc.)
-│   ├── core/
-│   │   ├── types.py            # Body state array definition (10 columns, float64)
-│   │   └── interfaces.py       # Module abstract interfaces (ABC)
-│   ├── physics/
-│   │   ├── engine.py           # PhysicsEngine — core physics update
-│   │   ├── forces.py           # Gravitational + Coulomb force calculations
-│   │   ├── integrators.py      # RK4 / Euler / Velocity Verlet
-│   │   └── collision.py        # Collision detection and response rules
-│   ├── rendering/
-│   │   ├── renderer.py         # Renderer — geometric body drawing, highlight
-│   │   ├── camera.py           # Camera — viewport transformation, zoom, follow
-│   │   ├── hud.py              # HUD — toolbar, time control, info panel, scale bar
-│   │   ├── effects.py          # Trails, particle effects, trajectory preview, grid, labels
-│   │   └── input_dialog.py     # Scientific notation input dialog
-│   ├── input/
-│   │   └── handler.py          # Events to commands (input layer separated from rendering layer)
-│   └── quadtree/
-│       ├── quadtree.py         # Quadtree implementation
-│       ├── barnes_hut.py       # Barnes-Hut approximation acceleration
-│       └── trail.py            # TrailBuffer — deque-based trail with fade-out
-├── tests/
-│   ├── test_integration.py     # Integration tests (16 scenarios)
-│   ├── test_physics.py         # Physics unit tests
-│   └── test_quadtree.py        # Quadtree unit tests (60 tests)
-├── docs/                       # Design documents / feature specs
-└── .claude/                    # Sub-agent configuration and development conventions
-```
-
----
-
-## 🔧 Technical Details
-
-| Concept | Value |
-|:--------|:------|
-| World scale | 800 km/px |
-| Base time step | 1/60 s, 4 sub-steps/frame |
-| Integrator | RK4 (4th order Runge-Kutta) |
-| Time acceleration | Base 3125x, 1x/2x/4x/8x |
-| Body array | 10 columns x float64 |
-
-### Body State Array
-
-`numpy.ndarray` with shape `(N, 10)`:
-
-| Index | Field | Description |
-|:------|:------|:------------|
-| 0 | X | x coordinate (m) |
-| 1 | Y | y coordinate (m) |
-| 2 | VX | x velocity (m/s) |
-| 3 | VY | y velocity (m/s) |
-| 4 | MASS | mass (kg) |
-| 5 | CHARGE | charge (C) |
-| 6 | RADIUS | radius (m) |
-| 7 | BODY_TYPE | 0=star, 1=planet, 2=probe, 3=charged |
-| 8 | IS_STATIC | 0=dynamic, 1=static |
-| 9 | IS_ACTIVE | 0=inactive, 1=alive |
-
-### Collision Rules
-
-- **Star vs Planet** → Star absorbs the planet (mass/charge added)
-- **Planet vs Planet** → Centroid merger (momentum conserved)
-- **Probe vs Anything** → Probe is destroyed
-- **Star vs Star** → Elastic collision
-
----
-
-## 🧪 Testing
+## Testing
 
 ```bash
-pytest tests/ -v
+pytest tests -q
 ```
 
----
+Focused examples:
 
-## 📫 License
+```bash
+pytest tests/test_level_1_scene.py tests/test_mode_menu.py -q
+pytest tests/test_physics.py -q
+```
+
+## Packaging
+
+Build from an environment where `import pygame` succeeds:
+
+```bash
+python -m PyInstaller --noconfirm --clean MiniSFS.spec
+```
+
+`build/` and `dist/` are ignored and should not be committed.
+
+## Project Structure
+
+```text
+MiniSFS/
+├── assets/levels/          # Level JSON files
+├── src/
+│   ├── main.py             # Main loop and current game orchestration
+│   ├── config.py           # Constants and defaults
+│   ├── core/               # BodyState types and interfaces
+│   ├── physics/            # Forces, integration, collisions, rocket math
+│   ├── quadtree/           # Barnes-Hut and trail buffer
+│   ├── rendering/          # Renderer, camera, HUD, dialogs, effects
+│   └── input/              # Pygame event to command handling
+├── tests/                  # Pytest suite
+├── .codex/                 # Chief/sub-agent docs and project memory
+├── MAIN.md                 # Architecture overview
+└── MiniSFS.spec            # PyInstaller config
+```
+
+## Core Data Model
+
+Simulation bodies are stored as a NumPy `float64` array with shape `(N, 10)`.
+Column constants live in `src/core/types.py`:
+
+| Index | Field | Unit / Meaning |
+|---:|:--|:--|
+| 0 | `X` | meters |
+| 1 | `Y` | meters |
+| 2 | `VX` | m/s |
+| 3 | `VY` | m/s |
+| 4 | `MASS` | kg |
+| 5 | `CHARGE` | C |
+| 6 | `RADIUS` | meters |
+| 7 | `BODY_TYPE` | `0` star, `1` planet, `2` probe, `3` charged |
+| 8 | `IS_STATIC` | `0/1` |
+| 9 | `IS_ACTIVE` | `0/1` |
+
+Probe rocket state is sidecar data keyed by body row id.
+
+## License
 
 MIT

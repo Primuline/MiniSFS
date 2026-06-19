@@ -23,8 +23,10 @@ from src.main import (
     make_level_1_probe_rocket_state,
     make_level_probe_rocket_state,
     is_level_1_success,
+    is_level_success,
     probe_radius_to_tool_pixels,
 )
+from src.physics.collision import handle_collisions
 
 
 def test_level_1_contains_earth_moon_and_probe() -> None:
@@ -94,7 +96,7 @@ def test_level_2_contains_sun_earth_mars_and_probe() -> None:
     assert int(bodies[2, BODY_TYPE]) == BODY_TYPE_PLANET
     assert int(bodies[3, BODY_TYPE]) == BODY_TYPE_PROBE
     assert bodies[0, IS_STATIC] == 1.0
-    assert bodies[3, MASS] == pytest.approx(PROBE_ROCKET_TOTAL_MASS_DEFAULT)
+    assert bodies[3, MASS] == pytest.approx(2500.0)
     assert bodies[3, RADIUS] == pytest.approx(DEFAULT_RADIUS_PROBE * WORLD_SCALE)
 
 
@@ -114,10 +116,42 @@ def test_level_2_uses_earth_mars_transfer_like_initial_speed() -> None:
     assert mars_radius > earth_radius
 
 
-def test_level_probe_rocket_has_level_landing_limit() -> None:
-    """Fixed levels should use the requested 1 km/s landing speed limit."""
-    assert make_level_probe_rocket_state(1).landing_speed_limit == pytest.approx(1000.0)
-    assert make_level_probe_rocket_state(2).landing_speed_limit == pytest.approx(1000.0)
+def test_level_2_probe_starts_clear_of_failure_inputs() -> None:
+    """Level 2 should not start overlapped, disappeared, or already successful."""
+    bodies = create_level_2_scene()
+    probe_id = 3
+    earth_id = 1
+    earth_probe_distance = math.hypot(
+        float(bodies[probe_id, X] - bodies[earth_id, X]),
+        float(bodies[probe_id, Y] - bodies[earth_id, Y]),
+    )
+    contact_distance = float(bodies[earth_id, RADIUS] + bodies[probe_id, RADIUS])
+
+    assert earth_probe_distance > contact_distance
+    assert is_level_success(bodies) is False
+
+    resolved, events = handle_collisions(
+        bodies.copy(),
+        probe_landing_speed_limits={probe_id: 1000.0},
+    )
+
+    assert events == []
+    assert int(resolved[probe_id, BODY_TYPE]) == BODY_TYPE_PROBE
+
+
+def test_level_probe_rocket_parameters_are_level_specific() -> None:
+    """Fixed levels should use their requested engine and landing settings."""
+    level_1 = make_level_probe_rocket_state(1)
+    level_2 = make_level_probe_rocket_state(2)
+
+    assert level_1.landing_speed_limit == pytest.approx(1000.0)
+    assert level_2.total_mass() == pytest.approx(2500.0)
+    assert level_2.dry_mass == pytest.approx(1500.0)
+    assert level_2.fuel_mass == pytest.approx(1000.0)
+    assert level_2.initial_fuel_mass == pytest.approx(1000.0)
+    assert level_2.exhaust_velocity == pytest.approx(300000.0)
+    assert level_2.mass_flow_rate == pytest.approx(1.0e-6)
+    assert level_2.landing_speed_limit == pytest.approx(1000.0)
 
 
 def test_level_1_success_requires_probe_landed_on_planet() -> None:

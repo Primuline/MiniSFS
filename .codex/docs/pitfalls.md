@@ -61,3 +61,19 @@ Safer approach:
 
 - `.codex/AGENT.md` is UTF-8 Chinese. Use `Get-Content -Encoding UTF8` in PowerShell to avoid mojibake.
 
+## Level Failure Event Leakage
+
+Observed issue:
+
+- After a probe crashed/disappeared in one level run, entering a later level could immediately show the failure popup.
+
+Why it failed:
+
+- Level failure checks read `physics_engine.last_collision_events` even while the newly started level is paused on the objective popup.
+- If `_start_level()` does not clear old collision events and probe landing-limit maps, stale `probe_crashed` events can leak into the next level.
+
+Required reset when starting or leaving levels:
+
+- clear `physics_engine.last_collision_events`
+- clear/rebuild `physics_engine.probe_landing_speed_limits`
+- clear probe sidecars, trails, selected/reference bodies, HUD probe info, and level completion/failure flags
