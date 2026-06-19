@@ -8,6 +8,7 @@ from src.core.types import VX, VY, X, Y, make_body
 from src.main import (
     find_landed_probe_contacts,
     find_landed_probe_ids,
+    should_predict_probe_trajectory,
     transform_trails_to_reference_frame,
 )
 from src.rendering.camera import Camera
@@ -96,6 +97,43 @@ def test_find_landed_probe_ids_detects_resting_probe() -> None:
     bodies[1, VX] += 10.0
     bodies[1, VY] += 10.0
     assert find_landed_probe_ids(bodies) == set()
+
+
+def test_landed_probe_selection_does_not_predict_trajectory() -> None:
+    """A resting landed probe should not show a future trajectory preview."""
+    host = make_body(
+        x=0.0,
+        y=0.0,
+        vx=12.0,
+        vy=-3.0,
+        mass=1.0e24,
+        radius=10.0,
+        body_type=BODY_TYPE_PLANET,
+    )
+    probe = make_body(
+        x=15.0,
+        y=0.0,
+        vx=12.0,
+        vy=-3.0,
+        mass=1.0,
+        radius=5.0,
+        body_type=BODY_TYPE_PROBE,
+    )
+    bodies = np.vstack([host, probe])
+
+    assert find_landed_probe_ids(bodies) == {1}
+    assert not should_predict_probe_trajectory(
+        bodies,
+        selected_body_id=1,
+        landed_probe_ids={1},
+        is_grabbing=False,
+    )
+    assert should_predict_probe_trajectory(
+        bodies,
+        selected_body_id=1,
+        landed_probe_ids=set(),
+        is_grabbing=False,
+    )
 
 
 def test_find_landed_probe_contacts_returns_host_and_normal() -> None:

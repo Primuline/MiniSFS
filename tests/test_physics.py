@@ -39,6 +39,7 @@ from src.physics.forces import (
     compute_coulomb_forces,
     compute_gravitational_forces,
     compute_total_forces,
+    find_nearest_gravity_source,
 )
 from src.physics.integrators import euler_step, rk4_step, velocity_verlet_step
 
@@ -207,6 +208,41 @@ class TestGravitationalForces:
         assert forces[1, 1] == 0.0
         assert forces[0, 0] == 0.0
         assert forces[0, 1] == 0.0
+
+    def test_nearest_gravity_source_uses_query_position_and_planets(self):
+        """Placement previews should use the nearest active massive body."""
+        star_near_origin = make_body(
+            x=0.0,
+            y=0.0,
+            mass=1.0e30,
+            radius=1.0e6,
+            body_type=BODY_TYPE_STAR,
+        )
+        local_planet = make_body(
+            x=1.0e12,
+            y=0.0,
+            mass=1.0e24,
+            radius=1.0e6,
+            body_type=BODY_TYPE_PLANET,
+        )
+        inactive_closer_body = make_body(
+            x=1.0e12 + 1.0,
+            y=0.0,
+            mass=1.0e30,
+            radius=1.0e6,
+            body_type=BODY_TYPE_STAR,
+            is_active=False,
+        )
+        bodies = np.vstack([star_near_origin, local_planet, inactive_closer_body])
+
+        source = find_nearest_gravity_source(np.array([1.0e12 + 10.0, 0.0]), bodies)
+
+        assert source is not None
+        source_id, source_pos, source_mass, source_radius = source
+        assert source_id == 1
+        assert np.allclose(source_pos, [1.0e12, 0.0])
+        assert source_mass == pytest.approx(1.0e24)
+        assert source_radius == pytest.approx(1.0e6)
 
 
 class TestCoulombForces:

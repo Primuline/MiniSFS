@@ -75,7 +75,7 @@ from src.core.types import (
 from src.core.utils.tools import normalize_angle_delta
 from src.input.handler import InputHandler
 from src.physics.engine import PhysicsEngine
-from src.physics.forces import find_nearest_star
+from src.physics.forces import find_nearest_gravity_source
 from src.physics.rocket import compute_rocket_burn
 from src.quadtree.trail import TrailBuffer
 from src.rendering.camera import Camera
@@ -521,6 +521,23 @@ def find_landed_probe_contacts(bodies: np.ndarray) -> Dict[int, Tuple[int, np.nd
                 break
 
     return contacts
+
+
+def should_predict_probe_trajectory(
+    bodies: np.ndarray,
+    selected_body_id: Optional[int],
+    landed_probe_ids: set[int],
+    is_grabbing: bool,
+) -> bool:
+    """Return whether the selected probe should show a future trajectory."""
+    return (
+        selected_body_id is not None
+        and selected_body_id < bodies.shape[0]
+        and int(bodies[selected_body_id, BODY_TYPE]) == BODY_TYPE_PROBE
+        and int(bodies[selected_body_id, IS_ACTIVE]) == 1
+        and selected_body_id not in landed_probe_ids
+        and not is_grabbing
+    )
 
 
 def transform_trails_to_reference_frame(
@@ -1104,12 +1121,14 @@ def main() -> None:
     def _get_gravity_source(
         bodies_arr: np.ndarray,
         ref_body_id: Optional[int],
+        query_pos: np.ndarray,
     ) -> Optional[Tuple[np.ndarray, float, float]]:
         """Get gravity source body information.
 
         Args:
             bodies_arr: Body state array
             ref_body_id: Reference frame body ID (may be None)
+            query_pos: Position used to choose the nearest source outside a reference frame
 
         Returns:
             (star_pos, star_mass, star_radius) or None (when no gravity source)
@@ -1121,10 +1140,8 @@ def main() -> None:
                 star_radius = float(bodies_arr[ref_body_id, RADIUS])
                 return (star_pos, star_mass, star_radius)
 
-        # Find nearest star when no reference frame
-        nearest = find_nearest_star(
-            np.array([0.0, 0.0], dtype=np.float64), bodies_arr
-        )
+        # Find nearest active massive source to the placement preview position.
+        nearest = find_nearest_gravity_source(query_pos, bodies_arr)
         if nearest is not None:
             _, star_pos, star_mass, star_radius = nearest
             return (star_pos, star_mass, star_radius)
@@ -1160,7 +1177,7 @@ def main() -> None:
             return None
 
         # Find reference star (nearest star or reference frame body)
-        ref_star = _get_gravity_source(bodies, reference_body_id)
+        ref_star = _get_gravity_source(bodies, reference_body_id, pos)
         if ref_star is None:
             pts = 200
             total_dist = speed * 1e7
@@ -2326,10 +2343,12 @@ def main() -> None:
         # Predicted trajectory (recalculate every frame for selected probe; skip while grabbing)
         _prediction_frame_counter += 1
         should_recalc = (
-            selected_body_id is not None
-            and selected_body_id < bodies.shape[0]
-            and int(bodies[selected_body_id, BODY_TYPE]) == BODY_TYPE_PROBE
-            and not is_grabbing
+            should_predict_probe_trajectory(
+                bodies,
+                selected_body_id,
+                landed_probe_ids,
+                is_grabbing,
+            )
         )
         # Recalculate immediately when selection changes
         if should_recalc and selected_body_id != _last_predicted_body_id:
@@ -2445,7 +2464,7 @@ def main() -> None:
                 ux = dx_screen / arrow_dist
                 uy = dy_screen / arrow_dist
                 vel = np.array([ux * actual_speed, uy * actual_speed], dtype=np.float64)
-                # Compute trajectory (using physics engine RK4 + full gravity)
+                # Compute trajectory using RK4 with the selected single gravity source.
                 placement_trajectory = _compute_placement_trajectory(
                     np.array([px, py], dtype=np.float64), vel,
                     None, hud.custom_radius,
@@ -2464,7 +2483,7 @@ def main() -> None:
                 ux = dx_screen / arrow_dist
                 uy = dy_screen / arrow_dist
                 vel = np.array([ux * actual_speed, uy * actual_speed], dtype=np.float64)
-                # Compute trajectory (using physics engine RK4 + full gravity)
+                # Compute trajectory using RK4 with the selected single gravity source.
                 body_radius = radius_pixels * WORLD_SCALE
                 placement_trajectory = _compute_placement_trajectory(
                     np.array([px, py], dtype=np.float64), vel,

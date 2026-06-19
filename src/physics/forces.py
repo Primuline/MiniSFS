@@ -228,6 +228,44 @@ def find_nearest_star(
     return (idx, star_pos, star_mass, star_radius)
 
 
+def find_nearest_gravity_source(
+    pos: np.ndarray,
+    bodies: np.ndarray,
+    *,
+    exclude_body_id: Optional[int] = None,
+) -> Optional[Tuple[int, np.ndarray, float, float]]:
+    """Find the nearest active massive body to a query position.
+
+    This is used by placement previews where the relevant local gravity source
+    may be a planet rather than a body typed as a star.
+    """
+    best_idx: Optional[int] = None
+    best_dist_sq: float = float("inf")
+
+    for i in range(bodies.shape[0]):
+        if exclude_body_id is not None and i == exclude_body_id:
+            continue
+        if bodies[i, IS_ACTIVE] == 0.0:
+            continue
+        if float(bodies[i, MASS]) <= 0.0:
+            continue
+        dx = float(bodies[i, X] - pos[0])
+        dy = float(bodies[i, Y] - pos[1])
+        dist_sq = dx * dx + dy * dy
+        if dist_sq < best_dist_sq:
+            best_dist_sq = dist_sq
+            best_idx = i
+
+    if best_idx is None:
+        return None
+
+    idx = best_idx
+    source_pos = bodies[idx, [X, Y]].copy()
+    source_mass = float(bodies[idx, MASS])
+    source_radius = float(bodies[idx, RADIUS])
+    return (idx, source_pos, source_mass, source_radius)
+
+
 def predict_single_star_trajectory(
     pos: np.ndarray,
     vel: np.ndarray,
