@@ -22,7 +22,14 @@ Chief Agent 启动后按顺序阅读：
 4. `.codex/docs/python.md`：Python 编码规范。
 5. `.codex/docs/git.md`：Git 工作流规范。
 6. `.codex/docs/delegation.md`：Chief 到子 agent 的委派流程。
-7. `.codex/agents/*.md`：需要调用的子 agent 职责。
+7. `.codex/docs/project-memory.md`：长期产品背景、用户偏好、重要事实。
+8. `.codex/docs/architecture.md`：当前架构选择、模块边界。
+9. `.codex/docs/contracts.md`：API、数据模型、单位和跨模块契约。
+10. `.codex/docs/testing.md`：测试命令和验证策略。
+11. `.codex/docs/pitfalls.md`：失败过的方案、已知坑、环境问题。
+12. `.codex/docs/backlog.md`：未完成事项和后续方向。
+13. `.codex/tasks/current-state.md`：compact 或交接后的当前状态。
+14. `.codex/agents/*.md`：需要调用的子 agent 职责。
 
 如 `.claude/` 仍存在，可作为历史参考，但 Codex 侧规范以 `.codex/` 为准。
 
@@ -39,6 +46,8 @@ Chief Agent 启动后按顺序阅读：
 子 agent 必须在独立工作区中执行任务。优先使用 `git worktree` 为不同任务建立隔离工作区，避免并行修改互相污染。每个子 agent 的输出应包含：做了什么、关键决策、修改文件、测试命令与结果、未完成项、风险。
 
 所有由 Chief Agent 创建的临时 worktree 必须放在仓库内的 `.codex/worktrees/` 下，不得散落在 MiniSFS 同级目录。该目录只用于本地并行执行，已在 `.gitignore` 中忽略。
+
+子 agent 的任务包必须自包含，不应要求子 agent 从聊天历史推断项目目标。任务包至少包含：背景、目标、非目标、允许修改范围、禁止修改范围、验收标准、必读文档、测试命令、汇报格式。子 agent 汇报至少包含：修改文件、行为变化、测试命令与结果、风险、开放问题。
 
 ## 4. 任务拆分原则
 
@@ -72,7 +81,36 @@ Chief Agent 拆任务时遵守：
 
 Chief Agent 被允许执行除 `push` 之外的必要 git 操作，包括创建/切换分支、创建/移动/清理 worktree、暂存和本地 commit。完成一组可回滚、测试通过的工作后，应及时 commit，避免多个子任务长期混在未提交工作区中。禁止未经用户明确要求执行 `push`。
 
-## 8. 当前项目架构要点
+## 8. 长期记忆与 Compact 政策
+
+不要把聊天历史当作项目记忆。任何 compact 后仍应保留的信息，必须写入 `.codex/` 文档。
+
+长期信息的归档位置：
+
+- `.codex/docs/project-memory.md`：产品方向、用户偏好、持久事实。
+- `.codex/docs/architecture.md`：架构选择、模块边界、长期设计约束。
+- `.codex/docs/contracts.md`：API contract、数据模型、单位约定、跨模块契约。
+- `.codex/docs/testing.md`：测试命令、验证矩阵、当前基线。
+- `.codex/docs/pitfalls.md`：失败过的方案、已知坑、环境/打包问题。
+- `.codex/docs/backlog.md`：未完成 TODO、技术债、后续方向。
+- `.codex/tasks/current-state.md`：当前分支、最新提交、未完成状态、compact 交接摘要。
+
+Compact 前必须检查：
+
+1. 当前任务包是否已创建或更新。
+2. 子 agent 结果是否已汇总。
+3. 新的产品偏好、架构决策、API/数据模型变化、测试命令、失败方案、已知坑、TODO 是否已写入对应长期文档。
+4. `current-state.md` 是否说明当前分支、最新提交、测试结果和下一步。
+5. 工作区是否清楚：该 commit 的已 commit，该说明的未完成项已写入文档。
+
+禁止 compact 的情况：
+
+- 当前任务状态只存在聊天中。
+- 有未记录的架构决策或用户偏好。
+- 有失败测试、已知 bug 或打包问题尚未写入长期文档。
+- 下一步动作不明确。
+
+## 9. 当前项目架构要点
 
 - 核心状态使用 `BodyState`：`np.ndarray`，形状 `(N, 10)`，字段定义在 `src/core/types.py`。
 - 模块接口定义在 `src/core/interfaces.py`。

@@ -48,6 +48,49 @@ Chief Agent 给子 agent 的任务应包含：
 - 必须运行的测试命令。
 - 汇报格式。
 
+推荐任务包格式：
+
+```md
+# Task: <name>
+
+## 必读文档
+- .codex/docs/guideline.md
+- .codex/docs/python.md
+- .codex/docs/git.md
+- .codex/docs/project-memory.md
+- .codex/docs/architecture.md
+- .codex/docs/contracts.md
+- .codex/agents/<agent>.md
+
+## 背景
+说明用户目标、已有实现和为什么要做。
+
+## 目标
+列出本任务必须完成的行为变化。
+
+## 非目标
+列出不要顺手修改的范围。
+
+## 允许修改范围
+列出文件或模块。
+
+## 禁止修改范围
+列出不能触碰的文件、行为或接口。
+
+## 验收标准
+列出可观察行为、边界条件和回归要求。
+
+## 测试命令
+列出必须运行的测试。
+
+## 汇报格式
+- Files changed
+- Behavior changed
+- Tests run
+- Risks
+- Open questions
+```
+
 ## 5. 合并与验证
 
 Chief Agent 收到子 agent 结果后：
@@ -58,3 +101,16 @@ Chief Agent 收到子 agent 结果后：
 4. 汇总冲突、风险、未完成项。
 5. 决定继续迭代、合并、或回退任务方向。
 
+## 6. Compact 前归档
+
+如果任务产生了可长期复用的信息，Chief Agent 在 compact 前必须更新：
+
+- `.codex/docs/project-memory.md`
+- `.codex/docs/architecture.md`
+- `.codex/docs/contracts.md`
+- `.codex/docs/testing.md`
+- `.codex/docs/pitfalls.md`
+- `.codex/docs/backlog.md`
+- `.codex/tasks/current-state.md`
+
+不要要求未来 agent 从聊天历史恢复这些信息。
