@@ -197,6 +197,7 @@ class HUDManager:
 
         # Fonts
         self._font_title = get_ui_font(20)
+        self._font_medium = get_ui_font(18)
         self._font_label = get_ui_font(16)
         self._font_value = get_ui_font(16)
         self._font_small = get_ui_font(14)

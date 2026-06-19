@@ -88,6 +88,17 @@ def test_level_message_popup_closes_with_ok(pygame_dummy) -> None:
     assert hud.level_message_visible is False
 
 
+def test_level_message_draws_without_error(pygame_dummy) -> None:
+    """Drawing an active level objective/result popup should work."""
+    import pygame
+
+    hud = HUDManager()
+    surface = pygame.Surface((hud.width, hud.height))
+    hud.show_level_message("Level 1 Mission", ["Transfer", "Land"])
+
+    hud.draw(surface)
+
+
 def test_time_controls_include_pause_and_three_speed_buttons(pygame_dummy) -> None:
     """HUD should expose pause plus slow/reset/fast controls."""
     hud = HUDManager()
