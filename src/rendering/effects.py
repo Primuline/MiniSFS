@@ -739,7 +739,7 @@ def draw_shortcuts_overlay(surface: pygame.Surface) -> None:
     overlay.fill(UI_OVERLAY_BG)
     surface.blit(overlay, (0, 0))
 
-    panel = pygame.Rect(WINDOW_WIDTH // 2 - 280, 48, 560, 330)
+    panel = pygame.Rect(WINDOW_WIDTH // 2 - 330, 48, 660, 350)
     pygame.draw.rect(surface, UI_BLACK, panel)
     pygame.draw.rect(surface, UI_WHITE, panel, 2)
 
@@ -759,17 +759,19 @@ def draw_shortcuts_overlay(surface: pygame.Surface) -> None:
         ("Middle-Drag", "Pan/Grab"), ("Esc", "Back/Cancel"),
     ]
 
-    col1_x = WINDOW_WIDTH // 2 - 180
-    col2_x = WINDOW_WIDTH // 2 + 20
-    start_y = 110
+    col1_x = panel.x + 28
+    col2_x = panel.x + panel.width // 2 + 24
+    key_width = 112
+    start_y = 112
+    row_height = 34
 
     for i, (key, desc) in enumerate(shortcuts):
         col = i % 2
         row = i // 2
         x = col1_x if col == 0 else col2_x
-        y = start_y + row * 30
+        y = start_y + row * row_height
 
         key_surf = font.render(key, True, UI_WHITE)
         surface.blit(key_surf, (x, y))
         desc_surf = font.render(desc, True, UI_DIM)
-        surface.blit(desc_surf, (x + 70, y))
+        surface.blit(desc_surf, (x + key_width, y))

@@ -1590,7 +1590,7 @@ def main() -> None:
                     point = _snap_measurement_point(sx, sy)
                     required_points = 2 if active_tool == "TOOL_MEASURE_LENGTH" else 3
                     if len(measurement_points) >= required_points:
-                        continue
+                        measurement_points = []
                     measurement_points.append(point)
                     continue
 
