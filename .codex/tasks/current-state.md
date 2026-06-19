@@ -7,54 +7,39 @@ Chief Agent should read this immediately after `.codex/AGENT.md`.
 
 - Current branch: `feat/ux-optimization`.
 - Remote tracking branch: `origin/feat/ux-optimization`.
-- Latest completed commit before current uncommitted work:
-  - `9d0dcde fix: prevent level 2 probe immediate crash`
-- Current uncommitted work includes Level 2 probe tuning plus measurement tools and live HUD refresh.
+- Latest completed commit before final-step work:
+  - `cc72e26 fix: reset current mode with R`
+- Current uncommitted work:
+  - deletion of `src/game/__init__.py` requested/confirmed by the user
+  - README/MAIN/docs refresh for current UX and project memory
+  - `.codex/docs` consistency updates for Level 2 probe and landing limit values
 
-## Current Task Work
+## Product State
 
-Current task packet:
+- Sandbox mode starts an editable default scene.
+- Level mode uses a 2 x 4 selector; Levels 1 and 2 are enabled.
+- Level 1: Earth-Moon-like transfer, `1 km/s` landing speed limit.
+- Level 2: Sun-Earth-Mars-like transfer, `500 t` total mass, `400 t` fuel,
+  `100 km/s` exhaust velocity, `10 kg/s` mass flow, `10 km/s` landing limit.
+- Toolbar includes placement, length measurement, angle measurement, grid, and labels.
+- `R` resets the current mode: sandbox returns to default, level mode restarts current level.
 
-- `.codex/tasks/measurement-tools-hud-refresh.md`
+## Last Known Test Baseline
 
-Changes:
-
-- Level 2 probe tuning changed to total `500000 kg`, fuel `400000 kg`,
-  dry `100000 kg`, exhaust `100000 m/s`, mass flow `10 kg/s`, landing limit
-  `10000 m/s`.
-- Selected body info panel is refreshed every frame from current `BodyState`.
-- Toolbar includes length measurement, angle measurement, grid toggle, and labels toggle.
-- Measurement tools pause while active, snap to nearby active body centers, draw world-space
-  measurement overlays, and restore previous pause state on exit.
-- H shortcut overlay has been updated to remove stale right-drag and old speed shortcuts.
-- README toolbar/control notes include the new measurement buttons.
-- `R` resets the current mode: sandbox returns to the default scene, while level mode restarts the current level.
-- Durable docs updated:
-  - `.codex/docs/project-memory.md`
-  - `.codex/docs/contracts.md`
-  - `.codex/tasks/current-state.md`
-
-## Tests Last Run
-
-```powershell
-python -m py_compile src\main.py
-python -m py_compile src\main.py src\rendering\hud.py src\rendering\effects.py
-pytest tests\test_mode_menu.py tests\test_rendering_monochrome_ui.py tests\test_integration.py -q
-pytest tests\test_level_1_scene.py tests\test_mode_menu.py tests\test_rendering_monochrome_ui.py tests\test_integration.py -q
-pytest tests -q
-```
-
-Result:
+Before final-step work:
 
 ```text
-focused UI/input: 46 passed, 1 warning
-focused level/UI/input: 57 passed, 1 warning
-full: 173 passed, 1 warning
+pytest tests -q -> 173 passed, 1 warning
 ```
 
-The warning is the known pygame/pkg_resources deprecation.
+Run full tests again before release.
 
-## Next Recommended Actions
+## Final-Step Next Actions
 
-1. Commit finished work.
-2. Push only if the user explicitly asks.
+1. Finish documentation refresh.
+2. Run full tests.
+3. Build executable with PyInstaller.
+4. Smoke-test the packaged executable.
+5. Commit all changes, including `src/game/__init__.py` deletion.
+6. Push `feat/ux-optimization`.
+7. Create a GitHub release and upload the `.exe`.

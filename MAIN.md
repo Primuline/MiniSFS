@@ -55,8 +55,8 @@ MiniSFS/
 | `src.input` | Event-to-command conversion | Physics/rendering internals |
 | `src.main` | Current top-level orchestration, levels, selection, probe sidecars | Large unrelated refactors |
 
-`src/game/` exists historically, but current gameplay orchestration still lives
-mostly in `src/main.py`.
+The old placeholder `src/game/` package has been removed. Current gameplay
+orchestration lives mostly in `src/main.py`.
 
 ## Core Data Model
 
@@ -138,8 +138,8 @@ Implemented levels:
 - Level 1: Earth-Moon-like transfer; land on the planet.
 - Level 2: simplified Sun-Earth-Mars transfer; land on Mars.
 
-Fixed levels disable sandbox creation/editing tools and use a `1 km/s` landing
-speed limit.
+Fixed levels disable sandbox creation/editing tools. Level 1 uses a `1 km/s`
+landing speed limit; Level 2 uses a `10 km/s` landing speed limit.
 
 ## UI and Rendering
 
@@ -149,6 +149,8 @@ The current UI direction is monochrome and geometric:
 - white pixel borders
 - circular planets/stars, rotating polygonal star glyphs, triangular probes
 - font assets from `src/ttf/`
+- toolbar utility buttons for length measurement, angle measurement, grid, and labels
+- `R` resets the current mode: sandbox returns to the default scene, levels restart
 
 Right-clicking an existing body opens parameter editing. Right-clicking a probe
 opens probe parameter editing; old right-click probe aiming is no longer the

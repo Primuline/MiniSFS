@@ -47,7 +47,8 @@ Body types:
   - `mass_flow_rate`
   - `landing_speed_limit`
 - Total mass in `BodyState[MASS]` should match dry mass + current fuel mass when thrust is applied.
-- Landing speed limit is in m/s. Sandbox default is effectively unbounded (`1.0e30 m/s`); fixed levels use `1000 m/s`.
+- Landing speed limit is in m/s. Sandbox default is effectively unbounded (`1.0e30 m/s`);
+  fixed levels can override it per level (`1000 m/s` in Level 1, `10000 m/s` in Level 2).
 - Probe collision events use:
   - `probe_landed` for safe impacts
   - `probe_crashed` for above-limit impacts
@@ -66,6 +67,9 @@ Body types:
   - central Earth-like body is currently typed as `BODY_TYPE_STAR`
   - target Moon-like body is `BODY_TYPE_PLANET`
   - probe starts on the central body
+  - probe sidecar uses the sandbox default with exhaust velocity multiplied by `50`
+    and mass flow reduced by `// 50`
+  - landing speed limit is `1000 m/s`
   - success requires a landed probe on a planet body
 - Level 2:
   - Sun is a static `BODY_TYPE_STAR`

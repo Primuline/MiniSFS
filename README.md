@@ -52,8 +52,8 @@ rocket model with finite fuel.
 | `P` | `2` | Place planet, then drag to set initial velocity |
 | `D` | `3` | Configure and place probe |
 | `C` | `4` | Configure and place custom charged body |
-| `Len` | - | Measure distance between two snapped/world points |
-| `Ang` | - | Measure angle ABC in degrees |
+| `Ln` | - | Measure one or more distances between snapped/world points |
+| `An` | - | Measure one or more angles ABC in degrees |
 | `G` | `G` | Toggle coordinate grid |
 | `L` | `L` | Toggle body labels |
 
@@ -78,18 +78,19 @@ The time multiplier is bounded from `1/64x` to `64x`.
 - **Level 2**: Simplified Sun-Earth-Mars transfer. The probe starts near Earth
   on a Hohmann-like injection path and must land on Mars.
 
-Fixed levels use a probe landing speed limit of `1 km/s`. If the probe crashes
-or disappears in a level, the failure popup offers Retry and Menu.
+Level 1 uses a probe landing speed limit of `1 km/s`; Level 2 uses `10 km/s`.
+If the probe crashes or disappears in a level, the failure popup offers Retry
+and Menu.
 
 Level 2 probe defaults:
 
 | Parameter | Value |
 |:--|:--|
-| Total mass | `2.5 t` |
-| Fuel mass | `1 t` |
-| Exhaust velocity | `300 km/s` |
-| Mass flow | `1 mg/s` |
-| Landing speed limit | `1 km/s` |
+| Total mass | `500 t` |
+| Fuel mass | `400 t` |
+| Exhaust velocity | `100 km/s` |
+| Mass flow | `10 kg/s` |
+| Landing speed limit | `10 km/s` |
 
 ## Installation
 

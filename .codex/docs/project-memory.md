@@ -31,7 +31,8 @@ This file stores durable product context and user preferences that should surviv
 - Level 1 probe tuning:
   - exhaust velocity is default `* 50`
   - mass flow is default `// 50`
-- Fixed levels use a probe landing speed limit of `1000 m/s`.
+- Fixed levels can override probe landing speed limits. Level 1 uses `1000 m/s`;
+  Level 2 uses `10000 m/s`.
 - Level 2 probe tuning:
   - total mass `500000 kg`
   - fuel mass `400000 kg`
