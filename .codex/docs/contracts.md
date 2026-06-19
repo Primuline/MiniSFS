@@ -71,7 +71,8 @@ Body types:
   - Sun is a static `BODY_TYPE_STAR`
   - Earth and Mars are `BODY_TYPE_PLANET`
   - Mars starts about `44 degrees` ahead for a circular Hohmann-like transfer approximation
-  - probe starts near Earth but must not overlap Earth at level start
+  - probe starts near Earth but must not overlap or quickly fall back into Earth
+    during the first accelerated physics updates
   - probe sidecar uses total `2500 kg`, fuel `1000 kg`, dry `1500 kg`,
     exhaust velocity `300000 m/s`, mass flow `1.0e-6 kg/s`, and landing limit `1000 m/s`
   - success requires a landed probe on a planet body

@@ -16,7 +16,18 @@ from src.config import (
     PROBE_ROCKET_TOTAL_MASS_DEFAULT,
     WORLD_SCALE,
 )
-from src.core.types import BODY_TYPE, IS_STATIC, MASS, RADIUS, VX, VY, X, Y, make_body
+from src.core.types import (
+    BODY_TYPE,
+    IS_ACTIVE,
+    IS_STATIC,
+    MASS,
+    RADIUS,
+    VX,
+    VY,
+    X,
+    Y,
+    make_body,
+)
 from src.main import (
     create_level_1_scene,
     create_level_2_scene,
@@ -27,6 +38,7 @@ from src.main import (
     probe_radius_to_tool_pixels,
 )
 from src.physics.collision import handle_collisions
+from src.physics.engine import PhysicsEngine
 
 
 def test_level_1_contains_earth_moon_and_probe() -> None:
@@ -137,6 +149,34 @@ def test_level_2_probe_starts_clear_of_failure_inputs() -> None:
 
     assert events == []
     assert int(resolved[probe_id, BODY_TYPE]) == BODY_TYPE_PROBE
+
+
+def test_level_2_probe_does_not_immediately_crash_after_physics_updates() -> None:
+    """Level 2 should remain playable after the first accelerated simulation steps."""
+    bodies = create_level_2_scene()
+    state = make_level_probe_rocket_state(2)
+    physics_engine = PhysicsEngine()
+    # Mirror the current main-loop high-speed 1x level step.
+    dt = (1.0 / 60.0) * 3125.0
+
+    for _ in range(120):
+        bodies = physics_engine.update(
+            bodies,
+            dt,
+            probe_landing_speed_limits={3: state.landing_speed_limit},
+        )
+
+        probe_ids = [
+            body_id
+            for body_id in range(bodies.shape[0])
+            if int(bodies[body_id, BODY_TYPE]) == BODY_TYPE_PROBE
+        ]
+        assert probe_ids, "Level 2 probe disappeared during initial physics updates"
+        assert int(bodies[probe_ids[0], IS_ACTIVE]) == 1
+        assert not any(
+            event.get("type") == "probe_crashed"
+            for event in physics_engine.last_collision_events
+        )
 
 
 def test_level_probe_rocket_parameters_are_level_specific() -> None:

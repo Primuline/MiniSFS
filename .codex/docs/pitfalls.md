@@ -77,3 +77,20 @@ Required reset when starting or leaving levels:
 - clear `physics_engine.last_collision_events`
 - clear/rebuild `physics_engine.probe_landing_speed_limits`
 - clear probe sidecars, trails, selected/reference bodies, HUD probe info, and level completion/failure flags
+
+## Level 2 Near-Earth Probe Starts
+
+Observed issue:
+
+- Level 2 could show "probe lost" shortly after the mission popup was acknowledged even when the initial bodies did not overlap.
+
+Why it failed:
+
+- The probe was only slightly outside Earth's surface with a Hohmann-like heliocentric transfer speed.
+- At `BASE_TIME_SPEED = 3125`, each rendered frame advances about `52 s`.
+- Earth gravity can pull a near-surface probe back into Earth within a few frames; the relative impact speed is above the fixed-level `1000 m/s` landing limit, so the level fails.
+
+Required validation:
+
+- Do not only test initial non-overlap.
+- Run several accelerated `PhysicsEngine.update()` steps and assert no `probe_crashed` event and an active probe remains.
