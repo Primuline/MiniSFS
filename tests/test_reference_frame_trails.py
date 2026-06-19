@@ -9,6 +9,7 @@ from src.main import (
     find_landed_probe_contacts,
     find_landed_probe_ids,
     placement_velocity_in_source_frame,
+    placement_world_position_from_source_frame,
     should_predict_probe_trajectory,
     transform_trails_to_reference_frame,
 )
@@ -148,6 +149,22 @@ def test_placement_prediction_velocity_uses_gravity_source_frame() -> None:
     )
 
     assert np.allclose(relative_velocity, [200.0, -350.0])
+
+
+def test_placement_prediction_translates_source_frame_back_to_world() -> None:
+    """World preview should add uniform source motion back after local prediction."""
+    relative_position = np.array([100.0, -20.0], dtype=np.float64)
+    source_position = np.array([1000.0, 2000.0], dtype=np.float64)
+    source_velocity = np.array([30.0, -4.0], dtype=np.float64)
+
+    world_position = placement_world_position_from_source_frame(
+        relative_position,
+        source_position,
+        source_velocity,
+        elapsed=10.0,
+    )
+
+    assert np.allclose(world_position, [1400.0, 1940.0])
 
 
 def test_find_landed_probe_contacts_returns_host_and_normal() -> None:
