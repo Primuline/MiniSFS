@@ -145,9 +145,16 @@ def create_level_2_scene() -> np.ndarray:
     return create_level_scene(2)
 
 
+def get_resource_root() -> Path:
+    """Return the project/resource root for source and PyInstaller builds."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parents[1]
+
+
 def create_level_scene(level_id: int) -> np.ndarray:
     """Load a level body state from assets/levels."""
-    level_path = Path(__file__).resolve().parents[1] / LEVEL_DIR / f"level_{level_id}.json"
+    level_path = get_resource_root() / LEVEL_DIR / f"level_{level_id}.json"
     with level_path.open("r", encoding="utf-8") as level_file:
         level_data = json.load(level_file)
 
