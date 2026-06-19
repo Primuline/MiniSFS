@@ -5,6 +5,7 @@ import os
 import pytest
 
 from src.main import (
+    measure_angle_degrees,
     make_default_probe_rocket_state,
     reset_level_entry_runtime_state,
 )
@@ -63,6 +64,41 @@ def test_level_select_has_two_by_four_grid_with_levels_1_and_2_enabled(pygame_du
     assert hud.level_select_buttons[0].disabled is False
     assert hud.level_select_buttons[1].disabled is False
     assert all(btn.disabled for btn in hud.level_select_buttons[2:])
+
+
+def test_toolbar_includes_measurement_and_overlay_toggles(pygame_dummy) -> None:
+    """Toolbar should expose creation, measurement, grid, and labels controls."""
+    hud = HUDManager()
+
+    actions = [btn.action for btn in hud.tool_buttons]
+
+    assert actions == [
+        "TOOL_STAR",
+        "TOOL_PLANET",
+        "TOOL_PROBE",
+        "TOOL_CUSTOM",
+        "TOOL_MEASURE_LENGTH",
+        "TOOL_MEASURE_ANGLE",
+        "TOGGLE_GRID",
+        "TOGGLE_LABELS",
+    ]
+
+
+def test_toolbar_toggle_state_survives_tool_selection(pygame_dummy) -> None:
+    """Grid/label toggle buttons should not be cleared by active tool selection."""
+    hud = HUDManager()
+
+    hud.set_toolbar_toggle_state("TOGGLE_GRID", True)
+    hud.set_tool_active("TOOL_MEASURE_LENGTH")
+
+    states = {btn.action: btn.active for btn in hud.tool_buttons}
+    assert states["TOGGLE_GRID"] is True
+    assert states["TOOL_MEASURE_LENGTH"] is True
+
+
+def test_measure_angle_degrees_returns_degrees() -> None:
+    """Angle measurement helper should report degrees, not radians."""
+    assert measure_angle_degrees((1.0, 0.0), (0.0, 0.0), (0.0, 1.0)) == pytest.approx(90.0)
 
 
 def test_level_select_level_1_button_starts_level(pygame_dummy) -> None:

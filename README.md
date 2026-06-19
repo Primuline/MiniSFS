@@ -34,6 +34,7 @@ rocket model with finite fuel.
 | Probe thrust | Arrow keys when a probe is selected or in probe reference frame |
 | Edit body parameters | Right-click body |
 | Edit probe rocket/body parameters | Right-click probe |
+| Cancel active measurement/placement | Right-click |
 | Cancel placement / deselect | Right-click empty space |
 | Pause/resume | `Space` or HUD pause button |
 | Reset camera | `R` |
@@ -51,6 +52,10 @@ rocket model with finite fuel.
 | `P` | `2` | Place planet, then drag to set initial velocity |
 | `D` | `3` | Configure and place probe |
 | `C` | `4` | Configure and place custom charged body |
+| `Len` | - | Measure distance between two snapped/world points |
+| `Ang` | - | Measure angle ABC in degrees |
+| `G` | `G` | Toggle coordinate grid |
+| `L` | `L` | Toggle body labels |
 
 Level mode disables sandbox editing tools.
 

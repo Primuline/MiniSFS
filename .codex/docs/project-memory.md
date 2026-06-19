@@ -33,12 +33,13 @@ This file stores durable product context and user preferences that should surviv
   - mass flow is default `// 50`
 - Fixed levels use a probe landing speed limit of `1000 m/s`.
 - Level 2 probe tuning:
-  - total mass `2500 kg`
-  - fuel mass `1000 kg`
-  - dry mass `1500 kg`
-  - exhaust velocity `300000 m/s`
-  - mass flow `1.0e-6 kg/s`
-  - landing speed limit `1000 m/s`
+  - total mass `500000 kg`
+  - fuel mass `400000 kg`
+  - dry mass `100000 kg`
+  - exhaust velocity `100000 m/s`
+  - mass flow `10 kg/s`
+  - landing speed limit `10000 m/s`
 - Default star/body parameters have been moved toward solar/Earth-like values. `WORLD_SCALE = 8.0e5` meters per pixel.
 - Probe visual size has render-only compensation. Real body radius must not be clamped to one screen pixel during placement.
 - Right-clicking a probe edits its current rocket/body parameters. The previous right-click probe aiming lines are no longer the right-click behavior.
+- Toolbar includes non-editing helpers for length measurement, angle measurement, grid toggle, and labels toggle.

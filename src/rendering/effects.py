@@ -739,7 +739,7 @@ def draw_shortcuts_overlay(surface: pygame.Surface) -> None:
     overlay.fill(UI_OVERLAY_BG)
     surface.blit(overlay, (0, 0))
 
-    panel = pygame.Rect(WINDOW_WIDTH // 2 - 260, 48, 520, 330)
+    panel = pygame.Rect(WINDOW_WIDTH // 2 - 280, 48, 560, 330)
     pygame.draw.rect(surface, UI_BLACK, panel)
     pygame.draw.rect(surface, UI_WHITE, panel, 2)
 
@@ -753,12 +753,10 @@ def draw_shortcuts_overlay(surface: pygame.Surface) -> None:
     shortcuts = [
         ("Space", "Pause/Resume"), ("G", "Toggle Grid"),
         ("L", "Toggle Labels"), ("H", "Toggle Shortcuts"),
-        ("5", "1x Speed"), ("6", "2x Speed"),
-        ("7", "4x Speed"), ("8", "8x Speed"),
-        ("1~4", "Spawn Tools"), ("Del", "Delete Body"),
-        ("Right-Drag", "Aim Probe"), ("Right-Click", "Edit Body"),
+        ("1~4", "Place Tools"), ("Del", "Delete Body"),
+        ("Ln/An", "Measure"), ("Right-Click", "Edit/Cancel"),
         ("Scroll", "Zoom"), ("Dbl-Click", "Reference Frame"),
-        ("Drag", "Grab Body"), ("Esc", "Back/Quit"),
+        ("Middle-Drag", "Pan/Grab"), ("Esc", "Back/Cancel"),
     ]
 
     col1_x = WINDOW_WIDTH // 2 - 180

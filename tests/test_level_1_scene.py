@@ -108,7 +108,7 @@ def test_level_2_contains_sun_earth_mars_and_probe() -> None:
     assert int(bodies[2, BODY_TYPE]) == BODY_TYPE_PLANET
     assert int(bodies[3, BODY_TYPE]) == BODY_TYPE_PROBE
     assert bodies[0, IS_STATIC] == 1.0
-    assert bodies[3, MASS] == pytest.approx(2500.0)
+    assert bodies[3, MASS] == pytest.approx(500000.0)
     assert bodies[3, RADIUS] == pytest.approx(DEFAULT_RADIUS_PROBE * WORLD_SCALE)
 
 
@@ -185,13 +185,13 @@ def test_level_probe_rocket_parameters_are_level_specific() -> None:
     level_2 = make_level_probe_rocket_state(2)
 
     assert level_1.landing_speed_limit == pytest.approx(1000.0)
-    assert level_2.total_mass() == pytest.approx(2500.0)
-    assert level_2.dry_mass == pytest.approx(1500.0)
-    assert level_2.fuel_mass == pytest.approx(1000.0)
-    assert level_2.initial_fuel_mass == pytest.approx(1000.0)
-    assert level_2.exhaust_velocity == pytest.approx(300000.0)
-    assert level_2.mass_flow_rate == pytest.approx(1.0e-6)
-    assert level_2.landing_speed_limit == pytest.approx(1000.0)
+    assert level_2.total_mass() == pytest.approx(500000.0)
+    assert level_2.dry_mass == pytest.approx(100000.0)
+    assert level_2.fuel_mass == pytest.approx(400000.0)
+    assert level_2.initial_fuel_mass == pytest.approx(400000.0)
+    assert level_2.exhaust_velocity == pytest.approx(100000.0)
+    assert level_2.mass_flow_rate == pytest.approx(10.0)
+    assert level_2.landing_speed_limit == pytest.approx(10000.0)
 
 
 def test_level_1_success_requires_probe_landed_on_planet() -> None:

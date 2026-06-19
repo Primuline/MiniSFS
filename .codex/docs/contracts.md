@@ -73,8 +73,8 @@ Body types:
   - Mars starts about `44 degrees` ahead for a circular Hohmann-like transfer approximation
   - probe starts near Earth but must not overlap or quickly fall back into Earth
     during the first accelerated physics updates
-  - probe sidecar uses total `2500 kg`, fuel `1000 kg`, dry `1500 kg`,
-    exhaust velocity `300000 m/s`, mass flow `1.0e-6 kg/s`, and landing limit `1000 m/s`
+  - probe sidecar uses total `500000 kg`, fuel `400000 kg`, dry `100000 kg`,
+    exhaust velocity `100000 m/s`, mass flow `10 kg/s`, and landing limit `10000 m/s`
   - success requires a landed probe on a planet body
 
 ## HUD/Dialog Contract
@@ -82,3 +82,9 @@ Body types:
 - HUD message dialogs should block underlying input until acknowledged.
 - Long-lived UI changes should have tests in `tests/test_mode_menu.py`, rendering tests, or focused HUD tests.
 - Avoid visible UI text that only explains controls unless it is a modal objective/result message or menu label.
+- The selected-body info panel must be refreshed from current `BodyState` each frame while the body is active.
+- Measurement tools are HUD tools, not physics state:
+  - length measurement stores world-space points and displays formatted distance
+  - angle measurement displays angle ABC in degrees
+  - measurement point selection snaps to nearby active body centers
+  - exiting measurement clears the overlay and restores the previous pause state

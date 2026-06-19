@@ -51,9 +51,13 @@ from src.config import (
     SUBSTEPS,
     TARGET_FPS,
     TIME_STEP,
+    UI_BLACK,
+    UI_PANEL_BG,
+    UI_WHITE,
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
     WORLD_SCALE,
+    get_ui_font,
 )
 from src.core.types import (
     BODY_TYPE,
@@ -256,12 +260,12 @@ def make_level_probe_rocket_state(level_id: int) -> ProbeRocketState:
     """Create level-specific probe rocket state."""
     if level_id == 2:
         return ProbeRocketState(
-            dry_mass=1500.0,
-            fuel_mass=1000.0,
-            initial_fuel_mass=1000.0,
-            exhaust_velocity=300000.0,
-            mass_flow_rate=1.0e-6,
-            landing_speed_limit=LEVEL_PROBE_LANDING_SPEED_LIMIT,
+            dry_mass=100000.0,
+            fuel_mass=400000.0,
+            initial_fuel_mass=400000.0,
+            exhaust_velocity=100000.0,
+            mass_flow_rate=10.0,
+            landing_speed_limit=10000.0,
         )
     return make_level_1_probe_rocket_state()
 
@@ -291,6 +295,107 @@ def is_level_success(bodies: np.ndarray) -> bool:
         if 0 <= host_id < bodies.shape[0] and int(bodies[host_id, BODY_TYPE]) == BODY_TYPE_PLANET:
             return True
     return False
+
+
+def format_measurement_distance(distance_m: float) -> str:
+    """Format a world-space distance for the measurement overlay."""
+    distance_m = abs(distance_m)
+    if distance_m >= 1.496e11:
+        return f"{distance_m / 1.496e11:.3g} AU"
+    if distance_m >= 1.0e9:
+        return f"{distance_m / 1.0e9:.3g} Gm"
+    if distance_m >= 1.0e6:
+        return f"{distance_m / 1.0e6:.3g} Mm"
+    if distance_m >= 1.0e3:
+        return f"{distance_m / 1.0e3:.3g} km"
+    return f"{distance_m:.3g} m"
+
+
+def measure_angle_degrees(
+    a: Tuple[float, float],
+    b: Tuple[float, float],
+    c: Tuple[float, float],
+) -> float:
+    """Return angle ABC in degrees."""
+    bax = a[0] - b[0]
+    bay = a[1] - b[1]
+    bcx = c[0] - b[0]
+    bcy = c[1] - b[1]
+    ba_len = math.hypot(bax, bay)
+    bc_len = math.hypot(bcx, bcy)
+    if ba_len <= 0.0 or bc_len <= 0.0:
+        return 0.0
+    cos_theta = (bax * bcx + bay * bcy) / (ba_len * bc_len)
+    cos_theta = max(-1.0, min(1.0, cos_theta))
+    return math.degrees(math.acos(cos_theta))
+
+
+def draw_measurement_overlay(
+    surface: pygame.Surface,
+    camera: Camera,
+    mode: Optional[str],
+    points: List[Tuple[float, float]],
+    cursor_world: Tuple[float, float],
+) -> None:
+    """Draw active length/angle measurement overlay."""
+    if mode is None:
+        return
+
+    font = get_ui_font(16)
+    small_font = get_ui_font(14)
+
+    def screen(point: Tuple[float, float]) -> Tuple[int, int]:
+        return camera.world_to_screen(point[0], point[1])
+
+    def label(text: str, x: int, y: int) -> None:
+        text_surf = font.render(text, True, UI_WHITE)
+        rect = text_surf.get_rect(center=(x, y))
+        bg = pygame.Surface((rect.width + 10, rect.height + 6), pygame.SRCALPHA)
+        bg.fill(UI_PANEL_BG)
+        surface.blit(bg, (rect.x - 5, rect.y - 3))
+        pygame.draw.rect(surface, UI_WHITE, (rect.x - 5, rect.y - 3, rect.width + 10, rect.height + 6), 1)
+        surface.blit(text_surf, rect)
+
+    def draw_point(point: Tuple[float, float], name: str) -> None:
+        sx, sy = screen(point)
+        pygame.draw.circle(surface, UI_WHITE, (sx, sy), 4, 1)
+        name_surf = small_font.render(name, True, UI_WHITE)
+        surface.blit(name_surf, (sx + 6, sy - 8))
+
+    def draw_segment(p1: Tuple[float, float], p2: Tuple[float, float]) -> None:
+        s1 = screen(p1)
+        s2 = screen(p2)
+        pygame.draw.line(surface, UI_WHITE, s1, s2, 1)
+        draw_point(p1, "")
+        draw_point(p2, "")
+
+    if mode == "length":
+        if len(points) == 0:
+            sx, sy = screen(cursor_world)
+            pygame.draw.circle(surface, UI_WHITE, (sx, sy), 4, 1)
+            return
+        end = points[1] if len(points) >= 2 else cursor_world
+        draw_segment(points[0], end)
+        length = math.hypot(end[0] - points[0][0], end[1] - points[0][1])
+        mid_sx = (screen(points[0])[0] + screen(end)[0]) // 2
+        mid_sy = (screen(points[0])[1] + screen(end)[1]) // 2
+        label(format_measurement_distance(length), mid_sx, mid_sy - 12)
+        return
+
+    if mode == "angle":
+        if len(points) == 0:
+            sx, sy = screen(cursor_world)
+            pygame.draw.circle(surface, UI_WHITE, (sx, sy), 4, 1)
+            return
+        if len(points) == 1:
+            draw_segment(points[0], cursor_world)
+            return
+        end = points[2] if len(points) >= 3 else cursor_world
+        draw_segment(points[0], points[1])
+        draw_segment(points[1], end)
+        angle = measure_angle_degrees(points[0], points[1], end)
+        bx, by = screen(points[1])
+        label(f"{angle:.2f} deg", bx + 34, by - 20)
 
 
 def add_body_to_array(
@@ -510,6 +615,8 @@ def main() -> None:
 
     # Tool state
     active_tool: Optional[str] = None
+    measurement_points: List[Tuple[float, float]] = []
+    measurement_previous_pause: Optional[bool] = None
 
     # Aiming state
     is_aiming = False
@@ -601,6 +708,24 @@ def main() -> None:
             hud.set_tool_active(None)
         is_paused = False
         hud.set_play_pause_state(False)
+
+    def _snap_measurement_point(sx: int, sy: int) -> Tuple[float, float]:
+        """Return a world point snapped to a nearby active body center if possible."""
+        snap_id = input_handler.find_body_at_screen_pos(sx, sy, bodies, camera)
+        if snap_id is not None and 0 <= snap_id < bodies.shape[0]:
+            return (float(bodies[snap_id, X]), float(bodies[snap_id, Y]))
+        return camera.screen_to_world(sx, sy)
+
+    def _exit_measurement_tool() -> None:
+        """Exit measurement mode and restore the previous pause state."""
+        nonlocal active_tool, measurement_previous_pause, measurement_points, is_paused
+        measurement_points = []
+        if measurement_previous_pause is not None:
+            is_paused = measurement_previous_pause
+            hud.set_play_pause_state(is_paused)
+        measurement_previous_pause = None
+        active_tool = None
+        hud.set_tool_active(None)
 
     def _make_default_probe_rocket_state() -> ProbeRocketState:
         """Create default sidecar rocket state for legacy/default probe placement."""
@@ -1310,10 +1435,12 @@ def main() -> None:
             elif cmd == "TOGGLE_GRID":
                 show_grid = not show_grid
                 renderer.show_grid = show_grid
+                hud.set_toolbar_toggle_state("TOGGLE_GRID", show_grid)
 
             elif cmd == "TOGGLE_LABELS":
                 show_labels = not show_labels
                 renderer.show_labels = show_labels
+                hud.set_toolbar_toggle_state("TOGGLE_LABELS", show_labels)
 
             elif cmd == "TOGGLE_SHORTCUTS":
                 show_shortcuts = not show_shortcuts
@@ -1321,6 +1448,22 @@ def main() -> None:
 
             # --- Tool selection ---
             elif cmd.startswith("TOOL_"):
+                if cmd in ("TOOL_MEASURE_LENGTH", "TOOL_MEASURE_ANGLE"):
+                    if active_tool == cmd:
+                        _exit_measurement_tool()
+                        continue
+                    if simple_placement_stage > 0:
+                        _cancel_simple_placement()
+                    if custom_placement_stage > 0:
+                        _cancel_custom_placement()
+                    measurement_points = []
+                    measurement_previous_pause = is_paused
+                    is_paused = True
+                    hud.set_play_pause_state(True)
+                    active_tool = cmd
+                    hud.set_tool_active(active_tool)
+                    continue
+
                 if level_mode_enabled:
                     active_tool = None
                     hud.set_tool_active(None)
@@ -1442,6 +1585,14 @@ def main() -> None:
                 parts = cmd.split(":")
                 sx_str = parts[1].split(",")
                 sx, sy = int(sx_str[0]), int(sx_str[1])
+
+                if active_tool in ("TOOL_MEASURE_LENGTH", "TOOL_MEASURE_ANGLE"):
+                    point = _snap_measurement_point(sx, sy)
+                    required_points = 2 if active_tool == "TOOL_MEASURE_LENGTH" else 3
+                    if len(measurement_points) >= required_points:
+                        continue
+                    measurement_points.append(point)
+                    continue
 
                 # Simple placement flow click handling (Star/Planet/Probe)
                 if simple_placement_stage > 0:
@@ -1809,6 +1960,14 @@ def main() -> None:
                 sx_str = parts[1].split(",")
                 sx, sy = int(sx_str[0]), int(sx_str[1])
 
+                if active_tool in ("TOOL_MEASURE_LENGTH", "TOOL_MEASURE_ANGLE"):
+                    required_points = 2 if active_tool == "TOOL_MEASURE_LENGTH" else 3
+                    if measurement_points and len(measurement_points) < required_points:
+                        measurement_points = []
+                    else:
+                        _exit_measurement_tool()
+                    continue
+
                 # Right-click handling for simple placement flow
                 if simple_placement_stage > 0:
                     if simple_placement_stage == 2:
@@ -1987,6 +2146,9 @@ def main() -> None:
                 if show_shortcuts:
                     show_shortcuts = False
                     renderer.show_shortcuts = False
+                    continue
+                if active_tool in ("TOOL_MEASURE_LENGTH", "TOOL_MEASURE_ANGLE"):
+                    _exit_measurement_tool()
                     continue
                 if simple_placement_stage > 0:
                     _cancel_simple_placement()
@@ -2382,8 +2544,28 @@ def main() -> None:
         if predicted_trajectory is not None and predicted_trajectory.shape[0] > 1:
             renderer.render_predicted_trajectory(predicted_trajectory, camera)
 
+        if active_tool in ("TOOL_MEASURE_LENGTH", "TOOL_MEASURE_ANGLE"):
+            cursor_world = _snap_measurement_point(
+                input_handler.mouse_screen_x,
+                input_handler.mouse_screen_y,
+            )
+            draw_measurement_overlay(
+                renderer.screen,
+                camera,
+                "length" if active_tool == "TOOL_MEASURE_LENGTH" else "angle",
+                measurement_points,
+                cursor_world,
+            )
+
         # Draw particles
         particle_system.render(renderer.screen)
+
+        if (
+            selected_body_id is not None
+            and 0 <= selected_body_id < bodies.shape[0]
+            and int(bodies[selected_body_id, IS_ACTIVE]) == 1
+        ):
+            hud.set_selected_body(bodies[selected_body_id], selected_body_id)
 
         # Update status info and draw HUD
         hud.set_status_info(

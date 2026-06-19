@@ -216,12 +216,16 @@ class HUDManager:
             ("P", "TOOL_PLANET", "Planet"),
             ("D", "TOOL_PROBE", "Probe"),
             ("C", "TOOL_CUSTOM", "Custom"),
+            ("Ln", "TOOL_MEASURE_LENGTH", "Length"),
+            ("An", "TOOL_MEASURE_ANGLE", "Angle"),
+            ("G", "TOGGLE_GRID", "Grid"),
+            ("L", "TOGGLE_LABELS", "Labels"),
         ]
         for i, (label, action, _) in enumerate(tools):
             btn = Button(
                 5, tool_y + i * tool_spacing,
                 34, 34, label, action,
-                font_size=14,
+                font_size=13 if len(label) > 1 else 14,
             )
             self.tool_buttons.append(btn)
 
@@ -469,6 +473,10 @@ class HUDManager:
             "TOOL_PROBE": "Probe",
             "TOOL_CHARGED": "Charged",
             "TOOL_CUSTOM": "Custom",
+            "TOOL_MEASURE_LENGTH": "Length",
+            "TOOL_MEASURE_ANGLE": "Angle",
+            "TOGGLE_GRID": "Grid",
+            "TOGGLE_LABELS": "Labels",
         }
         return names.get(tool, tool)
 
@@ -630,16 +638,31 @@ class HUDManager:
         """
         self.active_tool = tool
         for btn in self.tool_buttons:
+            if btn.action in ("TOGGLE_GRID", "TOGGLE_LABELS"):
+                continue
             btn.active = (btn.action == tool)
+
+    def set_toolbar_toggle_state(self, action: str, active: bool) -> None:
+        """Set the visual active state for a toolbar toggle button."""
+        for btn in self.tool_buttons:
+            if btn.action == action:
+                btn.active = active
+                return
 
     def set_level_mode_enabled(self, enabled: bool) -> None:
         """Enable or disable sandbox editing tools while in a fixed level."""
         self.level_mode_enabled = enabled
         if enabled:
-            self.active_tool = None
+            if self.active_tool in ("TOOL_STAR", "TOOL_PLANET", "TOOL_PROBE", "TOOL_CUSTOM"):
+                self.active_tool = None
         for btn in self.tool_buttons:
-            btn.disabled = enabled
-            if enabled:
+            btn.disabled = enabled and btn.action in (
+                "TOOL_STAR",
+                "TOOL_PLANET",
+                "TOOL_PROBE",
+                "TOOL_CUSTOM",
+            )
+            if btn.disabled:
                 btn.active = False
 
     def show_level_message(
